@@ -1,0 +1,71 @@
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Core package tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          set -eux
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: TokiMusicCore unit tests
+        run: |
+          set -eux
+          # XCTest cases live in the TokiMusicCore Swift package (YRC parser)
+          # and run with the selected Xcode toolchain.
+          xcrun swift test --package-path ios/TokiMusicCore
+
+  ipa:
+    name: Unsigned IPA
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          set -eux
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Unsigned device build
+        run: |
+          set -eux
+          chmod +x ios/scripts/unsigned-ipa.sh
+          NAME="TokiMusic-ios-0.1.0.ipa"
+          ios/scripts/unsigned-ipa.sh "build/${NAME}"
+          find ios/build -name '*.ipa' -print
+          unzip -l "ios/build/${NAME}" | head -n 40
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: TokiMusic-ios-unsigned
+          path: ios/build/*.ipa
+          if-no-files-found: error
