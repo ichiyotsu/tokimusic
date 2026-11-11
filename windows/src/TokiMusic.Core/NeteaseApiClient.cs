@@ -18,6 +18,15 @@ public sealed class NeteaseApiClient
     }
     // Login: /login/qr/key · /login/qr/create · /login/qr/check (800/801/802/803) · /login/status · /user/account
     public async Task<string> QrKeyAsync() { using var d = await GetAsync("/login/qr/key"); return d.RootElement.GetProperty("data").GetProperty("unikey").GetString() ?? ""; }
+    /// Creates the login QR code; with qrimg=true the API returns data.qrimg as a
+    /// "data:image/png;base64,..." string (same field the Android client decodes).
+    public async Task<string> QrCreateAsync(string key) { using var d = await GetAsync($"/login/qr/create?key={Uri.EscapeDataString(key)}&qrimg=true"); return d.RootElement.GetProperty("data").TryGetProperty("qrimg", out var img) ? img.GetString() ?? "" : ""; }
+    /// Strips an optional "data:...;base64," prefix and decodes a base64 image payload.
+    public static byte[] DecodeBase64Image(string img)
+    {
+        var raw = img.Contains("base64,") ? img[(img.IndexOf("base64,", StringComparison.Ordinal) + 7)..] : img;
+        return string.IsNullOrWhiteSpace(raw) ? Array.Empty<byte>() : Convert.FromBase64String(raw.Trim());
+    }
     public async Task<(int Code, string Cookie)> QrCheckAsync(string key) { using var d = await GetAsync($"/login/qr/check?key={Uri.EscapeDataString(key)}"); var code = d.RootElement.GetProperty("code").GetInt32(); var cookie = d.RootElement.TryGetProperty("cookie", out var c) ? c.GetString() ?? "" : ""; if (code == 803) Cookie = cookie; return (code, cookie); }
     // Home: /banner /personalized /personalized/newsong /recommend/songs /cloudsearch
     // Playlists: /user/playlist /playlist/detail /playlist/catlist

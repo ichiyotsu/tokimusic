@@ -10,7 +10,7 @@ TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki �
 - 主页：顶部胶囊搜索框，右上角是头像，未登录显示默认头像、已登录显示真实头像，点击进入二维码登录；下面是 Banner、每日推荐、新歌速递和推荐歌单；搜索支持单曲、歌手、歌单
 - 歌单：按「我喜欢的音乐（置顶）、我创建的、我收藏的」分组，分组可折叠并带数量，点进歌单看曲目列表
 - 我的：头像、昵称、等级和关注 / 粉丝；统计有收藏歌曲数、听歌时长、歌单数，另有我的收藏、最近播放、听歌排行入口；设置里可以改 API 地址和主题
-- 二维码登录：走 `/login/qr/key`、`/login/qr/create`、`/login/qr/check` 轮询，登录成功后在本机保存 cookie
+- 二维码登录：走 `/login/qr/key`、`/login/qr/create`、`/login/qr/check` 轮询；`/login/qr/create` 返回的 base64 二维码图三端都已实现解码展示（Android 用 BitmapFactory、iOS 用 Data(base64Encoded:) 转 UIImage、Windows 用 BitmapImage + 内存流），登录成功后在本机保存 cookie
 - 播放：底部上方有 MiniPlayer（封面、歌名、播放 / 暂停、进度），点开是全屏播放页
 - 歌词页：**歌词居左**，整列左对齐；有逐字歌词时按网易云 YRC 逐字高亮，唱到的字逐个变主色，当前行加粗放大并自动滚动，翻译以小字跟在主行下方、同样居左；没有逐字歌词时回退到 LRC 整行高亮
 - 没有可用的 API 服务时，三端都用内置 Mock 数据展示界面并明确标注「Demo 数据」，不会白屏
@@ -59,7 +59,7 @@ dotnet build windows/src/TokiMusic.Core/TokiMusic.Core.csproj -c Release
 dotnet test windows/tests/TokiMusic.Tests/TokiMusic.Tests.csproj -c Release
 ```
 
-应用本体只能在 Windows 上用 Visual Studio 2022 打开 `windows/TokiMusic.sln` 构建，XAML 编译需要 Windows 和 Windows App SDK，Linux 和 macOS 上编不了。本机图标资源目前还是占位说明，打包发布前需要补齐 `Assets` 里的正式图标。
+应用本体只能在 Windows 上用 Visual Studio 2022 打开 `windows/TokiMusic.sln` 构建，XAML 编译需要 Windows 和 Windows App SDK，Linux 和 macOS 上编不了。图标已生成真实文件放在 `windows/src/TokiMusic/Assets/`（Matcha 主色圆角底 + 白色音符：StoreLogo 50×50、Square44x44、Square150x150、Square310x310、Wide310x150 和多尺寸 `TokiMusic.ico`），包清单引用同名文件，正式发布前可直接替换同名文件换品牌图。
 
 ### 应用内更新
 
@@ -113,9 +113,9 @@ App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://12
 
 ## 验证状态
 
-- Windows 共享层：已在本机（Linux、.NET 8 SDK 8.0.428）真实编译通过，产物 `TokiMusic.Core.dll`；xUnit 测试 3 个全部通过（本机虚拟机的回环连接会污染 `dotnet test` 的 vstest 协议，实际是用 xunit console runner 进程内执行验证的；在普通机器上直接 `dotnet test` 即可）。
+- Windows 共享层：已在本机（Linux、.NET 8 SDK 8.0.428）真实编译通过，产物 `TokiMusic.Core.dll`；xUnit 测试 4 个全部通过（YRC 解析 3 个 + 二维码 base64 解码 1 个；本机虚拟机的回环连接会污染 `dotnet test` 的 vstest 协议，实际是用 xunit console runner 进程内执行验证的；在普通机器上直接 `dotnet test` 即可）。
 - Android：工具链（Temurin JDK 17、Android SDK platform 36 + build-tools 36.0.0、Gradle 9.6.0）已备好，gradle wrapper 文件已补齐；但本机虚拟机的网络层会重置 Gradle daemon 的本机回环连接（报错 `Could not dispatch a message to the daemon`，根因链是写 socket 时 `Connection reset by peer`，与上面 vstest 的问题同源），Gradle 在本机跑不起来，APK 构建需要在普通机器或 CI 上验证，尚不能算编译通过。静态检查已先修过一轮：`Dest.kt` 的未用 import、Media3 会话服务的 intent-filter 声明、损坏的 `.gitignore`。
-- iOS：共享包 `TokiMusicCore` 已在本机用 Linux 版 Swift 6.0.3 真实编译通过，XCTest 2 个全部通过（期间修掉了 `YrcParser.swift` 里 3 处真实的编译错误：元组下标访问、字符串索引类型、复杂表达式拆分）；应用本体的 SwiftUI 源码只做了语法解析检查，未经 Xcode 编译，首次真实编译以 GitHub Actions 的 iOS workflow 结果为准（workflow 文件按上面说明经网页端添加后生效）。
+- iOS：共享包 `TokiMusicCore` 已在本机用 Linux 版 Swift 6.0.3 真实编译通过，XCTest 2 个全部通过（期间修掉了 `YrcParser.swift` 里 3 处真实的编译错误：元组下标访问、字符串索引类型、复杂表达式拆分）；应用本体的 SwiftUI 源码只做了语法解析检查，未经 Xcode 编译，首次真实编译以 GitHub Actions 的 iOS workflow 结果为准（workflow 文件按上面说明经网页端添加后生效）。Xcode 工程已补齐：完整的 project.pbxproj（源码引用、本地包依赖、共享 scheme TokiMusic）、Assets.xcassets（1024 AppIcon 与 Matcha AccentColor）、未签名 IPA 脚本。Windows 本体的二维码展示与图标同理：代码与资源已备好，但 WinUI 本体未经 Windows 编译验证。
 
 ## 目录
 

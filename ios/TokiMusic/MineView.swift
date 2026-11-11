@@ -30,12 +30,22 @@ struct StatBox: View { var label: String; var value: String
     var body: some View { VStack { Text(value).font(.title3.bold()); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity).padding(.vertical, 8) } }
 struct SongListView: View { var title: String; var songs: [Song]; var body: some View { List(songs) { SongRow(song: $0) }.navigationTitle(title) } }
 struct LoginView: View {
-    @EnvironmentObject var model: AppModel; @State private var status = "使用网易云音乐 App 扫码"; @State private var qrImg = ""
+    @EnvironmentObject var model: AppModel; @State private var status = "使用网易云音乐 App 扫码"; @State private var qrImage: UIImage?
     var body: some View { VStack(spacing: 16) { Text("扫码登录网易云").font(.title2.bold())
-        Text("流程：/login/qr/key → /login/qr/create 展示二维码 → 轮询 /login/qr/check，803 保存 cookie").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        // QR image: /login/qr/create returns data.qrimg as a base64 data URI; decoded below (same as Android).
+        if let qrImage { Image(uiImage: qrImage).interpolation(.none).resizable().frame(width: 220, height: 220) }
+        else { RoundedRectangle(cornerRadius: 18).fill(.secondary.opacity(0.12)).frame(width: 220, height: 220).overlay { ProgressView() } }
         Text(status) }.padding().task { await poll() } }
+    /// Strips an optional "data:...;base64," prefix and decodes the QR payload into an image.
+    static func decodeQrImage(_ img: String) -> UIImage? {
+        if img.hasPrefix("http") { return nil } // URL payloads are not expected with qrimg=true; base64 is the contract.
+        let raw = img.components(separatedBy: "base64,").last ?? img
+        guard let data = Data(base64Encoded: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+        return UIImage(data: data)
+    }
     func poll() async { // 800 expired / 801 waiting / 802 scanned / 803 success
         guard let key = try? await model.api.qrKey() else { status = "无法连接 API 服务"; return }
+        if let img = try? await model.api.qrCreate(key), let ui = Self.decodeQrImage(img) { qrImage = ui }
         for _ in 0..<60 { guard let r = try? await model.api.qrCheck(key) else { return }
             status = [800: "二维码已过期", 801: "等待扫码", 802: "已扫码，请确认", 803: "登录成功"][r.code] ?? status
             if r.code == 803 || r.code == 800 { break }; try? await Task.sleep(nanoseconds: 2_000_000_000) }

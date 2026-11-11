@@ -16,6 +16,8 @@ final class NeteaseAPI {
     // /user/playlist, /playlist/detail, /playlist/catlist, /user/detail, /user/subcount,
     // /likelist, /user/record, /history/recent/songs, /song/url/v1, /song/detail, /lyric/new, /lyric
     func qrKey() async throws -> String { ((try await get("/login/qr/key"))["data"] as? [String: Any])?["unikey"] as? String ?? "" }
+    /// /login/qr/create with qrimg=true returns data.qrimg as a "data:image/png;base64,..." string (same field Android decodes).
+    func qrCreate(_ key: String) async throws -> String { ((try await get("/login/qr/create?key=\(key)&qrimg=true"))["data"] as? [String: Any])?["qrimg"] as? String ?? "" }
     func qrCheck(_ key: String) async throws -> (code: Int, cookie: String) {
         let o = try await get("/login/qr/check?key=\(key)"); let c = o["cookie"] as? String ?? ""
         if (o["code"] as? Int) == 803 { cookie = c }; return ((o["code"] as? Int) ?? 0, c)
