@@ -1,0 +1,17 @@
+<Page x:Class="TokiMusic.Views.HomePage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ScrollViewer><StackPanel Padding="24" Spacing="16">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+      <!-- Capsule search box + top-right avatar login button (two states handled in code-behind). -->
+      <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索歌曲、歌手、歌单" QueryIcon="Find" CornerRadius="24" QuerySubmitted="SearchBox_QuerySubmitted" />
+      <Button Grid.Column="1" Margin="12,0,0,0" CornerRadius="24" Click="Avatar_Click" ToolTipService.ToolTip="登录"><PersonPicture x:Name="AvatarPic" Width="40" Height="40" /></Button>
+    </Grid>
+    <TextBlock x:Name="LoginHint" Text="未登录 · 点击右上角头像扫码登录" Opacity="0.6" />
+    <InfoBar x:Name="DemoBar" IsOpen="False" Severity="Informational" Title="Demo 数据" Message="未连接网易云 API 服务，当前展示内置示例数据。" />
+    <TextBlock Text="每日推荐" Style="{StaticResource TitleTextBlockStyle}" />
+    <ListView x:Name="DailyList" ItemClick="SongList_ItemClick" IsItemClickEnabled="True" />
+    <TextBlock Text="推荐歌单" Style="{StaticResource TitleTextBlockStyle}" />
+    <GridView x:Name="PlaylistGrid" ItemClick="PlaylistGrid_ItemClick" IsItemClickEnabled="True" />
+    <TextBlock Text="推荐新歌" Style="{StaticResource TitleTextBlockStyle}" />
+    <ListView x:Name="NewSongList" ItemClick="SongList_ItemClick" IsItemClickEnabled="True" />
+  </StackPanel></ScrollViewer>
+</Page>

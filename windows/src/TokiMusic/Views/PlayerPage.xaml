@@ -1,0 +1,14 @@
+<Page x:Class="TokiMusic.Views.PlayerPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Padding="24"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+    <StackPanel Orientation="Horizontal" Spacing="16"><Image x:Name="CoverImage" Width="72" Height="72" />
+      <StackPanel><TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" /><TextBlock x:Name="ArtistText" Opacity="0.6" /></StackPanel></StackPanel>
+    <!-- Lyrics: LEFT-aligned column; active line scrolls to viewport centre but text stays left. See LyricsView in code-behind. -->
+    <ScrollViewer x:Name="LyricsScroll" Grid.Row="1" Margin="0,16"><StackPanel x:Name="LyricsPanel" Spacing="14" /></ScrollViewer>
+    <StackPanel Grid.Row="2" Spacing="8">
+      <Slider x:Name="ProgressSlider" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+        <Button Content="⏮ 上一首" Click="Prev_Click" /><Button Content="播放/暂停" Click="Toggle_Click" /><Button Content="下一首 ⏭" Click="Next_Click" />
+      </StackPanel>
+    </StackPanel>
+  </Grid>
+</Page>

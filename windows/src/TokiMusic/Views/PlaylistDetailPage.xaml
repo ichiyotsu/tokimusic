@@ -1,0 +1,6 @@
+<Page x:Class="TokiMusic.Views.PlaylistDetailPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Padding="24"><StackPanel Spacing="12">
+    <Button Content="‹ 返回" Click="Back_Click" /><TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" />
+    <ListView x:Name="TrackList" IsItemClickEnabled="True" ItemClick="TrackList_ItemClick" />
+  </StackPanel></Grid>
+</Page>

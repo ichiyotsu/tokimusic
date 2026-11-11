@@ -1,0 +1,8 @@
+<Page x:Class="TokiMusic.Views.PlaylistsPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ScrollViewer><StackPanel Padding="24" Spacing="8">
+    <TextBlock Text="歌单" Style="{StaticResource HeaderTextBlockStyle}" />
+    <TextBlock x:Name="Hint" Text="登录后查看我的歌单" Opacity="0.6" />
+    <!-- Collapsible groups are built in code-behind: 我喜欢的音乐 / 我创建的歌单 / 我收藏的歌单, header shows count. -->
+    <StackPanel x:Name="GroupsPanel" Spacing="12" />
+  </StackPanel></ScrollViewer>
+</Page>
