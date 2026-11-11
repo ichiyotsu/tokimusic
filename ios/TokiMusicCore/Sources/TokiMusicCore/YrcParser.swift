@@ -19,9 +19,9 @@ public enum YrcParser {
     public static func parseYrc(_ raw: String) -> [LyricLine] {
         raw.split(separator: "\n").compactMap { rawLine in
             let line = String(rawLine).trimmingCharacters(in: .whitespaces)
-            guard let head = match(#"\[(\d+),(\d+)]"#, in: line), let start = Int(head[1]), let dur = Int(head[2]) else { return nil }
+            guard let head = match(#"\[(\d+),(\d+)]"#, in: line), let start = Int(head.groups[1]), let dur = Int(head.groups[2]) else { return nil }
             let words = allMatches(#"\((\d+),(\d+),\d+\)([^(]*)"#, in: line).compactMap { m -> LyricWord? in
-                guard let s = Int(m[1]), let d = Int(m[2]) else { return nil }; return LyricWord(s, d, m[3]) }
+                guard let s = Int(m.groups[1]), let d = Int(m.groups[2]) else { return nil }; return LyricWord(s, d, m.groups[3]) }
             return words.isEmpty ? nil : LyricLine(startMs: start, durationMs: dur, words: words, translation: nil)
         }
     }
@@ -29,9 +29,13 @@ public enum YrcParser {
         var out: [LyricLine] = []
         for rawLine in raw.split(separator: "\n") {
             let line = String(rawLine); let tags = allMatches(#"\[(\d+):(\d+)(?:\.(\d{1,3}))?]"#, in: line); guard let last = tags.last else { continue }
-            let text = String(line[line.index(line.startIndex, offsetBy: last.range.upperBound)...]).trimmingCharacters(in: .whitespaces)
+            let text = String(line[last.range.upperBound...]).trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { continue }
-            for tag in tags { let ms = (Int(tag[1]) ?? 0) * 60_000 + (Int(tag[2]) ?? 0) * 1_000 + Int((tag[3] + "000").prefix(3))!
+            for tag in tags {
+                let minutes = Int(tag.groups[1]) ?? 0
+                let seconds = Int(tag.groups[2]) ?? 0
+                let fraction = String((tag.groups[3] + "000").prefix(3))
+                let ms = minutes * 60_000 + seconds * 1_000 + (Int(fraction) ?? 0)
                 out.append(LyricLine(startMs: ms, durationMs: 0, words: [LyricWord(ms, 0, text)], translation: nil)) }
         }
         out.sort { $0.startMs < $1.startMs }
@@ -43,7 +47,7 @@ public enum YrcParser {
         if word.durationMs <= 0 { return positionMs >= word.startMs ? 1 : 0 }
         return min(1, max(0, Double(positionMs - word.startMs) / Double(word.durationMs)))
     }
-    private static func match(_ pattern: String, in s: String) -> (range: Range<String.Index>, [String])? { allMatches(pattern, in: s).first.map { ($0.range, $0.groups) } }
+    private static func match(_ pattern: String, in s: String) -> (range: Range<String.Index>, groups: [String])? { allMatches(pattern, in: s).first }
     private static func allMatches(_ pattern: String, in s: String) -> [(range: Range<String.Index>, groups: [String])] {
         guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
         return re.matches(in: s, range: NSRange(s.startIndex..., in: s)).map { m in

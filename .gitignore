@@ -1,5 +1,24 @@
-.gradle/ build/ .idea/ *.iml local.properties
-DerivedData/ *.xcuserstate xcuserdata/
-bin/ obj/ .vs/ *.user
+# Android / Gradle
+.gradle/
+build/
+.idea/
+*.iml
+local.properties
+
+# iOS / Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+
+# Misc
 .DS_Store
 *.muse-github-snapshot-sync.json
+
+# Swift Package Manager
+.build/

@@ -9,6 +9,8 @@
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
-        <service android:name=".player.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+        <service android:name=".player.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+        </service>
     </application>
 </manifest>
