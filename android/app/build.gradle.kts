@@ -1,6 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.compose) }
 // AGP 9 has built-in Kotlin support: the org.jetbrains.kotlin.android plugin must NOT be applied.
+// Release signing is driven by environment (TOKIMUSIC_KEYSTORE / TOKIMUSIC_STORE_PASSWORD /
+// TOKIMUSIC_KEY_ALIAS / TOKIMUSIC_KEY_PASSWORD), same pattern as TokiDiscover. Without the
+// env vars the release build falls back to the debug key so it always compiles.
+val releaseKeystore: String? = System.getenv("TOKIMUSIC_KEYSTORE")
 android {
     namespace = "com.tokimusic.app"
     compileSdk = 37 // Compose 1.12 / core-ktx 1.19 dependencies require compiling against API 37+
@@ -9,10 +13,20 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0-beta1"
+        versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("TOKIMUSIC_STORE_PASSWORD")
+                keyAlias = System.getenv("TOKIMUSIC_KEY_ALIAS") ?: "tokimusic"
+                keyPassword = System.getenv("TOKIMUSIC_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"); signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
 }

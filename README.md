@@ -1,6 +1,6 @@
 # TokiMusic
 
-TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android、Windows、iOS 与 iPadOS 这一版都是 **0.1.0**（开发中，构建标识为 `0.1.0-beta1`，尚未正式发布）。
+TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android、Windows、iOS 与 iPadOS 这一版都是 **0.1.0**。其中 Android 已正式发布（见仓库的 GitHub Release），iOS / Windows 尚未正式发布。
 
 应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。设计规范与 TokiNote、Tokilive 一致：Matcha 配色、TokiShapes 圆角、悬浮毛玻璃底栏，具体令牌在 `docs/DESIGN.md`。
 
@@ -17,7 +17,7 @@ TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki �
 
 ## Android
 
-应用 ID 是 `com.tokimusic.app`。`versionName` 是 `0.1.0-beta1`，`versionCode` 是 1。
+应用 ID 是 `com.tokimusic.app`。`versionName` 是 `0.1.0`，`versionCode` 是 1。
 
 ### 要求
 
@@ -33,7 +33,7 @@ bash ./gradlew :app:testDebugUnitTest
 bash ./gradlew :app:assembleDebug
 ```
 
-APK 输出在 `android/app/build/outputs/apk/debug/app-debug.apk`。暂无正式发布包，这里不提供下载链接。
+调试 APK 输出在 `android/app/build/outputs/apk/debug/app-debug.apk`。正式发布包（签名 APK `TokiMusic-0.1.0.apk` 与 AAB）在仓库的 GitHub Release 页提供下载。
 
 ### 应用内更新
 
@@ -107,7 +107,7 @@ App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://12
 
 ## 版本号规则
 
-- 版本号从 `0.1.0` 开始迭代，当前是 `0.1.0` 开发中（构建标识 `0.1.0-beta1`）。
+- 版本号从 `0.1.0` 开始迭代，当前正式版本是 `0.1.0`（Android 已发布，iOS / Windows 待发布）。
 - 三端版本号保持一致：Android 的 `versionName`、iOS 的 `CFBundleShortVersionString`、Windows 的程序集版本在同一发布里同步。
 - 每次发布前先与作者确认版本号，不擅自升版；没有 GitHub Release 之前，本文不写下载链接。
 
