@@ -28,7 +28,7 @@ struct LyricsView: View {
                     if let t = line.translation { Text(t).font(.caption).foregroundStyle(.secondary) }
                 }.id(i)
             } }.padding(24) }
-            .onChange(of: active) { _, new in if new >= 0 { withAnimation { proxy.scrollTo(new, anchor: .center) } } } }
+            .onChange(of: active) { new in if new >= 0 { withAnimation { proxy.scrollTo(new, anchor: .center) } } } }
     }
     func lyricText(_ line: LyricLine, isActive: Bool, past: Bool) -> Text {
         line.words.reduce(Text("")) { acc, word in

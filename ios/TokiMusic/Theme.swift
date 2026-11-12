@@ -14,5 +14,5 @@ extension Color { init(hex: UInt32) { self.init(red: Double((hex >> 16) & 0xFF) 
 struct ExpressiveCardShape: Shape {
     func path(in rect: CGRect) -> Path { Path(roundedRect: rect, cornerRadius: 26) } // SwiftUI has no per-corner radii in Shape; views use UnevenRoundedRectangle on iOS 16+.
 }
-let tokiCardCorners = UnevenRoundedRectangle(topLeadingRadius: 34, bottomTrailingRadius: 34, bottomLeadingRadius: 22, topTrailingRadius: 22)
-let tokiChipCorners = UnevenRoundedRectangle(topLeadingRadius: 20, bottomTrailingRadius: 20, bottomLeadingRadius: 7, topTrailingRadius: 20)
+let tokiCardCorners = UnevenRoundedRectangle(topLeadingRadius: 34, bottomLeadingRadius: 22, bottomTrailingRadius: 34, topTrailingRadius: 22)
+let tokiChipCorners = UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 7, bottomTrailingRadius: 20, topTrailingRadius: 20)

@@ -28,7 +28,8 @@ final class NeteaseAPI {
     }
     func personalized() async throws -> [[String: Any]] { (try await get("/personalized?limit=12"))["result"] as? [[String: Any]] ?? [] }
     func lyric(id: Int64) async throws -> (yrc: String?, lrc: String?, tlyric: String?) {
-        let o = (try? await get("/lyric/new?id=\(id)")) ?? (try await get("/lyric?id=\(id)"))
+        let o: [String: Any]
+        if let fresh = try? await get("/lyric/new?id=\(id)") { o = fresh } else { o = try await get("/lyric?id=\(id)") }
         return ((o["yrc"] as? [String: Any])?["lyric"] as? String, (o["lrc"] as? [String: Any])?["lyric"] as? String, (o["tlyric"] as? [String: Any])?["lyric"] as? String)
     }
     func songUrl(id: Int64) async throws -> String? { ((try await get("/song/url/v1?id=\(id)&level=standard"))["data"] as? [[String: Any]])?.first?["url"] as? String }
