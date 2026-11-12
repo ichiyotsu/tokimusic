@@ -27,7 +27,7 @@ import com.tokimusic.app.data.lyric.YrcParser
     val active = remember(lines, positionMs) { YrcParser.activeLineIndex(lines, positionMs) }
     val listState = rememberLazyListState()
     LaunchedEffect(active) { if (active >= 0) listState.animateScrollToItem(active) }
-    LazyColumn(listState, modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 180.dp, horizontal = 24.dp)) {
+    LazyColumn(state = listState, modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 180.dp, horizontal = 24.dp)) {
         itemsIndexed(lines) { i, line ->
             val isActive = i == active
             val annotated = buildAnnotatedString {

@@ -28,7 +28,7 @@ import com.tokimusic.app.ui.theme.ThemeMode
                 Avatar(profile?.avatarUrl ?: "", 64); Spacer(Modifier.width(16.dp))
                 Column {
                     Text(profile?.nickname ?: "未登录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(if (profile != null) "Lv.${profile.level} · 关注 ${profile.follows} · 粉丝 ${profile.followeds}" else "点击下方按钮扫码登录网易云", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(profile?.let { "Lv.${it.level} · 关注 ${it.follows} · 粉丝 ${it.followeds}" } ?: "点击下方按钮扫码登录网易云", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (profile == null) Button(onClick = { showLogin = true }, Modifier.padding(horizontal = 16.dp)) { Text("二维码登录") }

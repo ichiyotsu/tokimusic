@@ -1,8 +1,9 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.compose) }
+plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.compose) }
+// AGP 9 has built-in Kotlin support: the org.jetbrains.kotlin.android plugin must NOT be applied.
 android {
     namespace = "com.tokimusic.app"
-    compileSdk = 36
+    compileSdk = 37 // Compose 1.12 / core-ktx 1.19 dependencies require compiling against API 37+
     defaultConfig {
         applicationId = "com.tokimusic.app"
         minSdk = 26
