@@ -29,7 +29,7 @@ The recorded commit is TokiUI `v0.1.4` (`0edda3289be65e0ddd531515352d309a72f5089
 - JDK 17
 - Android SDK platform `android-37.0` and build-tools `37.0.0`
 
-`applicationId` is `com.tokimusic.app`. `versionName` is `0.1.0`, `versionCode` is `1`.
+`applicationId` is `com.tokimusic.app`. `versionName` is `0.1.1`, `versionCode` is `2`.
 
 ## Build
 
