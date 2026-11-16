@@ -13,7 +13,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.lyric.YrcParser
 
@@ -39,7 +38,13 @@ import com.tokimusic.app.data.lyric.YrcParser
                     if (sungChars < word.text.length) withStyle(SpanStyle(color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)) { append(word.text.substring(sungChars)) }
                 }
             }
-            Text(annotated, textAlign = TextAlign.Start, fontSize = if (isActive) 22.sp else 17.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, lineHeight = 30.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+            Text(
+                annotated,
+                textAlign = TextAlign.Start,
+                style = if (isActive) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            )
             if (!line.translation.isNullOrBlank()) Text(line.translation!!, textAlign = TextAlign.Start, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
         }
     }

@@ -11,18 +11,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.SongRow
-import com.tokimusic.app.ui.theme.ExpressiveCardShape
 import com.tokimusic.app.ui.theme.ThemeMode
+import com.tokimusic.app.ui.theme.ThemePreferences
+import com.tokimusic.app.ui.theme.TokiUiHolder
+import com.tokimusic.app.ui.theme.supportsDynamicColor
 
-@Composable fun MineScreen(vm: AppViewModel, bottomPadding: androidx.compose.ui.unit.Dp, themeMode: ThemeMode, onThemeMode: (ThemeMode) -> Unit) {
+@Composable fun MineScreen(
+    vm: AppViewModel,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    theme: ThemePreferences,
+    onTheme: (ThemePreferences) -> Unit,
+) {
     val profile by vm.profile.collectAsState(); val mine by vm.mine.collectAsState()
     var showLogin by remember { mutableStateOf(false) }; var showRecord by remember { mutableStateOf(false) }
     var apiText by remember { mutableStateOf(vm.store.apiBase) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding)) {
         item {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(profile?.avatarUrl ?: "", 64); Spacer(Modifier.width(16.dp))
@@ -53,19 +64,65 @@ import com.tokimusic.app.ui.theme.ThemeMode
             OutlinedTextField(apiText, { apiText = it }, Modifier.fillMaxWidth().padding(16.dp), label = { Text("API 地址（网易云 API 服务）") }, singleLine = true)
             Button(onClick = { vm.setApiBase(apiText) }, Modifier.padding(horizontal = 16.dp)) { Text("保存 API 地址") }
             Spacer(Modifier.height(12.dp))
-            Text("主题", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemeMode.entries.forEach { m -> FilterChip(themeMode == m, { onThemeMode(m) }, label = { Text(when (m) { ThemeMode.System -> "跟随系统"; ThemeMode.Light -> "浅色"; ThemeMode.Dark -> "深色" }) }) }
-            }
+            ThemeSettings(theme, onTheme)
             // About: version read from BuildConfig via ViewModel, never hardcoded.
-            ListItem(headlineContent = { Text("关于 TokiMusic") }, supportingContent = { Text("版本 ${vm.versionName} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号") })
+            ListItem(
+                headlineContent = { Text("关于 TokiMusic") },
+                supportingContent = {
+                    Text("版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号")
+                },
+            )
             if (profile != null) TextButton(onClick = { vm.logout() }, Modifier.padding(horizontal = 8.dp)) { Text("退出登录") }
         }
     }
     if (showLogin) LoginDialog(vm) { showLogin = false }
 }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun ThemeSettings(theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit) {
+    Text("主题", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ThemeMode.entries.forEach { m ->
+            FilterChip(
+                selected = theme.mode == m,
+                onClick = { onTheme(theme.copy(mode = m)) },
+                label = { Text(when (m) { ThemeMode.System -> "跟随系统"; ThemeMode.Light -> "浅色"; ThemeMode.Dark -> "深色" }) },
+            )
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("动态取色", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(
+            checked = theme.useDynamicColor,
+            onCheckedChange = { onTheme(theme.copy(useDynamicColor = it)) },
+            enabled = supportsDynamicColor,
+        )
+    }
+    Text(
+        if (supportsDynamicColor) "打开时跟随系统壁纸。点一个种子色会改用 HCT 配色。" else "当前系统没有动态取色，使用种子色。",
+        Modifier.padding(horizontal = 16.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TokiUiHolder.semantic.seeds.forEachIndexed { index, seed ->
+            FilterChip(
+                selected = !theme.useDynamicColor && theme.seedIndex == index,
+                onClick = { onTheme(theme.copy(useDynamicColor = false, seedIndex = index)) },
+                label = { Text(seed.name) },
+            )
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("玻璃模糊", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = theme.backdropBlur, onCheckedChange = { onTheme(theme.copy(backdropBlur = it)) })
+    }
+}
 @Composable private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier, shape = ExpressiveCardShape) { Column(Modifier.padding(16.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) } }
+    Card(modifier, shape = MaterialTheme.shapes.extraLarge) { Column(Modifier.padding(16.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) } }
 }
 @Composable fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val qr by vm.qrState.collectAsState(); val img by vm.qrImage.collectAsState()

@@ -12,22 +12,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import com.tokimusic.app.data.api.MockData
 import com.tokimusic.app.data.model.*
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
 
-@Composable fun PlaylistsScreen(vm: AppViewModel, bottomPadding: androidx.compose.ui.unit.Dp, onOpenPlaylist: (Long) -> Unit) {
+@Composable fun PlaylistsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlaylist: (Long) -> Unit) {
     val mine by vm.myPlaylists.collectAsState(); val profile by vm.profile.collectAsState(); val home by vm.home.collectAsState()
     val all = if (mine.isNotEmpty()) mine else if (home.isDemo) MockData.playlists else emptyList()
     val groups = remember(all, profile) { groupPlaylists(all, profile?.uid ?: 0) }
     var collapsed by remember { mutableStateOf(setOf<PlaylistGroup>()) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
-        item { Text("歌单", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
-        if (profile == null && !home.isDemo) item { Text("登录后查看我的歌单（Demo 模式下显示示例分组）", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding)) {
+        if (profile == null && !home.isDemo) item { Text("登录后查看我的歌单（Demo 模式下显示示例分组）", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         groups.forEach { (group, list) ->
             if (list.isEmpty()) return@forEach
             item {
@@ -39,7 +38,7 @@ import com.tokimusic.app.ui.components.SongRow
             }
             if (group !in collapsed) items(list) { pl ->
                 Row(Modifier.fillMaxWidth().clickable { onOpenPlaylist(pl.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(pl.coverUrl, pl.name, Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)), contentScale = ContentScale.Crop)
+                    AsyncImage(pl.coverUrl, pl.name, Modifier.size(56.dp).clip(MaterialTheme.shapes.large), contentScale = ContentScale.Crop)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) { Text(pl.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1); Text("${pl.trackCount} 首 · ${pl.creatorName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
@@ -47,12 +46,19 @@ import com.tokimusic.app.ui.components.SongRow
         }
     }
 }
-@Composable fun PlaylistDetailScreen(vm: AppViewModel, playlistId: Long, onBack: () -> Unit) {
+@Composable fun PlaylistDetailScreen(
+    vm: AppViewModel,
+    playlistId: Long,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    onTitle: (String) -> Unit,
+) {
     var detail by remember { mutableStateOf<Pair<Playlist, List<Song>>?>(null) }
     LaunchedEffect(playlistId) { detail = runCatching { vm.api.playlistDetail(playlistId) }.getOrElse { MockData.playlists.firstOrNull { it.id == playlistId }?.let { it to MockData.songs } ?: (MockData.playlists.first() to MockData.songs) } }
     val (pl, tracks) = detail ?: (Playlist(playlistId, "加载中…") to emptyList())
-    LazyColumn(Modifier.fillMaxSize()) {
-        item { TextButton(onClick = onBack) { Text("‹ 返回") }; Text(pl.name, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("${pl.trackCount} 首 · 创建者 ${pl.creatorName}", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    LaunchedEffect(pl.name) { onTitle(pl.name) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding)) {
+        item { Text("${pl.trackCount} 首 · 创建者 ${pl.creatorName}", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         itemsIndexed(tracks) { i, song -> SongRow(song, i) { vm.play(tracks, i) } }
     }
 }

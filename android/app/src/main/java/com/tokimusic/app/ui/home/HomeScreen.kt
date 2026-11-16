@@ -9,19 +9,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.*
 
-@Composable fun HomeScreen(vm: AppViewModel, bottomPadding: androidx.compose.ui.unit.Dp, onOpenLogin: () -> Unit, onOpenPlaylist: (Long) -> Unit) {
+@Composable fun HomeScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenLogin: () -> Unit, onOpenPlaylist: (Long) -> Unit) {
     val home by vm.home.collectAsState(); val profile by vm.profile.collectAsState()
     var query by remember { mutableStateOf("") }
     LaunchedEffect(query) { vm.search(query) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding)) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Capsule search box (left, weighted) + avatar login entry (top-right).
-                OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("搜索歌曲、歌手、歌单") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(50))
+                OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("搜索歌曲、歌手、歌单") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(percent = 50))
                 Spacer(Modifier.width(12.dp))
                 // Logged-in: real avatar. Logged-out: default avatar (empty url) — both tap to login/profile.
                 IconButton(onClick = onOpenLogin) { Avatar(profile?.avatarUrl ?: "", 40) }
@@ -36,7 +37,7 @@ import com.tokimusic.app.ui.components.*
         }
         if (home.banners.isNotEmpty()) item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(home.banners) { b -> Card(shape = RoundedCornerShape(26.dp)) { Box(Modifier.size(width = 320.dp, height = 140.dp), contentAlignment = Alignment.BottomStart) { coil.compose.AsyncImage(b.picUrl, b.title, Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop); Text(b.title, Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) } } }
+                items(home.banners) { b -> Card(shape = MaterialTheme.shapes.extraLarge) { Box(Modifier.size(width = 320.dp, height = 140.dp), contentAlignment = Alignment.BottomStart) { coil.compose.AsyncImage(b.picUrl, b.title, Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop); Text(b.title, Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) } } }
             }
         }
         item { Text("每日推荐", Modifier.padding(16.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }

@@ -1,7 +1,6 @@
 package com.tokimusic.app.ui.player
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -11,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.player.PlayerState
@@ -22,10 +22,10 @@ import kotlinx.coroutines.delay
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.index, state.isPlaying) { while (true) { pos = vm.player.currentPosition(); delay(500) } }
-    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpen), shape = RoundedCornerShape(26.dp)) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpen), shape = MaterialTheme.shapes.extraLarge) {
         Column {
             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(song.picUrl, song.name, Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                AsyncImage(song.picUrl, song.name, Modifier.size(44.dp).clip(MaterialTheme.shapes.medium), contentScale = ContentScale.Crop)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) { Text(song.name, maxLines = 1, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold); Text(song.artistText, maxLines = 1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 IconButton(onClick = { vm.player.toggle() }) { Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "播放/暂停") }
@@ -35,16 +35,15 @@ import kotlinx.coroutines.delay
         }
     }
 }
-@Composable fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit) {
+@Composable fun PlayerScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) {
     val state by vm.player.state.collectAsState(); val lyrics by vm.lyrics.collectAsState()
     val song = state.current; var pos by remember { mutableLongStateOf(0L) }; var showLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(state.index) { song?.let { vm.loadLyrics(it.id) } }
     LaunchedEffect(state.isPlaying, state.index) { while (true) { pos = vm.player.currentPosition(); delay(250) } }
-    Column(Modifier.fillMaxSize()) {
-        TextButton(onClick = onBack) { Text("‹ 返回") }
+    Column(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding)) {
         if (song == null) { Text("暂无播放中的歌曲", Modifier.padding(16.dp)); return@Column }
         Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(song.picUrl, song.name, Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)), contentScale = ContentScale.Crop)
+            AsyncImage(song.picUrl, song.name, Modifier.size(72.dp).clip(MaterialTheme.shapes.large), contentScale = ContentScale.Crop)
             Spacer(Modifier.width(16.dp))
             Column { Text(song.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(song.artistText, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -52,7 +51,7 @@ import kotlinx.coroutines.delay
             FilterChip(showLyrics, { showLyrics = true }, label = { Text("歌词（居左 · 逐字）") }); FilterChip(!showLyrics, { showLyrics = false }, label = { Text("封面") })
         }
         if (showLyrics) LyricsView(lyrics, pos, Modifier.weight(1f))
-        else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { AsyncImage(song.picUrl, song.name, Modifier.size(280.dp).clip(RoundedCornerShape(26.dp)), contentScale = ContentScale.Crop) }
+        else Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { AsyncImage(song.picUrl, song.name, Modifier.size(280.dp).clip(MaterialTheme.shapes.extraLarge), contentScale = ContentScale.Crop) }
         Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
             Slider(pos.toFloat(), { vm.player.seekTo(it.toLong()); pos = it.toLong() }, valueRange = 0f..(song.durationMs.coerceAtLeast(1).toFloat()))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(formatDuration(pos)); Text(formatDuration(song.durationMs)) }

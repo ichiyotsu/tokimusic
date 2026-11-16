@@ -1,1 +1,3 @@
-<resources><style name="Theme.TokiMusic" parent="android:Theme.Material.NoActionBar"><item name="android:windowLightStatusBar">true</item></style></resources>
+<resources>
+    <style name="Theme.TokiMusic" parent="android:Theme.Material.NoActionBar" />
+</resources>
