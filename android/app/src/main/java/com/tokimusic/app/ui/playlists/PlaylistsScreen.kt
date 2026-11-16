@@ -1,5 +1,6 @@
 package com.tokimusic.app.ui.playlists
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
@@ -9,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import androidx.compose.ui.draw.clip
@@ -31,16 +31,22 @@ import com.tokimusic.app.ui.components.SongRow
             if (list.isEmpty()) return@forEach
             item {
                 Row(Modifier.fillMaxWidth().clickable { collapsed = if (group in collapsed) collapsed - group else collapsed + group }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("${list.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Icon(if (group in collapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, null)
+                    Text(group.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text("${list.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                    Icon(
+                        if (group in collapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                        contentDescription = if (group in collapsed) "展开${group.title}" else "收起${group.title}",
+                    )
                 }
             }
             if (group !in collapsed) items(list) { pl ->
                 Row(Modifier.fillMaxWidth().clickable { onOpenPlaylist(pl.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(pl.coverUrl, pl.name, Modifier.size(56.dp).clip(MaterialTheme.shapes.large), contentScale = ContentScale.Crop)
+                    AsyncImage(pl.coverUrl, pl.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                     Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) { Text(pl.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1); Text("${pl.trackCount} 首 · ${pl.creatorName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Column(Modifier.weight(1f)) {
+                        Text(pl.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Text("${pl.trackCount} 首 · ${pl.creatorName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

@@ -6,7 +6,7 @@ Android 以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为唯一界面标准�
 
 不要再把本文旧的 Matcha 色表、TokiShapes 或 Haze 30dp 配方当作 Android 标准。那些数值不进 Android 主题。
 
-源头是仓库根的 git submodule `TokiUI/`，钉在正式标签 **v0.1.2**（`e2bec809da4678b8fcfc45109607fd5e7e341134`，与当时的 `main` 相同）。阅读顺序与 TokiUI 仓库一致：`docs/README.md`、`docs/复用.md`、`docs/语义.md`、`docs/组件契约.md`、`docs/platforms/android.md`、`docs/platforms/材质.md`，再是 `tokens/tokiui.semantic.tokens.json` 与 `tokens/showcase.inventory.json`。`TokiUI/tokistudio/docs/DESIGN.md` 只是 Android / MD3E 的实现记录；和语义层或 `docs/platforms/android.md` 冲突时，以后者为准。不要读 `docs/history/tokinote-0.1.0/`。
+源头是仓库根的 git submodule `TokiUI/`，钉在正式标签 **v0.1.4**（`0edda3289be65e0ddd531515352d309a72f5089e`）。阅读顺序与 TokiUI 仓库一致：`docs/README.md`、`docs/复用.md`、`docs/语义.md`、`docs/组件契约.md`、`docs/platforms/android.md`、`docs/platforms/材质.md`，再是 `tokens/tokiui.semantic.tokens.json` 与 `tokens/showcase.inventory.json`。`TokiUI/tokistudio/docs/DESIGN.md` 只是 Android / MD3E 的实现记录；和语义层或 `docs/platforms/android.md` 冲突时，以后者为准。不要读 `docs/history/tokinote-0.1.0/`。音乐界面的版式对照 TokiStudio 0.1.4 的音乐工具样例（`MusicScreen.kt`），播放、歌词和登录仍是 TokiMusic 自己的功能。
 
 Android 工程不复制色板。`android/app/build.gradle.kts` 按 `docs/复用.md` 引用：
 
@@ -15,7 +15,7 @@ kotlin.directories.add("../../TokiUI/platforms/android/src/main/kotlin")
 assets.directories.add("../../TokiUI/tokens")
 ```
 
-运行时 `SemanticTokens.parse` / `ShowcaseInventory.parse` 读 assets 里的 JSON。种子列表来自 `color.seeds`。启动图标底色在构建时从 `color.seed` 生成，不另写一份色表。Google Sans 与思源黑体（Noto Sans SC）从 submodule 的 TokiStudio `res/font` 拷进生成资源，供编译使用。
+运行时 `SemanticTokens.parse` / `ShowcaseInventory.parse` 读 assets 里的 JSON。种子列表来自 `color.seeds`。启动图标底色在构建时从 `color.seed` 生成，不另写一份色表。拉丁字体 Inter 与思源黑体的官方发行 Noto Sans SC（`res/font/inter.ttf`、`res/font/noto_sans_sc.ttf`）从 submodule 拷进生成资源，供编译使用。
 
 ### 主题
 
@@ -23,16 +23,18 @@ assets.directories.add("../../TokiUI/tokens")
 - 颜色：动态取色，或种子色 HCT（`SchemeTonalSpot`）。种子是语义 token 里的 `seeds`，不是 Matcha 锁死 hex。
 - 动效：默认 `MotionScheme.expressive()`，减少动效时 `MotionScheme.standard()`。不写死旧的弹簧常数。
 - 形状和字阶：Material 默认值（`Shapes()`、`Typography()`）。文字大小用 sp，跟随系统字体缩放。不把 `referenceSizeSp` 写成 `Text` 的 `fontSize`。
-- 字体：Google Sans，中文回退 Noto Sans SC / 思源黑体。不再用 PingFang / 微软雅黑作为 Android 指引。
+- 字体：拉丁文 Inter，汉字用思源黑体（包内文件是官方 Noto Sans SC）。标题、标签和强调句是粗体（wght 700），正文和辅助说明是常规字重（wght 400）。不再使用 Google Sans，也不再用 PingFang / 微软雅黑作为 Android 指引。
 
 `minSdk` 是 **36**（Android 16+），与 TokiStudio 的 TokiUI Android 目标一致。`targetSdk` 36，`compileSdk` 37。应用 ID 仍是 `com.tokimusic.app`，`versionName` 仍是 `0.1.0`。
 
 ### 导航与材质
 
 - 窗口宽度小于 840dp：悬浮胶囊。达到 840dp：`NavigationRail`。这是 Android 自适应，不要抄到 iOS / Windows。
-- 玻璃模糊打开且可以采样窗口（RenderEffect）时，胶囊用 Haze `HazeInput.Backdrop` 采样已经画好的窗口像素，采不到时按 TokiStudio 回退到挂了 `hazeSource` 的内容根。开关关闭或采样不可用时，胶囊使用不透明 `surfaceContainer`。
+- 玻璃模糊打开且可以采样窗口（RenderEffect）时，胶囊用 Haze `HazeInput.Backdrop` 采样已经画好的窗口像素，采不到时按 TokiStudio 回退到挂了 `hazeSource` 的内容根。浅色磨砂是 16% 暖色暗罩再加 46% 白霜；深色磨砂是 20% 白霜，不加黑罩。顶栏、底栏和滚动标题共用这一套。
+- 开关关闭或采样不可用时，胶囊使用不透明 `surfaceContainer`，并加 3dp `primary` 描边，描边和选中胶囊之间留 6dp。玻璃打开时不加这道粗描边。
 - 不使用 `Modifier.blur`，也不用 `HazeInput.Content` 冒充背后内容的模糊。磨砂只发生在胶囊形状里，底栏下面不铺全宽淡化带。
-- 内容滑到大标题或返回键后面时，各自垫一块大圆角 `primary` 色块，字用 `onPrimary`（和底栏选中项同一支颜色）。没有重叠时不垫色。
+- 内容滑到大标题或返回键后面时，色块只做与底栏相同的磨砂，字用 `onSurface`，不再叠一层不透明填色。玻璃不可用时改为不透明 `surfaceContainer` 加同样的 3dp `primary` 描边。没有重叠时不垫色。我的、播放页和歌单详情的顶栏都走这一套。
+- 只显示图标的控件长按用 Material 3 `PlainTooltip` 显示名称，同一段文字写进 `contentDescription`。
 
 设置里保留原来的深浅色，并加上 TokiUI 需要的动态取色、种子色、减少动效和玻璃模糊开关。
 

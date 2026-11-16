@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.tokimusic.app.R
 import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
+import com.tokimusic.app.ui.theme.TokiChromeStroke
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
@@ -54,9 +57,9 @@ val navEntries = listOf(
 )
 
 /**
- * Narrow-window capsule. Full corner (not a fixed 36dp radius). Selection is a
- * primary / onPrimary pill. Motion reads MaterialTheme.motionScheme.
- * [glass] is either backdrop blur or opaque surfaceContainer.
+ * Narrow-window capsule. Glass on: frost only, no thick stroke.
+ * Glass off: opaque surface passed in as [glass], plus a 3dp primary stroke
+ * and a 6dp gap before the selected pill.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -65,18 +68,27 @@ fun FloatingNavBar(
     onSelect: (Dest) -> Unit,
     modifier: Modifier = Modifier,
     glass: Modifier = Modifier,
+    solidStroke: Boolean = false,
 ) {
+    val shape = RoundedCornerShape(percent = 50)
+    val inset = if (solidStroke) TokiChromeStroke.width + TokiChromeStroke.barGap else 8.dp
     Row(
         modifier = modifier
+            .clipToBounds()
             .animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec())
-            .clip(RoundedCornerShape(percent = 50))
+            .clip(shape)
             .then(glass)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .then(
+                if (solidStroke) {
+                    Modifier.border(TokiChromeStroke.width, MaterialTheme.colorScheme.primary, shape)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = inset, vertical = inset),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        navEntries.forEach { entry ->
-            NavItem(entry, current == entry.dest, onSelect)
-        }
+        navEntries.forEach { entry -> NavItem(entry, current == entry.dest, onSelect) }
     }
 }
 
@@ -87,44 +99,46 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
     val haptic = LocalHapticFeedback.current
     val scheme = MaterialTheme.colorScheme
     val label = stringResource(entry.label)
-    Row(
-        modifier = Modifier
-            .height(56.dp)
-            .clip(CircleShape)
-            .background(if (selected) scheme.primary else Color.Transparent)
-            .clickable(
-                interactionSource = interaction,
-                indication = ripple(color = scheme.primary.copy(alpha = 0.28f)),
-            ) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onSelect(entry.dest)
-            }
-            .pressScale(interaction)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            if (selected) entry.selectedIcon else entry.icon,
-            contentDescription = label,
-            tint = if (selected) scheme.onPrimary else scheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
-        AnimatedVisibility(
-            visible = selected,
-            enter = expandHorizontally(animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()) +
-                fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = shrinkHorizontally(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()) +
-                fadeOut(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+    TokiLongPressLabel(label) {
+        Row(
+            modifier = Modifier
+                .height(56.dp)
+                .clip(CircleShape)
+                .background(if (selected) scheme.primary else Color.Transparent)
+                .clickable(
+                    interactionSource = interaction,
+                    indication = ripple(color = scheme.primary.copy(alpha = 0.28f)),
+                ) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSelect(entry.dest)
+                }
+                .pressScale(interaction)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = scheme.onPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Icon(
+                if (selected) entry.selectedIcon else entry.icon,
+                contentDescription = label,
+                tint = if (selected) scheme.onPrimary else scheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+            AnimatedVisibility(
+                visible = selected,
+                enter = expandHorizontally(animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()) +
+                    fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkHorizontally(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = scheme.onPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

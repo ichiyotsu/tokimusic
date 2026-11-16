@@ -7,12 +7,12 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.com
 // env vars the release build falls back to the debug key so it always compiles.
 val releaseKeystore: String? = System.getenv("TOKIMUSIC_KEYSTORE")
 
-// TokiUI is the design source of truth (git submodule at the repository root, pinned to v0.1.2).
+// TokiUI is the design source of truth (git submodule at the repository root, pinned to v0.1.4).
 // Paths match docs/复用.md: Kotlin adapters and token JSON are referenced, not copied.
 val tokiUiDir = rootProject.file("../TokiUI")
 val tokiTokens = tokiUiDir.resolve("tokens/tokiui.semantic.tokens.json")
 val tokiFonts = tokiUiDir.resolve("tokistudio/android/app/src/main/res/font")
-check(tokiTokens.isFile && tokiFonts.resolve("google_sans_flex.ttf").isFile) {
+check(tokiTokens.isFile && tokiFonts.resolve("inter.ttf").isFile && tokiFonts.resolve("noto_sans_sc.ttf").isFile) {
     "TokiUI submodule is missing at ${tokiUiDir.absolutePath}. From the repository root run: git submodule update --init --recursive"
 }
 
@@ -23,8 +23,11 @@ val syncTokiUiResources = tasks.register<Copy>("syncTokiUiResources") {
     group = "tokiui"
     description = "Reference TokiUI fonts and write the launcher color from semantic color.seed."
     from(tokiFonts) {
-        include("google_sans_flex.ttf", "noto_sans_sc.ttf")
+        include("inter.ttf", "noto_sans_sc.ttf")
         into("font")
+    }
+    doFirst {
+        generatedTokiRes.get().asFile.resolve("font/google_sans_flex.ttf").delete()
     }
     into(generatedTokiRes)
     inputs.file(tokiTokens)

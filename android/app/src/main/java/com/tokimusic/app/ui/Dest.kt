@@ -22,5 +22,9 @@ fun Modifier.pressScale(interaction: MutableInteractionSource, pressedScale: Flo
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "pressScale",
     )
-    return this.graphicsLayer { scaleX = scale; scaleY = scale }
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+        clip = true
+    }
 }

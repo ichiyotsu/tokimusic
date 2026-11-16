@@ -1,6 +1,6 @@
 # TokiMusic Android
 
-Android UI follows [TokiUI](https://github.com/ichiyotsu/TokiUI) (pinned submodule, tag `v0.1.2`). iOS and Windows are not part of this module.
+Android UI follows [TokiUI](https://github.com/ichiyotsu/TokiUI) (pinned submodule, tag `v0.1.4`). iOS and Windows are not part of this module.
 
 ## TokiUI reference
 
@@ -13,7 +13,7 @@ kotlin.directories.add("../../TokiUI/platforms/android/src/main/kotlin")
 assets.directories.add("../../TokiUI/tokens")
 ```
 
-Runtime code calls `SemanticTokens.parse` and `ShowcaseInventory.parse` on those assets. Seeds for HCT / `SchemeTonalSpot` come from `tokens/tokiui.semantic.tokens.json`. The launcher background color is generated from `color.seed` during `syncTokiUiResources`. Google Sans and Noto Sans SC are copied from `TokiUI/tokistudio/android/app/src/main/res/font` in that same task. Nothing in this module checks in a second color table.
+Runtime code calls `SemanticTokens.parse` and `ShowcaseInventory.parse` on those assets. Seeds for HCT / `SchemeTonalSpot` come from `tokens/tokiui.semantic.tokens.json`. The launcher background color is generated from `color.seed` during `syncTokiUiResources`. Inter and Noto Sans SC (Source Han Sans) are copied from `TokiUI/tokistudio/android/app/src/main/res/font` in that same task. Nothing in this module checks in a second color table.
 
 Checkout:
 
@@ -21,7 +21,7 @@ Checkout:
 git submodule update --init --recursive
 ```
 
-The recorded commit is TokiUI `v0.1.2` (`e2bec809da4678b8fcfc45109607fd5e7e341134`), which is also current `main` at the time of this pin.
+The recorded commit is TokiUI `v0.1.4` (`0edda3289be65e0ddd531515352d309a72f5089e`).
 
 ## Requirements
 

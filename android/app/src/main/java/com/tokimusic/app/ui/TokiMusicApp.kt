@@ -123,7 +123,7 @@ fun TokiMusicApp() {
         val playlistsTitle = stringResource(navEntries[1].label)
         val mineTitle = stringResource(navEntries[2].label)
         val pageTitle = when {
-            showPlayer -> playerState.current?.name ?: "正在播放"
+            showPlayer -> "正在播放"
             playlistId != null -> playlistTitle
             dest == Dest.Home -> homeTitle
             dest == Dest.Playlists -> playlistsTitle
@@ -182,6 +182,8 @@ fun TokiMusicApp() {
                                 overlapped = headerOverlapped,
                                 onBack = onBack,
                                 onHeightMeasured = { topBarHeight = it },
+                                backdropBlur = theme.backdropBlur,
+                                hazeState = hazeState,
                             )
                         },
                     ) { _ ->
@@ -224,6 +226,7 @@ fun TokiMusicApp() {
                                 vm = vm,
                                 dest = dest,
                                 glass = glass,
+                                solidStroke = !chromeBlurActive(theme.backdropBlur),
                                 onOpenPlayer = { showPlayer = true },
                                 onSelect = {
                                     dest = it
@@ -249,6 +252,7 @@ private fun BottomChrome(
     vm: AppViewModel,
     dest: Dest,
     glass: Modifier,
+    solidStroke: Boolean,
     onOpenPlayer: () -> Unit,
     onSelect: (Dest) -> Unit,
     onHeight: (Dp) -> Unit,
@@ -264,6 +268,6 @@ private fun BottomChrome(
         verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
     ) {
         if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer)
-        if (!wide) FloatingNavBar(dest, onSelect, glass = glass)
+        if (!wide) FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
     }
 }

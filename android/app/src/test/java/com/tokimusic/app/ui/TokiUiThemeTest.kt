@@ -23,6 +23,15 @@ class TokiUiThemeTest {
         assertEquals(SemanticTokens.colorRoles.toSet(), tokens.dark.keys)
         assertTrue(tokens.motionShortMs < tokens.motionStandardMs)
         assertEquals(16, tokens.space.getValue("lg"))
+        assertEquals("Inter", tokens.typeLatin)
+        assertEquals("Source Han Sans", tokens.typeCjk)
+        assertEquals("Noto Sans SC", tokens.typeCjkBundledAs)
+        assertEquals("bold", tokens.typeRoles.first { it.id == "title" }.weight)
+        assertEquals("regular", tokens.typeRoles.first { it.id == "body" }.weight)
+        assertEquals("regular", tokens.typeRoles.first { it.id == "caption" }.weight)
+        assertTrue(tokens.materialLightGlass.isNotBlank())
+        assertTrue(tokens.materialSolidBar.isNotBlank())
+        assertTrue(tokens.materialScrollTitle.isNotBlank())
         assertTrue(scenes.sections.isNotEmpty())
         assertEquals("色彩", scenes.section("color").title)
     }
@@ -30,7 +39,7 @@ class TokiUiThemeTest {
     @Test
     fun themeSourcesDoNotEmbedTheRetiredMatchaPaletteOrShapeTable() {
         val roots = listOf(File("src/main/java"), File("src/main/res"))
-        val banned = listOf("4C662B", "CDEDA3", "TokiShapes", "ExpressiveCardShape", "HazeInput.Content", "Modifier.blur")
+        val banned = listOf("4C662B", "CDEDA3", "TokiShapes", "ExpressiveCardShape", "HazeInput.Content", "Modifier.blur", "GoogleSans", "google_sans")
         val hits = buildList {
             for (root in roots) {
                 if (!root.isDirectory) continue
@@ -47,6 +56,17 @@ class TokiUiThemeTest {
         val glass = File("src/main/java/com/tokimusic/app/ui/theme/Glass.kt").readText()
         assertTrue(glass.contains("HazeInput.Backdrop"))
         assertTrue(glass.contains("surfaceContainer"))
+        assertTrue(glass.contains("0xFF2A2622"))
+        assertTrue(glass.contains("0.46f"))
+        assertTrue(glass.contains("TokiChromeStroke"))
+        assertTrue(glass.contains("TokiScrollChipBackdrop"))
+        val header = File("src/main/java/com/tokimusic/app/ui/components/OverlayHeader.kt").readText()
+        assertTrue(header.contains("TokiScrollChipBackdrop"))
+        assertFalse(header.contains("onPrimary"))
+        val nav = File("src/main/java/com/tokimusic/app/ui/components/FloatingNavBar.kt").readText()
+        assertTrue(nav.contains("solidStroke"))
+        assertTrue(nav.contains("PlainTooltip") || nav.contains("TokiLongPressLabel"))
+        assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/AppTypeface.kt").readText().contains("R.font.inter"))
         assertFalse(File("src/main/java/com/tokimusic/app/ui/theme/Shape.kt").exists())
     }
 

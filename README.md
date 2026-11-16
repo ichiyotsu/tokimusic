@@ -2,7 +2,7 @@
 
 TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android、Windows、iOS 与 iPadOS 这一版都是 **0.1.0**。其中 Android 已正式发布（见仓库的 GitHub Release），iOS / Windows 尚未正式发布。
 
-应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（仓库根目录的 submodule `TokiUI/`，钉在 `v0.1.2`）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
+应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（仓库根目录的 submodule `TokiUI/`，钉在 `v0.1.4`）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
 
 ## 功能
 
@@ -122,7 +122,7 @@ App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://12
 
 ```
 android/   Kotlin Compose 工程（应用 ID com.tokimusic.app），设计引用 TokiUI
-TokiUI/    TokiUI submodule（v0.1.2），Android 的 token 与语义解析
+TokiUI/    TokiUI submodule（v0.1.4），Android 的 token 与语义解析
 ios/       SwiftUI 工程 + TokiMusicCore Swift Package（界面尚未迁到 TokiUI）
 windows/   WinUI 3 工程（界面尚未迁到 TokiUI）
 docs/      DESIGN.md（Android = TokiUI；iOS/Windows 仍是上一套说明）/ API.md

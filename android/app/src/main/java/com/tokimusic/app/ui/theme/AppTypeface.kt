@@ -7,9 +7,9 @@ import androidx.compose.ui.text.font.FontWeight
 import com.tokimusic.app.R
 
 /**
- * Google Sans Flex, with Noto Sans SC (Source Han Sans) as the Chinese fallback.
- * The files are copied from the TokiUI submodule at build time. Sizes stay on the
- * Material type scale and scale with the system (sp).
+ * Latin is Inter. Chinese is Source Han Sans, bundled as official Noto Sans SC.
+ * Both files are copied from the TokiUI 0.1.4 submodule at build time.
+ * Titles and labels use wght 700. Body and captions use wght 400.
  */
 private fun variableFonts(latin: Int, weight: FontWeight): List<Font> {
     val variation = FontVariation.Settings(FontVariation.weight(weight.weight))
@@ -19,7 +19,7 @@ private fun variableFonts(latin: Int, weight: FontWeight): List<Font> {
     )
 }
 
-val GoogleSansFamily: FontFamily = FontFamily(
+val InterFamily: FontFamily = FontFamily(
     listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
-        .flatMap { variableFonts(R.font.google_sans_flex, it) },
+        .flatMap { variableFonts(R.font.inter, it) },
 )
