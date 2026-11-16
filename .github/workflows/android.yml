@@ -1,0 +1,58 @@
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unit tests + debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch TokiUI submodule
+        env:
+          TOKIUI_READ_TOKEN: ${{ secrets.TOKIUI_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKIUI_READ_TOKEN}" ]; then
+            echo "Private submodule TokiUI needs secret TOKIUI_READ_TOKEN (contents:read on ichiyotsu/TokiUI)."
+            exit 1
+          fi
+          git submodule sync --recursive
+          git -c url."https://x-access-token:${TOKIUI_READ_TOKEN}@github.com/".insteadOf="https://github.com/" submodule update --init --recursive
+          git -C TokiUI rev-parse HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.0 build-tools;37.0.0"
+
+      - name: Unit tests
+        working-directory: android
+        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tokimusic-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

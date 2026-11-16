@@ -1,0 +1,3 @@
+[submodule "TokiUI"]
+	path = TokiUI
+	url = https://github.com/ichiyotsu/TokiUI.git
