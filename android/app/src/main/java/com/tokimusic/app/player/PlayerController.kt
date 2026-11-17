@@ -27,6 +27,14 @@ class PlayerController(context: Context) {
     fun toggle() { if (player.isPlaying) player.pause() else player.play() }
     fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
     fun previous() { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() }
+    /** Jump the queue sheet's tap target: index change flows back through onMediaItemTransition. */
+    fun jumpTo(index: Int) { if (index in 0 until player.mediaItemCount) { player.seekTo(index, 0); player.play() } }
+    /** Insert [song] right after the current item so it plays next; the state queue mirrors ExoPlayer. */
+    fun playNext(song: Song, url: String?) {
+        val at = (_state.value.index + 1).coerceIn(0, _state.value.queue.size)
+        player.addMediaItem(at, MediaItem.Builder().setUri(url ?: "").setMediaId(song.id.toString()).build())
+        _state.value = _state.value.copy(queue = _state.value.queue.toMutableList().apply { add(at, song) })
+    }
     fun seekTo(ms: Long) { player.seekTo(ms) }
     fun currentPosition(): Long = player.currentPosition.coerceAtLeast(0)
     fun release() { player.release() }

@@ -19,10 +19,11 @@
 
 | 接口 | 用途 |
 |---|---|
-| `GET /banner?type=2` | Banner |
+| `GET /recommend/songs` | 每日推荐歌曲（登录后） |
+| `GET /user/record?uid=&type=1` | 最近一周听歌排行——私人雷达的来源（接口没有专门的雷达端点，雷达按口味取排行前 20 首） |
+| `GET /history/recent/songs` | 最近播放（登录后） |
 | `GET /personalized?limit=` | 推荐歌单 |
 | `GET /personalized/newsong` | 推荐新歌 |
-| `GET /recommend/resource` / `GET /recommend/songs` | 登录后每日推荐 |
 | `GET /search?keywords=&type=1/10/100/1000` / `GET /cloudsearch` | 搜索（单曲/专辑/歌手/歌单） |
 
 ## 歌单
@@ -55,6 +56,7 @@
 |---|---|
 | `GET /song/url/v1?id=&level=standard` | 播放地址 |
 | `GET /song/detail?ids=` | 歌曲详情（封面/歌手/时长） |
+| `GET /like?id=&like=true/false` | 喜欢 / 取消喜欢（播放页星标） |
 | `GET /lyric?id=` | LRC 歌词 + 翻译 |
 | `GET /lyric/new?id=` | **YRC 逐字歌词** + LRC + 翻译（优先使用） |
 

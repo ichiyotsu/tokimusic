@@ -25,24 +25,24 @@ assets.directories.add("../../TokiUI/tokens")
 - 形状和字阶：Material 默认值（`Shapes()`、`Typography()`）。文字大小用 sp，跟随系统字体缩放。不把 `referenceSizeSp` 写成 `Text` 的 `fontSize`。
 - 字体：拉丁文 Inter，汉字用思源黑体（包内文件是官方 Noto Sans SC）。标题、标签和强调句是粗体（wght 700），正文和辅助说明是常规字重（wght 400）。不再使用 Google Sans，也不再用 PingFang / 微软雅黑作为 Android 指引。
 
-`minSdk` 是 **36**（Android 16+），与 TokiStudio 的 TokiUI Android 目标一致。`targetSdk` 36，`compileSdk` 37。应用 ID 仍是 `com.tokimusic.app`，`versionName` 是 `0.1.1`。
+`minSdk` 是 **36**（Android 16+），与 TokiStudio 的 TokiUI Android 目标一致。`targetSdk` 36，`compileSdk` 37。应用 ID 仍是 `com.tokimusic.app`，`versionName` 是 `0.1.2`。
 
 ### 导航与材质
 
 - 窗口宽度小于 840dp：悬浮胶囊。达到 840dp：`NavigationRail`。这是 Android 自适应，不要抄到 iOS / Windows。
 - 玻璃模糊打开且可以采样窗口（RenderEffect）时，胶囊用 Haze `HazeInput.Backdrop` 采样已经画好的窗口像素，采不到时按 TokiStudio 回退到挂了 `hazeSource` 的内容根。浅色磨砂是 16% 暖色暗罩再加 46% 白霜；深色磨砂是 20% 白霜，不加黑罩。顶栏、底栏和滚动标题共用这一套。
 - 开关关闭或采样不可用时，胶囊使用不透明 `surfaceContainer`，并加 3dp `primary` 描边，描边和选中胶囊之间留 6dp。玻璃打开时不加这道粗描边。
-- 不使用 `Modifier.blur`，也不用 `HazeInput.Content` 冒充背后内容的模糊。磨砂只发生在胶囊形状里，底栏下面不铺全宽淡化带。
-- 内容滑到大标题或返回键后面时，色块只做与底栏相同的磨砂，字用 `onSurface`，不再叠一层不透明填色。玻璃不可用时改为不透明 `surfaceContainer` 加同样的 3dp `primary` 描边。没有重叠时不垫色。我的、播放页和歌单详情的顶栏都走这一套。
+- 不使用 `Modifier.blur`，也不用 `HazeInput.Content` 冒充背后内容的模糊。磨砂只发生在胶囊形状里，底栏下面不铺全宽淡化带。例外：播放页用 `Modifier.blur` 模糊封面图做沉浸式背景——那是 artwork，不是导航材质。
+- 内容滑到大标题或返回键后面时，色块只做与底栏相同的磨砂，字用 `onSurface`，不再叠一层不透明填色。玻璃不可用时改为不透明 `surfaceContainer` 加同样的 3dp `primary` 描边。没有重叠时不垫色。歌单详情和我的的顶栏走这一套；主页的大标题画在内容里，播放页是沉浸式二级页面，没有顶栏与底栏。
 - 只显示图标的控件长按用 Material 3 `PlainTooltip` 显示名称，同一段文字写进 `contentDescription`。
 
 设置里保留原来的深浅色，并加上 TokiUI 需要的动态取色、种子色、减少动效和玻璃模糊开关。
 
 ### 音乐产品行为（保持不变）
 
-信息架构仍是主页、歌单、我的；迷你播放条和全屏播放页；歌词左对齐；YRC 逐字、没有逐字时回退 LRC，翻译在行下；二维码登录；搜索、Banner、推荐歌单 / 新歌；喜欢 / 创建 / 收藏分组；资料统计；API 基址；主题设置；API 不可用时标注 Demo 数据。
+信息架构仍是主页、歌单、我的；迷你播放条和全屏播放页；歌词左对齐；YRC 逐字、没有逐字时回退 LRC，翻译在行下；二维码登录；搜索、每日推荐 / 私人雷达 / 最近播放、推荐歌单 / 新歌；喜欢 / 创建 / 收藏分组；资料统计；API 基址；主题设置；播放页与歌词页是沉浸式二级页面（没有顶栏与底栏），封面与歌词在同一页内切换。API 不可用时主页显示错误与重试，登录后分区改为登录提示，不再用 Demo 数据。
 
-歌词的左对齐、当前行强调、翻译跟在行下，是产品行为。颜色和字阶走上面的 MD3E 主题，不用旧 Matcha token。当前行用 `titleLarge` 加粗，其余行用 `bodyLarge`，翻译用 `bodySmall`。
+歌词的左对齐、当前行强调、翻译跟在行下，是产品行为。Android 歌词画在深色罩上：当前行用 `headlineSmall` 加粗纯白、逐字填充（已唱纯白、未唱半透白），其余行用 `titleLarge` 常规、按与当前行的距离渐隐，翻译用 `bodyMedium` 半透白；当前行锚定在视口约 28% 处。
 
 ## iOS / Windows（尚未迁移）
 
@@ -122,7 +122,7 @@ NavigationView PaneDisplayMode=Auto 窄窗口自动收缩；最小窗口 640×48
 
 ### 歌词页（三端产品行为）
 
-歌词整列**左对齐**（Start），当前行自动滚动到视口中央只是滚动位置、文字本身仍左对齐。
+歌词整列**左对齐**（Start），当前行自动滚动到视口约 28% 处只是滚动位置、文字本身仍左对齐。
 逐字：已唱字用强调色、未唱字用次要文字色；当前行放大加粗；
 翻译小字在主行下方、同样左对齐。
-Android 的强调色和字阶来自 TokiUI / MD3E 主题。iOS / Windows 在迁到 TokiUI 之前，强调色仍按上面的 Matcha `primary` / `onSurfaceVariant`。
+Android 的歌词画在深色罩上，强调色是纯白、未唱与远处行是半透白。iOS / Windows 在迁到 TokiUI 之前，强调色仍按上面的 Matcha `primary` / `onSurfaceVariant`。

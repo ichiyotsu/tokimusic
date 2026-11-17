@@ -65,6 +65,10 @@ class NeteaseClient(private val store: SettingsStore) : NeteaseApi {
         return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"))
     }
     override suspend fun likeList(uid: Long): List<Long> = get("/likelist?uid=$uid").arr("ids").let { a -> (0 until a.length()).map { a.getLong(it) } }
+    override suspend fun like(id: Long, like: Boolean) {
+        val code = get("/like?id=$id&like=$like").optInt("code")
+        if (code != 200) throw IllegalStateException("like failed: code $code")
+    }
     override suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> {
         val o = get("/user/record?uid=$uid&type=${if (weekly) 1 else 0}"); val a = o.arr(if (weekly) "weekData" else "allData")
         return (0 until a.length()).map { val it = a.getJSONObject(it); RecordItem(parseSong(it.getJSONObject("song")), it.optInt("playCount"), it.optInt("score")) }

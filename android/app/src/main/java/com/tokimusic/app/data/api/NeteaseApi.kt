@@ -17,6 +17,7 @@ interface NeteaseApi {
     suspend fun playlistCatlist(): List<String>       // /playlist/catlist
     suspend fun userDetail(uid: Long): UserProfile    // /user/detail
     suspend fun likeList(uid: Long): List<Long>       // /likelist
+    suspend fun like(id: Long, like: Boolean)          // /like — add/remove from "我喜欢的音乐"
     suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> // /user/record?type=
     suspend fun recentSongs(): List<Song>             // /history/recent/songs
     suspend fun songUrl(id: Long): String?            // /song/url/v1?level=standard

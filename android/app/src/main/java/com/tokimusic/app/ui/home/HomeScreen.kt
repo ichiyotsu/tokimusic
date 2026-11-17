@@ -1,5 +1,8 @@
 package com.tokimusic.app.ui.home
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,13 +20,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,18 +46,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 
+/**
+ * Home, rebuilt from the reference: a large in-content title with the avatar at
+ * the top right, a capsule search, tall recommendation cards （每日推荐 / 私人雷达）,
+ * a recently-played album row, recommended playlists and new songs. Every
+ * section is fed by the NetEase API service — no Demo data: login-gated
+ * sections ask the user to sign in, and a dead service shows an error + retry.
+ * The pinned overlay title is hidden on this page (see TokiMusicApp).
+ */
 @Composable
 fun HomeScreen(
     vm: AppViewModel,
@@ -63,38 +82,37 @@ fun HomeScreen(
     val profile by vm.profile.collectAsState()
     var query by remember { mutableStateOf("") }
     LaunchedEffect(query) { vm.search(query) }
+    var entered by remember { mutableStateOf(false) }
+    val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
+    LaunchedEffect(Unit) { entered = true }
+    val hasContent = home.daily.isNotEmpty() || home.radar.isNotEmpty() || home.recent.isNotEmpty() ||
+        home.playlists.isNotEmpty() || home.newSongs.isNotEmpty()
     LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = topPadding + 16.dp, bottom = bottomPadding),
+        Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha },
+        contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    query,
-                    { query = it },
-                    Modifier.weight(1f),
-                    placeholder = { Text("搜索歌曲、歌手、歌单") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(percent = 50),
-                )
-                Spacer(Modifier.width(12.dp))
+                Text("主页", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
                 TokiLongPressLabel(if (profile == null) "登录" else "我的") {
                     IconButton(onClick = onOpenLogin) {
                         Avatar(profile?.avatarUrl ?: "", 40)
                     }
                 }
             }
-            if (profile == null) {
-                Text(
-                    "未登录 · 点击右上角头像扫码登录",
-                    Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (home.isDemo) AssistChip(onClick = {}, label = { Text("Demo 数据 · 未连接网易云 API 服务") }, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        item {
+            OutlinedTextField(
+                query,
+                { query = it },
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                placeholder = { Text("搜索歌曲、歌手、歌单") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(percent = 50),
+            )
         }
         if (home.searching) {
             item { Text("搜索结果", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge) }
@@ -103,41 +121,90 @@ fun HomeScreen(
             }
             return@LazyColumn
         }
-        if (home.banners.isNotEmpty()) {
+        if (home.loading && !hasContent) {
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(home.banners) { banner ->
-                        Card(shape = RoundedCornerShape(28.dp)) {
-                            Box(Modifier.size(width = 280.dp, height = 140.dp), contentAlignment = Alignment.BottomStart) {
-                                AsyncImage(
-                                    banner.picUrl,
-                                    banner.title,
-                                    Modifier.matchParentSize(),
-                                    contentScale = ContentScale.Crop,
-                                )
-                                Text(
-                                    banner.title,
-                                    Modifier.padding(16.dp),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
+                Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
             }
+            return@LazyColumn
         }
-        if (home.daily.isNotEmpty()) {
+        if (home.error && !hasContent) {
             item {
-                Text("继续收听", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("无法连接网易云 API 服务", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "请确认 API 服务正在运行，地址可在“我的”中设置",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FilledTonalButton(onClick = { vm.refreshHome() }) { Text("重试") }
+                }
+            }
+            return@LazyColumn
+        }
+        val showDaily = !home.loggedIn || home.daily.isNotEmpty()
+        val showRadar = !home.loggedIn || home.radar.isNotEmpty()
+        if (showDaily || showRadar) {
+            item {
                 Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    home.daily.take(8).forEach { song ->
-                        ContinueCard(song) { vm.play(home.daily, home.daily.indexOf(song)) }
+                    if (showDaily) {
+                        RecommendCard(
+                            title = "每日推荐",
+                            songs = home.daily,
+                            loggedIn = home.loggedIn,
+                            onLogin = onOpenLogin,
+                            onPlay = { vm.play(home.daily, 0) },
+                        )
+                    }
+                    if (showRadar) {
+                        RecommendCard(
+                            title = "私人雷达",
+                            songs = home.radar,
+                            loggedIn = home.loggedIn,
+                            onLogin = onOpenLogin,
+                            onPlay = { vm.play(home.radar, 0) },
+                        )
+                    }
+                }
+            }
+        }
+        if (!home.loggedIn || home.recent.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("最近播放", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                if (!home.loggedIn) {
+                    Card(
+                        onClick = onOpenLogin,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
+                        Text(
+                            "登录后查看最近播放",
+                            Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        itemsIndexed(home.recent) { index, song ->
+                            RecentCard(song) { vm.play(home.recent, index) }
+                        }
                     }
                 }
             }
@@ -145,16 +212,22 @@ fun HomeScreen(
         if (home.playlists.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("歌单", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
-            }
-            items(home.playlists) { playlist ->
-                AlbumRow(playlist) { onOpenPlaylist(playlist.id) }
+                Text("推荐歌单", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(home.playlists) { playlist ->
+                        PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
+                    }
+                }
             }
         }
         if (home.newSongs.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("歌曲", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Text("推荐新歌", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
             }
             items(home.newSongs) { song ->
                 SongRow(song) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
@@ -163,55 +236,90 @@ fun HomeScreen(
     }
 }
 
+/** Tall recommendation card: cover art full-bleed with a scrim, label + artists at the bottom. */
 @Composable
-private fun ContinueCard(song: Song, onClick: () -> Unit) {
+private fun RecommendCard(
+    title: String,
+    songs: List<Song>,
+    loggedIn: Boolean,
+    onLogin: () -> Unit,
+    onPlay: () -> Unit,
+) {
     Card(
-        onClick = onClick,
-        modifier = Modifier.width(148.dp),
-        shape = MaterialTheme.shapes.extraLarge,
+        onClick = if (loggedIn) onPlay else onLogin,
+        modifier = Modifier.size(width = 200.dp, height = 260.dp),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AsyncImage(
-                song.picUrl,
-                song.name,
-                Modifier.size(124.dp).clip(RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.Crop,
-            )
-            Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                song.artistText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
+            if (loggedIn && songs.isNotEmpty()) {
+                AsyncImage(
+                    songs.first().picUrl,
+                    title,
+                    Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    Modifier.matchParentSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.8f)),
+                        ),
+                    ),
+                )
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Text(
+                        artistLine(songs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.8f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(56.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    )
+                }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "登录后查看",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
 
+private fun artistLine(songs: List<Song>): String {
+    val artists = songs.flatMap { it.artists }.map { it.name }.distinct()
+    return if (artists.size > 4) artists.take(4).joinToString("，") + "等" else artists.joinToString("，")
+}
+
 @Composable
-private fun AlbumRow(playlist: Playlist, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+private fun RecentCard(song: Song, onClick: () -> Unit) {
+    Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
         AsyncImage(
-            playlist.coverUrl,
-            playlist.name,
-            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)),
+            song.picUrl,
+            song.name,
+            Modifier.size(140.dp).clip(MaterialTheme.shapes.extraLarge),
             contentScale = ContentScale.Crop,
         )
-        Column(Modifier.weight(1f)) {
-            Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                "${playlist.trackCount} 首 · ${playlist.creatorName}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Spacer(Modifier.height(8.dp))
+        Text(song.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            song.artistText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

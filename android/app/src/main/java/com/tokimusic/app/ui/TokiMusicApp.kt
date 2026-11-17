@@ -1,6 +1,17 @@
 package com.tokimusic.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -62,6 +74,7 @@ import com.tokimusic.app.ui.theme.tokiSpace
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TokiMusicApp() {
     val vm: AppViewModel = viewModel()
@@ -129,6 +142,11 @@ fun TokiMusicApp() {
             dest == Dest.Playlists -> playlistsTitle
             else -> mineTitle
         }
+        // The player is a second-level page: no top bar, no bottom bar, no rail.
+        // Home draws its own large title + avatar in content, so the pinned
+        // overlay header is hidden there too.
+        val chromeVisible = !showPlayer
+        val headerVisible = chromeVisible && (playlistId != null || dest != Dest.Home)
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
             playlistId != null -> ({ playlistId = null })
@@ -143,11 +161,24 @@ fun TokiMusicApp() {
         var measuredChrome by remember { mutableStateOf(0.dp) }
         val topPadding = if (topBarHeight > 0.dp) topBarHeight else statusBarHeight + 64.dp
         val bottomPadding = measuredChrome + contentGap
+        val scheme = MaterialTheme.motionScheme
+
+        // Page identity drives the transitions: the player slides up from the
+        // bottom, a playlist detail slides in from the right, tabs crossfade.
+        val pageKey: Any = when {
+            showPlayer -> "player"
+            playlistId != null -> "playlist:$playlistId"
+            else -> dest
+        }
 
         BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             val wide = usesNavigationRail(maxWidth.value)
             Row(Modifier.fillMaxSize()) {
-                if (wide) {
+                AnimatedVisibility(
+                    visible = chromeVisible && wide,
+                    enter = slideInHorizontally(scheme.defaultSpatialSpec()) { -it } + fadeIn(scheme.defaultEffectsSpec()),
+                    exit = slideOutHorizontally(scheme.defaultSpatialSpec()) { -it } + fadeOut(scheme.defaultEffectsSpec()),
+                ) {
                     NavigationRail(
                         modifier = Modifier.fillMaxHeight(),
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -177,14 +208,16 @@ fun TokiMusicApp() {
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         topBar = {
-                            OverlayTitleHeader(
-                                title = pageTitle,
-                                overlapped = headerOverlapped,
-                                onBack = onBack,
-                                onHeightMeasured = { topBarHeight = it },
-                                backdropBlur = theme.backdropBlur,
-                                hazeState = hazeState,
-                            )
+                            if (headerVisible) {
+                                OverlayTitleHeader(
+                                    title = pageTitle,
+                                    overlapped = headerOverlapped,
+                                    onBack = onBack,
+                                    onHeightMeasured = { topBarHeight = it },
+                                    backdropBlur = theme.backdropBlur,
+                                    hazeState = hazeState,
+                                )
+                            }
                         },
                     ) { _ ->
                         Box(Modifier.fillMaxSize().nestedScroll(headerNestedScroll)) {
@@ -194,22 +227,44 @@ fun TokiMusicApp() {
                                     .hazeSource(hazeState)
                                     .background(MaterialTheme.colorScheme.surface),
                             ) {
-                                when {
-                                    showPlayer -> PlayerScreen(vm, topPadding, bottomPadding)
-                                    playlistId != null -> PlaylistDetailScreen(
-                                        vm, playlistId!!, topPadding, bottomPadding,
-                                        onTitle = { playlistTitle = it },
-                                    )
-                                    dest == Dest.Home -> HomeScreen(
-                                        vm, topPadding, bottomPadding,
-                                        onOpenLogin = { dest = Dest.Mine },
-                                        onOpenPlaylist = { playlistId = it },
-                                    )
-                                    dest == Dest.Playlists -> PlaylistsScreen(vm, topPadding, bottomPadding) { playlistId = it }
-                                    dest == Dest.Mine -> MineScreen(vm, topPadding, bottomPadding, theme, updateTheme)
+                                AnimatedContent(
+                                    targetState = pageKey,
+                                    transitionSpec = {
+                                        val toPlayer = targetState == "player"
+                                        val fromPlayer = initialState == "player"
+                                        val toDetail = (targetState as? String)?.startsWith("playlist:") == true
+                                        val fromDetail = (initialState as? String)?.startsWith("playlist:") == true
+                                        when {
+                                            toPlayer -> (slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
+                                                fadeOut(scheme.defaultEffectsSpec())
+                                            fromPlayer -> fadeIn(scheme.defaultEffectsSpec()) togetherWith
+                                                (slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()))
+                                            toDetail -> (slideInHorizontally(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
+                                                (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), 0.98f))
+                                            fromDetail -> (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), 0.98f)) togetherWith
+                                                (slideOutHorizontally(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()))
+                                            else -> fadeIn(scheme.defaultEffectsSpec()) togetherWith fadeOut(scheme.defaultEffectsSpec())
+                                        }
+                                    },
+                                    label = "page",
+                                ) { key ->
+                                    when {
+                                        key == "player" -> PlayerScreen(vm)
+                                        (key as? String)?.startsWith("playlist:") == true -> PlaylistDetailScreen(
+                                            vm, (key as String).removePrefix("playlist:").toLong(), topPadding, bottomPadding,
+                                            onTitle = { playlistTitle = it },
+                                        )
+                                        key == Dest.Home -> HomeScreen(
+                                            vm, statusBarHeight, bottomPadding,
+                                            onOpenLogin = { dest = Dest.Mine },
+                                            onOpenPlaylist = { playlistId = it },
+                                        )
+                                        key == Dest.Playlists -> PlaylistsScreen(vm, topPadding, bottomPadding) { playlistId = it }
+                                        else -> MineScreen(vm, topPadding, bottomPadding, theme, updateTheme)
+                                    }
                                 }
                             }
-                            if (chromeBlurActive(theme.backdropBlur)) {
+                            if (headerVisible && chromeBlurActive(theme.backdropBlur)) {
                                 Box(
                                     Modifier
                                         .align(Alignment.TopCenter)
@@ -220,6 +275,7 @@ fun TokiMusicApp() {
                             }
                             BottomChrome(
                                 modifier = Modifier.align(Alignment.BottomCenter),
+                                visible = chromeVisible,
                                 wide = wide,
                                 showMiniPlayer = !showPlayer && playerState.current != null,
                                 playerState = playerState,
@@ -233,7 +289,7 @@ fun TokiMusicApp() {
                                     playlistId = null
                                     showPlayer = false
                                 },
-                                onHeight = { measuredChrome = it },
+                                onHeight = { if (chromeVisible) measuredChrome = it },
                             )
                         }
                     }
@@ -243,9 +299,11 @@ fun TokiMusicApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun BottomChrome(
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
+    visible: Boolean,
     wide: Boolean,
     showMiniPlayer: Boolean,
     playerState: com.tokimusic.app.player.PlayerState,
@@ -258,16 +316,24 @@ private fun BottomChrome(
     onHeight: (Dp) -> Unit,
 ) {
     val density = LocalDensity.current
-    Column(
-        modifier
-            .fillMaxWidth()
-            .onSizeChanged { onHeight(with(density) { it.height.toDp() }) }
-            .navigationBarsPadding()
-            .padding(bottom = tokiSpace("sm")),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
+    val scheme = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
+        exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+        modifier = modifier,
     ) {
-        if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer)
-        if (!wide) FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .onSizeChanged { onHeight(with(density) { it.height.toDp() }) }
+                .navigationBarsPadding()
+                .padding(bottom = tokiSpace("sm")),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
+        ) {
+            if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer)
+            if (!wide) FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+        }
     }
 }
