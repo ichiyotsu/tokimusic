@@ -58,7 +58,7 @@ jobs:
         run: |
           set -eux
           chmod +x ios/scripts/unsigned-ipa.sh
-          NAME="TokiMusic-ios-0.1.0.ipa"
+          NAME="TokiMusic-0.1.0.ipa"
           ios/scripts/unsigned-ipa.sh "build/${NAME}"
           find ios/build -name '*.ipa' -print
           unzip -l "ios/build/${NAME}" | head -n 40
