@@ -21,19 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch TokiUI submodule
-        env:
-          TOKIUI_READ_TOKEN: ${{ secrets.TOKIUI_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${TOKIUI_READ_TOKEN}" ]; then
-            echo "Private submodule TokiUI needs secret TOKIUI_READ_TOKEN (contents:read on ichiyotsu/TokiUI)."
-            exit 1
-          fi
-          git submodule sync --recursive
-          git -c url."https://x-access-token:${TOKIUI_READ_TOKEN}@github.com/".insteadOf="https://github.com/" submodule update --init --recursive
-          git -C TokiUI rev-parse HEAD
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
