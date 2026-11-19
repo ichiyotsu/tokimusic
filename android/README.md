@@ -23,7 +23,7 @@ The snapshot is from TokiUI `v0.1.4` (`0edda3289be65e0ddd531515352d309a72f5089e`
 - JDK 17
 - Android SDK platform `android-37.0` and build-tools `37.0.0`
 
-`applicationId` is `com.tokimusic.app`. `versionName` is `0.1.2`, `versionCode` is `3`.
+`applicationId` is `com.tokimusic.app`. `versionName` is `0.1.3`, `versionCode` is `4`.
 
 ## Build
 
