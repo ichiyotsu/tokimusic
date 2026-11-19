@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tokimusic.app.data.SettingsStore
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
@@ -36,7 +35,6 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
     val profile by vm.profile.collectAsState(); val mine by vm.mine.collectAsState()
     val authState by vm.authState.collectAsState(); val health by vm.health.collectAsState()
     var showLogin by remember { mutableStateOf(false) }; var showRecord by remember { mutableStateOf(false) }
-    var apiText by remember { mutableStateOf(vm.store.apiBase) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding)) {
         item {
             Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -80,40 +78,20 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
         item {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("设置", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            OutlinedTextField(
-                apiText, { apiText = it },
-                Modifier.fillMaxWidth().padding(24.dp),
-                label = { Text("API 地址（网易云 API 服务）") },
-                placeholder = { Text("例如 http://192.168.1.10:3000") },
-                singleLine = true,
+            ListItem(
+                headlineContent = { Text("直连网易云") },
+                supportingContent = { Text("无需自建 API 服务，打开就能用") },
+                trailingContent = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
             )
-            if (SettingsStore.isLoopbackApiBase(apiText)) {
-                Text(
-                    "注意：127.0.0.1 指的是手机自身，真机上连不上电脑的服务，请填电脑的局域网 IP",
-                    Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { vm.setApiBase(apiText) }, Modifier.weight(1f).height(56.dp)) { Text("保存 API 地址") }
-                OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") }
-            }
             when (val h = health) {
                 is ApiHealth.Connected -> Text(
-                    if (h.loggedIn) "已连通，已登录为 ${h.nickname ?: "网易云账号"}" else "已连通服务，尚未登录",
+                    if (h.loggedIn) "已连通网易云，已登录为 ${h.nickname ?: "网易云账号"}" else "已连通网易云，尚未登录",
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 is ApiHealth.Unreachable -> Text(
-                    "连不上服务：${h.reason}",
-                    Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                ApiHealth.InvalidAddress -> Text(
-                    "地址格式不对：请填 http:// 开头的完整地址",
+                    "连不上网易云：${h.reason}",
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
@@ -188,7 +166,7 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
     AlertDialog(onDismissRequest = { vm.cancelQrLogin(); onDismiss() }, title = { Text("扫码登录网易云") }, text = {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             val bitmap = remember(img) { runCatching { val raw = img.substringAfter("base64,", img); if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull() }
-            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…（需先启动 API 服务）")
+            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
             if (qrError != null) {
                 Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 FilledTonalButton(onClick = { vm.startQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }

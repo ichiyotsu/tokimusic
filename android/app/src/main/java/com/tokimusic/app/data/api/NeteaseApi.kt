@@ -1,6 +1,8 @@
 package com.tokimusic.app.data.api
 import com.tokimusic.app.data.model.*
-/** Isomorphic contract implemented on all three platforms. Base URL configurable, default http://127.0.0.1:3000 (emulator: http://10.0.2.2:3000). */
+/** Isomorphic contract implemented on all three platforms. On Android the
+ * calls go straight to music.163.com (weapi/eapi, see NeteaseClient);
+ * iOS/Windows still go through a self-hosted NeteaseCloudMusicApi service. */
 interface NeteaseApi {
     suspend fun qrKey(): String                       // /login/qr/key
     suspend fun qrCreate(key: String): String         // /login/qr/create -> qrimg base64

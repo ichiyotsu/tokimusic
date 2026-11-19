@@ -1,21 +1,27 @@
 package com.tokimusic.app.data.api
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import com.tokimusic.app.data.ApiSettings
 import com.tokimusic.app.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.Proxy
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 /** Result of a playback-URL lookup: the URL plus the rights info around it. */
 data class SongUrlResult(val url: String?, val fee: Int = 0, val freeTrialEndSec: Int = 0) {
@@ -23,123 +29,294 @@ data class SongUrlResult(val url: String?, val fee: Int = 0, val freeTrialEndSec
     val isTrial: Boolean get() = freeTrialEndSec > 0
 }
 
-/** Connectivity probe result, for the in-app setup guide and test button. */
+/** Connectivity probe result, for the setup guide and test button. */
 sealed interface ApiHealth {
-    data object InvalidAddress : ApiHealth
     data class Unreachable(val reason: String) : ApiHealth
     data class Connected(val loggedIn: Boolean, val nickname: String? = null) : ApiHealth
 }
 
+/** Direct-connection hosts; tests point both at a MockWebServer. */
+data class NeteaseHosts(
+    val music: String = "https://music.163.com",
+    val api: String = "https://interface.music.163.com",
+)
+
+private data class DirectResponse(val body: JSONObject, val setCookies: List<StoredCookie>)
+private data class StoredCookie(val name: String, val value: String, val expiresAt: Long)
+
 /**
- * OkHttp implementation of [NeteaseApi] against a NeteaseCloudMusicApi-compatible service.
+ * OkHttp implementation of [NeteaseApi] that talks to NetEase directly —
+ * no self-hosted NeteaseCloudMusicApi server needed.
  *
- * Fixed against the 0.1.2 behaviour (see docs/API.md):
- * - The API server lives on the user's computer or LAN, so requests go direct
- *   ([Proxy.NO_PROXY]): routing them through any egress proxy breaks LAN and
- *   loopback addresses, and a real phone has no such proxy anyway.
- * - Cookies live in a real [CookieJar]: the QR flow's `Set-Cookie` (notably
- *   the NMTID anonymous device id from `/login/qr/key`) is kept, and the
- *   persisted cookie is re-synced from the jar after every response. The
- *   login cookie is sent as a `cookie` query parameter (the upstream
- *   convention), not duplicated into a `Cookie` header.
- * - The QR flow never sends the stored login cookie ([skipAuthCookie]): a
- *   stale cookie on `/login/qr/key` / `/login/qr/check` makes a fresh scan
- *   come back "expired" (800) after the user already confirmed on the phone.
+ * Faithful native port of NeteaseCloudMusicApi 4.32.0 (`util/request.js` +
+ * the endpoint modules): per-endpoint crypto (weapi/eapi), the exact header
+ * and cookie construction the upstream server did, and the same response
+ * shapes the rest of the app already parses. See docs/API.md for the
+ * endpoint table and the verification story.
+ *
+ * Behaviours kept from the server-based client:
+ * - Cookies live in a manual in-memory store (NOT an OkHttp CookieJar):
+ *   the QR flow's `Set-Cookie` (notably the NMTID anonymous device id from
+ *   `/login/qr/key`) is kept, and the persisted cookie is re-synced from
+ *   the store after every response. The store is seeded from
+ *   [ApiSettings.cookie] on launch, so a login survives restarts.
+ * - The QR flow never sends the stored login cookie: a stale cookie on
+ *   `/login/qr/key` / `/login/qr/check` makes a fresh scan come back
+ *   "expired" (800) after the user already confirmed on the phone.
  * - Login expiry is a first-class failure: a body `code` of 301 throws
  *   [ApiException] with [ApiErrorKind.NotLoggedIn] instead of collapsing
  *   into "not logged in" or an empty page.
+ * - The anonymous identity (device id + MUSIC_A) is registered lazily via
+ *   `/api/register/anonimous` the first time a request needs it, exactly
+ *   as the server did at startup; a failed registration never blocks the
+ *   request, it just proceeds without MUSIC_A.
  */
-class NeteaseClient(private val store: ApiSettings) : NeteaseApi {
+class NeteaseClient(
+    private val store: ApiSettings,
+    private val hosts: NeteaseHosts = NeteaseHosts(),
+) : NeteaseApi {
     companion object {
-        /** Login-credential cookies: they travel ONLY as the `cookie` query
-         * parameter (the upstream convention), never as a request header.
-         * Anonymous cookies (notably NMTID) travel as a header instead. */
+        /** Login-credential cookies: they travel only as the login cookie,
+         * never as an anonymous cookie. */
         private val LOGIN_COOKIE_NAMES = setOf("MUSIC_U", "__remember_me", "__csrf")
         private val COOKIE_ATTRIBUTES = setOf("Max-Age", "Expires", "Path", "Domain", "Secure", "HttpOnly", "SameSite")
+        private const val WEAPI_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+        private const val EAPI_UA = "NeteaseMusic 9.0.90/5038 (iPhone; iOS 16.2; zh_CN)"
+        private const val PC_OSVER = "Microsoft-Windows-10-Professional-build-19045-64bit"
+        private const val PC_APPVER = "3.1.17.204416"
+        /** Login URL the QR code encodes (upstream login_qr_create, pc platform). */
+        fun qrLoginUrl(key: String): String = "https://music.163.com/login?codekey=$key"
     }
 
-    private val jar = object : CookieJar {
-        private val saved = mutableMapOf<String, MutableList<Cookie>>()
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            val kept = saved.getOrPut(url.host) { mutableListOf() }
-            for (c in cookies) {
-                kept.removeAll { it.name == c.name }
-                if (c.expiresAt >= System.currentTimeMillis()) kept.add(c)
-            }
-            syncPersistedCookie(url.host)
-        }
-        override fun loadForRequest(url: HttpUrl): List<Cookie> =
-            saved[url.host]?.filter { it.expiresAt >= System.currentTimeMillis() && it.name !in LOGIN_COOKIE_NAMES } ?: emptyList()
-        fun seedFromPersisted(host: String, cookie: String) {
-            if (cookie.isBlank()) return
+    private enum class Crypto { WEAPI, EAPI }
+
+    /** In-memory cookie store, seeded from the persisted login cookie. */
+    private val cookies = object {
+        private val saved = linkedMapOf<String, StoredCookie>()
+        init { seed(store.cookie) }
+        fun seed(combined: String) {
+            if (combined.isBlank()) return
             val now = System.currentTimeMillis()
-            val kept = saved.getOrPut(host) { mutableListOf() }
-            cookie.split(";").forEach { part ->
+            combined.split(";").forEach { part ->
                 val kv = part.trim().split("=", limit = 2)
                 if (kv.size == 2 && kv[0].isNotBlank() && kv[0].trim() !in COOKIE_ATTRIBUTES) {
-                    kept.removeAll { it.name == kv[0].trim() }
-                    kept.add(Cookie.Builder().name(kv[0].trim()).value(kv[1].trim()).domain(host).path("/").expiresAt(now + 30L * 24 * 3600 * 1000).build())
+                    saved[kv[0].trim()] = StoredCookie(kv[0].trim(), kv[1].trim(), now + 30L * 24 * 3600 * 1000)
                 }
             }
         }
-        fun cookiesFor(host: String): String =
-            saved[host]?.filter { it.expiresAt >= System.currentTimeMillis() }
-                ?.joinToString("; ") { "${it.name}=${it.value}" } ?: ""
-        /** Only the login-credential cookies (for the 803 fallback: an NMTID
-         * alone is an anonymous id, never a login). */
-        fun loginCookiesFor(host: String): String =
-            saved[host]?.filter { it.expiresAt >= System.currentTimeMillis() && it.name in LOGIN_COOKIE_NAMES }
-                ?.joinToString("; ") { "${it.name}=${it.value}" } ?: ""
-        fun clear() = saved.clear()
-        private fun syncPersistedCookie(host: String) {
-            val combined = cookiesFor(host)
-            if (combined.isNotBlank()) store.cookie = combined
+        fun merge(setCookies: List<StoredCookie>) {
+            for (c in setCookies) saved[c.name] = c
         }
+        fun all(): List<StoredCookie> =
+            saved.values.filter { it.expiresAt >= System.currentTimeMillis() }
+        fun has(name: String): Boolean = all().any { it.name == name }
+        fun value(name: String): String? = all().firstOrNull { it.name == name }?.value
+        fun loginValue(): String = all()
+            .filter { it.name in LOGIN_COOKIE_NAMES }
+            .joinToString("; ") { "${it.name}=${it.value}" }
+        fun combinedValue(): String = all().joinToString("; ") { "${it.name}=${it.value}" }
+        fun clear() = saved.clear()
     }
 
     private val http = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
-        .cookieJar(jar)
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
+    /** WNMCID is computed once per process upstream; once per client here. */
+    private val wnmcid: String = run {
+        val letters = (0 until 6).map { ('a'..'z').random() }.joinToString("")
+        "$letters.${System.currentTimeMillis()}.01.0"
+    }
+    private var anonymousAttempted = false
 
-    private fun apiHost(): HttpUrl =
-        store.apiBase.toHttpUrlOrNull() ?: throw ApiException(ApiErrorKind.InvalidAddress)
+    private fun enc(v: String) = URLEncoder.encode(v, "UTF-8").replace("+", "%20")
+    private fun randomHexBytes(n: Int): String =
+        ByteArray(n) { Random.nextInt(256).toByte() }.joinToString("") { "%02x".format(it) }
 
-    private fun storedCookie(): String {
-        val host = apiHost().host
-        return jar.cookiesFor(host).ifBlank { store.cookie }
+    private fun obj(vararg pairs: Pair<String, Any>): JSONObject =
+        JSONObject().apply { for ((k, v) in pairs) put(k, v) }
+
+    private fun Map<String, String>.toCookieHeader(): String =
+        entries.joinToString("; ") { "${enc(it.key)}=${enc(it.value)}" }
+
+    /**
+     * Upstream `processCookieObject`: defaults + generated ids, on top of
+     * the stored cookies. [skipAuthCookie] keeps anonymous cookies only.
+     */
+    private fun cookieContext(uri: String, skipAuthCookie: Boolean): LinkedHashMap<String, String> {
+        val ctx = linkedMapOf<String, String>()
+        for (c in cookies.all()) {
+            if (skipAuthCookie && c.name in LOGIN_COOKIE_NAMES) continue
+            ctx[c.name] = c.value
+        }
+        ctx["__remember_me"] = "true"
+        ctx["ntes_kaola_ad"] = "1"
+        val nuid = ctx["_ntes_nuid"] ?: randomHexBytes(32).also { ctx["_ntes_nuid"] = it }
+        ctx["_ntes_nnid"] = ctx["_ntes_nnid"] ?: "$nuid,${System.currentTimeMillis()}"
+        ctx["WNMCID"] = ctx["WNMCID"] ?: wnmcid
+        ctx["WEVNSM"] = ctx["WEVNSM"] ?: "1.0.0"
+        ctx["osver"] = ctx["osver"] ?: PC_OSVER
+        ctx["deviceId"] = ctx["deviceId"] ?: store.deviceId
+        ctx["os"] = ctx["os"] ?: "pc"
+        ctx["channel"] = ctx["channel"] ?: "netease"
+        ctx["appver"] = ctx["appver"] ?: PC_APPVER
+        // Upstream regenerates NMTID on every non-login request.
+        if (!uri.contains("login")) ctx["NMTID"] = randomHexBytes(16)
+        return ctx
     }
 
-    private suspend fun get(path: String, skipAuthCookie: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
-        val base = apiHost()
-        val cookie = if (skipAuthCookie) "" else storedCookie()
-        val sep = if (path.contains('?')) "&" else "?"
-        val url = store.apiBase.trimEnd('/') + path + if (cookie.isNotBlank()) sep + "cookie=" + enc(cookie) else ""
-        val req = Request.Builder().url(url).build()
+    /** Upstream eapi header object (also becomes the eapi Cookie header). */
+    private fun eapiHeader(ctx: Map<String, String>, csrf: String): LinkedHashMap<String, String> {
+        val now = System.currentTimeMillis()
+        val header = linkedMapOf<String, String>()
+        header["osver"] = ctx["osver"] ?: PC_OSVER
+        header["deviceId"] = ctx["deviceId"] ?: store.deviceId
+        header["os"] = ctx["os"] ?: "pc"
+        header["appver"] = ctx["appver"] ?: PC_APPVER
+        header["versioncode"] = ctx["versioncode"] ?: "140"
+        header["mobilename"] = ctx["mobilename"] ?: ""
+        header["buildver"] = ctx["buildver"] ?: now.toString().take(10)
+        header["resolution"] = ctx["resolution"] ?: "1920x1080"
+        header["__csrf"] = csrf
+        header["channel"] = ctx["channel"] ?: "netease"
+        header["requestId"] = "${now}_${Random.nextInt(1000).toString().padStart(4, '0')}"
+        ctx["MUSIC_U"]?.let { header["MUSIC_U"] = it }
+        ctx["MUSIC_A"]?.let { header["MUSIC_A"] = it }
+        return header
+    }
+
+    private fun syncPersisted() {
+        store.cookie = cookies.combinedValue()
+    }
+
+    /** Lazy anonymous registration (upstream register_anonimous, weapi). */
+    private suspend fun ensureAnonymousIfNeeded() {
+        if (anonymousAttempted || cookies.has("MUSIC_U") || cookies.has("MUSIC_A")) return
+        anonymousAttempted = true
+        runCatching {
+            val deviceId = store.deviceId
+            val username = java.util.Base64.getEncoder().encodeToString(
+                "$deviceId ${NeteaseCrypto.cloudmusicDllEncodeId(deviceId)}".toByteArray(Charsets.UTF_8),
+            )
+            val ctx = cookieContext("/api/register/anonimous", skipAuthCookie = true)
+            val payload = obj("username" to username).apply {
+                put("csrf_token", ctx["__csrf"] ?: "")
+                put("e_r", false)
+            }
+            val w = NeteaseCrypto.weapi(payload.toString())
+            val res = execute(
+                hosts.music + "/weapi/register/anonimous",
+                "params=${enc(w.params)}&encSecKey=${w.encSecKey}",
+                mapOf(
+                    "Referer" to hosts.music,
+                    "User-Agent" to WEAPI_UA,
+                    "Cookie" to ctx.toCookieHeader(),
+                ),
+            )
+            val fromBody = res.body.optString("cookie")
+            if (fromBody.isNotBlank()) cookies.seed(fromBody)
+            syncPersisted()
+        }
+    }
+
+    /** One encrypted POST to NetEase; returns the upstream body + Set-Cookies. */
+    private suspend fun post(
+        uri: String,
+        data: JSONObject,
+        crypto: Crypto,
+        skipAuthCookie: Boolean = false,
+    ): DirectResponse = withContext(Dispatchers.IO) {
+        ensureAnonymousIfNeeded()
+        val ctx = cookieContext(uri, skipAuthCookie)
+        val csrf = ctx["__csrf"] ?: ""
+        val (url, body, headers) = when (crypto) {
+            Crypto.WEAPI -> {
+                data.put("csrf_token", csrf)
+                data.put("e_r", false)
+                val w = NeteaseCrypto.weapi(data.toString())
+                Triple(
+                    hosts.music + "/weapi/" + uri.removePrefix("/api/"),
+                    "params=${enc(w.params)}&encSecKey=${w.encSecKey}",
+                    mapOf(
+                        "Referer" to hosts.music,
+                        "User-Agent" to WEAPI_UA,
+                        "Cookie" to ctx.toCookieHeader(),
+                    ),
+                )
+            }
+            Crypto.EAPI -> {
+                val header = eapiHeader(ctx, csrf)
+                data.put("header", JSONObject(header))
+                data.put("e_r", false)
+                val e = NeteaseCrypto.eapi(uri, data.toString())
+                Triple(
+                    hosts.api + "/eapi/" + uri.removePrefix("/api/"),
+                    "params=${enc(e.params)}",
+                    mapOf(
+                        "User-Agent" to EAPI_UA,
+                        "Cookie" to header.toCookieHeader(),
+                    ),
+                )
+            }
+        }
+        execute(url, body, headers)
+    }
+
+    private fun execute(url: String, body: String, headers: Map<String, String>): DirectResponse {
+        val req = Request.Builder().url(url)
+            .post(body.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .build()
         val res = try {
             http.newCall(req).execute()
         } catch (e: IOException) {
             throw ApiException(ApiErrorKind.Unreachable, message = e.message)
         }
         res.use {
-            val body = it.body?.string().orEmpty()
+            val respBody = it.body?.string().orEmpty()
+            val setCookies = it.headers("Set-Cookie").mapNotNull { parseSetCookie(it) }
+            if (setCookies.isNotEmpty()) {
+                cookies.merge(setCookies)
+                syncPersisted()
+            }
             if (!it.isSuccessful) {
                 if (it.code == 460 || it.code == 503) throw ApiException(ApiErrorKind.RateLimited, httpCode = it.code)
                 throw ApiException(ApiErrorKind.HttpStatus, httpCode = it.code)
             }
             val json = try {
-                JSONObject(body)
+                JSONObject(respBody)
             } catch (e: Exception) {
-                throw ApiException(ApiErrorKind.Unknown, message = "服务返回了无法解析的内容")
+                throw ApiException(ApiErrorKind.Unknown, message = "网易返回了无法解析的内容")
             }
             if (json.optInt("code") == 301) throw ApiException(ApiErrorKind.NotLoggedIn, apiCode = 301)
-            json
+            return DirectResponse(json, setCookies)
         }
+    }
+
+    private fun parseSetCookie(raw: String): StoredCookie? {
+        val parts = raw.split(";").map { it.trim() }
+        if (parts.isEmpty()) return null
+        val kv = parts[0].split("=", limit = 2)
+        if (kv.size != 2 || kv[0].isBlank()) return null
+        var expiresAt = System.currentTimeMillis() + 30L * 24 * 3600 * 1000
+        for (attr in parts.drop(1)) {
+            val akv = attr.split("=", limit = 2)
+            when (akv[0].lowercase(Locale.US)) {
+                "max-age" -> akv.getOrNull(1)?.toLongOrNull()?.let {
+                    expiresAt = System.currentTimeMillis() + it * 1000
+                }
+                "expires" -> akv.getOrNull(1)?.let { date ->
+                    runCatching {
+                        SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US)
+                            .parse(date)?.time
+                    }.getOrNull()?.let { expiresAt = it }
+                }
+            }
+        }
+        return StoredCookie(kv[0].trim(), kv[1].trim(), expiresAt)
     }
 
     private fun JSONObject.arr(key: String): JSONArray = if (has(key) && !isNull(key)) getJSONArray(key) else JSONArray()
@@ -154,99 +331,161 @@ class NeteaseClient(private val store: ApiSettings) : NeteaseApi {
         return Playlist(o.optLong("id"), o.optString("name"), o.optString("coverImgUrl", o.optString("picUrl")), o.optInt("trackCount"), creator?.optString("nickname") ?: "", creator?.optLong("userId") ?: 0, o.optBoolean("subscribed"), o.optLong("playCount"), o.optString("description"))
     }
 
-    override suspend fun qrKey(): String = get("/login/qr/key?timestamp=${System.currentTimeMillis()}", skipAuthCookie = true).getJSONObject("data").getString("unikey")
+    override suspend fun qrKey(): String =
+        post("/api/login/qrcode/unikey", obj("type" to 3), Crypto.EAPI, skipAuthCookie = true)
+            .body.getString("unikey")
+
     override suspend fun qrCreate(key: String): String {
-        val img = get("/login/qr/create?key=${enc(key)}&qrimg=true", skipAuthCookie = true).getJSONObject("data").optString("qrimg")
-        if (img.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = "二维码生成失败，请检查 API 服务版本后重试")
-        return img
+        // QR image is generated in-app now (upstream login_qr_create only
+        // built this URL and rendered it with the `qrcode` npm package).
+        val matrix = QRCodeWriter().encode(qrLoginUrl(key), BarcodeFormat.QR_CODE, 512, 512)
+        val bmp = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        for (x in 0 until 512) for (y in 0 until 512) {
+            bmp.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+        }
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        return "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(out.toByteArray())
     }
+
     override suspend fun qrCheck(key: String): QrCheck {
-        val o = get("/login/qr/check?key=${enc(key)}&timestamp=${System.currentTimeMillis()}", skipAuthCookie = true)
+        val o = post(
+            "/api/login/qrcode/client/login",
+            obj("key" to key, "type" to 3),
+            Crypto.EAPI,
+            skipAuthCookie = true,
+        ).body
         val code = o.optInt("code")
         if (code == 803) {
             // The credential may arrive in the body, in Set-Cookie, or both.
             // A "success" with no credential anywhere is a failure, not a login.
             var cookie = o.optString("cookie")
-            if (cookie.isBlank()) cookie = jar.loginCookiesFor(apiHost().host)
+            if (cookie.isBlank()) cookie = cookies.loginValue()
             if (cookie.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = "登录成功但未拿到凭证，请重新扫码")
-            // Merge the body credential into the jar so later requests carry
-            // both it and the NMTID the key step set (neither may be dropped),
-            // then persist the combined set — not the raw body string.
-            val host = apiHost().host
-            jar.seedFromPersisted(host, cookie)
-            store.cookie = jar.cookiesFor(host).ifBlank { cookie }
+            // Merge the body credential into the store so later requests carry
+            // both it and the NMTID the key step set (neither may be dropped).
+            if (o.optString("cookie").isNotBlank()) cookies.seed(o.optString("cookie"))
+            store.cookie = cookies.combinedValue().ifBlank { cookie }
             return QrCheck(code, store.cookie, o.optString("message"))
         }
         return QrCheck(code, "", o.optString("message"))
     }
+
     override fun clearSession() {
-        jar.clear()
+        cookies.clear()
         store.cookie = ""
     }
+
     override suspend fun loginStatus(): UserProfile? {
-        // /login/status is the authority: data.code 200 = logged in, 301 = expired.
-        val status = get("/login/status")
-        if (status.optJSONObject("data")?.optInt("code") != 200) throw ApiException(ApiErrorKind.NotLoggedIn, apiCode = 301)
-        val profile = get("/user/account").optJSONObject("profile") ?: return null
+        // /api/w/nuser/account/get is the authority: code 200 = logged in.
+        val status = post("/api/w/nuser/account/get", obj(), Crypto.WEAPI).body
+        if (status.optInt("code") != 200) throw ApiException(ApiErrorKind.NotLoggedIn, apiCode = 301)
+        val profile = post("/api/nuser/account/get", obj(), Crypto.WEAPI).body.optJSONObject("profile") ?: return null
         return UserProfile(profile.optLong("userId"), profile.optString("nickname"), profile.optString("avatarUrl"))
     }
+
     override suspend fun refreshLogin() {
-        runCatching { get("/login/refresh") }
+        runCatching { post("/api/login/token/refresh", obj(), Crypto.EAPI) }
     }
+
     override suspend fun apiHealth(): ApiHealth {
-        val host = try {
-            apiHost().host
-        } catch (e: ApiException) {
-            return ApiHealth.InvalidAddress
-        }
         return try {
-            val status = get("/login/status")
-            val loggedIn = status.optJSONObject("data")?.optInt("code") == 200
-            val nickname = if (loggedIn) runCatching { get("/user/account").optJSONObject("profile")?.optString("nickname") }.getOrNull() else null
+            val status = post("/api/w/nuser/account/get", obj(), Crypto.WEAPI).body
+            val loggedIn = status.optInt("code") == 200
+            val nickname = if (loggedIn) runCatching {
+                post("/api/nuser/account/get", obj(), Crypto.WEAPI).body.optJSONObject("profile")?.optString("nickname")
+            }.getOrNull() else null
             ApiHealth.Connected(loggedIn, nickname?.ifBlank { null })
         } catch (e: ApiException) {
             when (e.kind) {
                 ApiErrorKind.NotLoggedIn -> ApiHealth.Connected(false, null)
-                ApiErrorKind.InvalidAddress -> ApiHealth.InvalidAddress
                 else -> ApiHealth.Unreachable(apiErrorText(e))
             }
         } catch (e: Exception) {
             ApiHealth.Unreachable(e.message ?: "未知错误")
         }
     }
-    override suspend fun banners(): List<BannerItem> = get("/banner?type=2").arr("banners").let { a -> (0 until a.length()).map { val o = a.getJSONObject(it); BannerItem(o.optString("pic"), o.optString("typeTitle"), o.optLong("targetId")) } }
-    override suspend fun personalized(limit: Int): List<Playlist> = get("/personalized?limit=$limit").arr("result").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
-    override suspend fun newSongs(): List<Song> = get("/personalized/newsong").arr("result").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it).optJSONObject("song") ?: a.getJSONObject(it)) } }
-    override suspend fun dailySongs(): List<Song> = runCatching { get("/recommend/songs").getJSONObject("data").arr("dailySongs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } } }.getOrDefault(emptyList())
-    override suspend fun search(keywords: String, type: Int, limit: Int): List<Song> = get("/cloudsearch?keywords=${enc(keywords)}&type=$type&limit=$limit").getJSONObject("result").arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
-    override suspend fun searchPlaylists(keywords: String): List<Playlist> = get("/cloudsearch?keywords=${enc(keywords)}&type=1000&limit=20").getJSONObject("result").arr("playlists").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
-    override suspend fun userPlaylists(uid: Long): List<Playlist> = get("/user/playlist?uid=$uid&limit=100").arr("playlist").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
+
+    override suspend fun banners(): List<BannerItem> =
+        post("/api/v2/banner/get", obj("clientType" to "iphone"), Crypto.EAPI)
+            .body.arr("banners").let { a -> (0 until a.length()).map { val o = a.getJSONObject(it); BannerItem(o.optString("pic"), o.optString("typeTitle"), o.optLong("targetId")) } }
+
+    override suspend fun personalized(limit: Int): List<Playlist> =
+        post("/api/personalized/playlist", obj("limit" to limit, "total" to true, "n" to 1000), Crypto.WEAPI)
+            .body.arr("result").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
+
+    override suspend fun newSongs(): List<Song> =
+        post("/api/personalized/newsong", obj("type" to "recommend", "limit" to 10, "areaId" to 0), Crypto.WEAPI)
+            .body.arr("result").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it).optJSONObject("song") ?: a.getJSONObject(it)) } }
+
+    override suspend fun dailySongs(): List<Song> = runCatching {
+        post("/api/v3/discovery/recommend/songs", obj(), Crypto.WEAPI)
+            .body.getJSONObject("data").arr("dailySongs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+    }.getOrDefault(emptyList())
+
+    override suspend fun search(keywords: String, type: Int, limit: Int): List<Song> =
+        post("/api/cloudsearch/pc", obj("s" to keywords, "type" to type, "limit" to limit, "offset" to 0, "total" to true), Crypto.EAPI)
+            .body.getJSONObject("result").arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+
+    override suspend fun searchPlaylists(keywords: String): List<Playlist> =
+        post("/api/cloudsearch/pc", obj("s" to keywords, "type" to 1000, "limit" to 20, "offset" to 0, "total" to true), Crypto.EAPI)
+            .body.getJSONObject("result").arr("playlists").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
+
+    override suspend fun userPlaylists(uid: Long): List<Playlist> =
+        post("/api/user/playlist", obj("uid" to uid, "limit" to 100, "offset" to 0, "includeVideo" to true), Crypto.WEAPI)
+            .body.arr("playlist").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
+
     override suspend fun playlistDetail(id: Long): Pair<Playlist, List<Song>> {
-        val o = get("/playlist/detail?id=$id"); val pl = parsePlaylist(o.getJSONObject("playlist"))
+        val o = post("/api/v6/playlist/detail", obj("id" to id, "n" to 100000, "s" to 8), Crypto.EAPI).body
+        val pl = parsePlaylist(o.getJSONObject("playlist"))
         val tracks = o.getJSONObject("playlist").arr("tracks").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
         return pl to tracks
     }
-    override suspend fun playlistCatlist(): List<String> = get("/playlist/catlist").arr("sub").let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } }
+
+    override suspend fun playlistCatlist(): List<String> =
+        post("/api/playlist/catalogue", obj(), Crypto.EAPI)
+            .body.arr("sub").let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } }
+
     override suspend fun userDetail(uid: Long): UserProfile {
-        val o = get("/user/detail?uid=$uid"); val p = o.getJSONObject("profile")
+        val o = post("/api/v1/user/detail/$uid", obj(), Crypto.WEAPI).body
+        val p = o.getJSONObject("profile")
         return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"))
     }
-    override suspend fun likeList(uid: Long): List<Long> = get("/likelist?uid=$uid").arr("ids").let { a -> (0 until a.length()).map { a.getLong(it) } }
+
+    override suspend fun likeList(uid: Long): List<Long> =
+        post("/api/song/like/get", obj("uid" to uid), Crypto.EAPI)
+            .body.arr("ids").let { a -> (0 until a.length()).map { a.getLong(it) } }
+
     override suspend fun like(id: Long, like: Boolean) {
-        val code = get("/like?id=$id&like=$like").optInt("code")
+        val code = post(
+            "/api/radio/like",
+            obj("alg" to "itembased", "trackId" to id, "like" to like, "time" to "3"),
+            Crypto.WEAPI,
+        ).body.optInt("code")
         if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "喜欢失败（code $code）")
     }
+
     override suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> {
-        val o = get("/user/record?uid=$uid&type=${if (weekly) 1 else 0}"); val a = o.arr(if (weekly) "weekData" else "allData")
+        val o = post("/api/v1/play/record", obj("uid" to uid, "type" to if (weekly) 1 else 0), Crypto.WEAPI).body
+        val a = o.arr(if (weekly) "weekData" else "allData")
         return (0 until a.length()).map { val it = a.getJSONObject(it); RecordItem(parseSong(it.getJSONObject("song")), it.optInt("playCount"), it.optInt("score")) }
     }
-    override suspend fun recentSongs(): List<Song> = runCatching { get("/history/recent/songs?limit=30").getJSONObject("data").arr("list").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it).getJSONObject("data")) } } }.getOrDefault(emptyList())
+
+    override suspend fun recentSongs(): List<Song> = runCatching {
+        post("/api/discovery/recommend/songs/history/recent", obj(), Crypto.WEAPI)
+            .body.getJSONObject("data").arr("list").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it).getJSONObject("data")) } }
+    }.getOrDefault(emptyList())
+
     override suspend fun songUrl(id: Long): SongUrlResult {
         // standard first, exhigh as fallback; a blank URL means no playable
         // copy at that level (no copyright / VIP), not a network error.
         var last = SongUrlResult(null)
         for (level in listOf("standard", "exhigh")) {
-            val d = get("/song/url/v1?id=$id&level=$level").arr("data").optJSONObject(0) ?: continue
+            val d = post(
+                "/api/song/enhance/player/url/v1",
+                obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"),
+                Crypto.EAPI,
+            ).body.arr("data").optJSONObject(0) ?: continue
             val url = d.optString("url").ifBlank { null }
             val fee = d.optInt("fee")
             val trialEnd = d.optJSONObject("freeTrialInfo")?.optInt("end")
@@ -256,14 +495,31 @@ class NeteaseClient(private val store: ApiSettings) : NeteaseApi {
         }
         return last
     }
-    override suspend fun songDetail(ids: List<Long>): List<Song> = if (ids.isEmpty()) emptyList() else get("/song/detail?ids=${ids.joinToString(",")}").arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+
+    override suspend fun songDetail(ids: List<Long>): List<Song> =
+        if (ids.isEmpty()) emptyList() else post(
+            "/api/v3/song/detail",
+            obj("c" to "[" + ids.joinToString(",") { """{"id":$it}""" } + "]"),
+            Crypto.WEAPI,
+        ).body.arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+
     override suspend fun lyric(id: Long): LyricPayload {
-        // /lyric/new can answer HTTP 200 with code -460 (rate-limited) or with
+        // /lyric/v1 can answer HTTP 200 with code -460 (rate-limited) or with
         // no lyric at all — that is a miss, not a success: fall back to /lyric.
-        val first = runCatching { get("/lyric/new?id=$id") }.getOrNull()
+        val first = runCatching {
+            post(
+                "/api/song/lyric/v1",
+                obj("id" to id, "cp" to false, "tv" to 0, "lv" to 0, "rv" to 0, "kv" to 0, "yv" to 0, "ytv" to 0, "yrv" to 0),
+                Crypto.EAPI,
+            ).body
+        }.getOrNull()
         val payload = first?.let { o -> LyricPayload(o.optJSONObject("yrc")?.optString("lyric"), o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric")) }
         if (payload != null && (!payload.yrc.isNullOrBlank() || !payload.lrc.isNullOrBlank())) return payload
-        val o = get("/lyric?id=$id")
+        val o = post(
+            "/api/song/lyric",
+            obj("id" to id, "tv" to -1, "lv" to -1, "rv" to -1, "kv" to -1, "_nmclfl" to 1),
+            Crypto.EAPI,
+        ).body
         return LyricPayload(null, o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric"))
     }
 }
