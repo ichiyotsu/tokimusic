@@ -25,7 +25,7 @@ assets.directories.add("../tokiui/tokens")
 - 形状和字阶：Material 默认值（`Shapes()`、`Typography()`）。文字大小用 sp，跟随系统字体缩放。不把 `referenceSizeSp` 写成 `Text` 的 `fontSize`。
 - 字体：拉丁文 Inter，汉字用思源黑体（包内文件是官方 Noto Sans SC）。标题、标签和强调句是粗体（wght 700），正文和辅助说明是常规字重（wght 400）。不再使用 Google Sans，也不再用 PingFang / 微软雅黑作为 Android 指引。
 
-`minSdk` 是 **36**（Android 16+），与 TokiStudio 的 TokiUI Android 目标一致。`targetSdk` 36，`compileSdk` 37。应用 ID 仍是 `com.tokimusic.app`，`versionName` 是 `0.1.3`。
+`minSdk` 是 **36**（Android 16+），与 TokiStudio 的 TokiUI Android 目标一致。`targetSdk` 36，`compileSdk` 37。应用 ID 仍是 `com.tokimusic.app`，`versionName` 是 `0.1.4`。
 
 ### 导航与材质
 
