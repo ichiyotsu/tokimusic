@@ -7,30 +7,23 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.com
 // env vars the release build falls back to the debug key so it always compiles.
 val releaseKeystore: String? = System.getenv("TOKIMUSIC_KEYSTORE")
 
-// TokiUI is the design source of truth (git submodule at the repository root, pinned to the 0.2.0-b1 spec).
-// Paths match docs/复用.md: Kotlin adapters and token JSON are referenced, not copied.
-val tokiUiDir = rootProject.file("../TokiUI")
-val tokiTokens = tokiUiDir.resolve("tokens/tokiui.semantic.tokens.json")
-val tokiFonts = tokiUiDir.resolve("tokistudio/android/app/src/main/res/font")
-check(tokiTokens.isFile && tokiFonts.resolve("inter.ttf").isFile && tokiFonts.resolve("noto_sans_sc.ttf").isFile) {
-    "TokiUI submodule is missing at ${tokiUiDir.absolutePath}. From the repository root run: git submodule update --init --recursive"
+// TokiUI is the design source of truth. The parser + token JSON are snapshotted
+// under android/tokiui/ (same idea as TokiDiscover) because this public repo
+// cannot see the private TokiUI checkout in CI. Fonts live in src/main/res/font.
+val tokiSnapshotDir = rootProject.file("tokiui")
+val tokiTokens = tokiSnapshotDir.resolve("tokens/tokiui.semantic.tokens.json")
+check(tokiTokens.isFile) {
+    "TokiUI snapshot is missing at ${tokiSnapshotDir.absolutePath} (see android/tokiui/SYNC.md)"
 }
 
 val generatedTokiRes = layout.buildDirectory.dir("generated/tokiuiRes")
 generatedTokiRes.get().asFile.mkdirs()
 
-val syncTokiUiResources = tasks.register<Copy>("syncTokiUiResources") {
+val syncTokiUiResources = tasks.register("syncTokiUiResources") {
     group = "tokiui"
-    description = "Reference TokiUI fonts and write the launcher color from semantic color.seed."
-    from(tokiFonts) {
-        include("inter.ttf", "noto_sans_sc.ttf")
-        into("font")
-    }
-    doFirst {
-        generatedTokiRes.get().asFile.resolve("font/google_sans_flex.ttf").delete()
-    }
-    into(generatedTokiRes)
+    description = "Write the launcher color from semantic color.seed."
     inputs.file(tokiTokens)
+    outputs.dir(generatedTokiRes)
     doLast {
         val seed = Regex(""""seed"\s*:\s*"(#[0-9A-Fa-f]{6})"""")
             .find(tokiTokens.readText())
@@ -77,8 +70,10 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets.named("main") {
-        kotlin.directories.add("../../TokiUI/platforms/android/src/main/kotlin")
-        assets.directories.add("../../TokiUI/tokens")
+        // Official TokiUI parser + token JSON, snapshotted under android/tokiui
+        // because this public repo cannot see the private TokiUI checkout in CI.
+        kotlin.directories.add("../tokiui/src/main/kotlin")
+        assets.directories.add("../tokiui/tokens")
         res.directories.add(generatedTokiRes.get().asFile.absolutePath)
     }
 }

@@ -2,7 +2,7 @@
 
 TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android 这一版是 **0.1.2**，Windows、iOS 与 iPadOS 仍是 **0.1.0**——各端版本号独立更新、分别发布（见 TokiUI 规范）。其中 Android 已正式发布（见仓库的 GitHub Release），iOS / Windows 尚未正式发布。
 
-应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（仓库根目录的 submodule `TokiUI/`，语义规范 0.2.0-b1；Android 设计对齐 TokiStudio 0.1.10）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
+应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（`android/tokiui/` 快照，语义规范 0.2.0-b1；Android 设计对齐 TokiStudio 0.1.10）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
 
 ## 功能
 
@@ -25,10 +25,9 @@ Android 16 及以上（`minSdk` 36，与 TokiUI / TokiStudio 的 Android 目标�
 
 ### 工程与构建
 
-工程在 `android/`，用 Kotlin、Jetpack Compose 和 Material 3 Expressive，图片用 Coil，网络用 OkHttp，播放用 Media3（ExoPlayer）。设计 token 与 Android 语义解析来自 submodule `TokiUI/`（见 `android/README.md`），不在本仓库再抄一份色板。底栏在玻璃模糊打开时用 Haze 采样窗口里已经画好的像素。需要 JDK 17 和 Android SDK（platform android-37、build-tools 37.0.0）。首次构建前在仓库根执行 `git submodule update --init --recursive`。
+工程在 `android/`，用 Kotlin、Jetpack Compose 和 Material 3 Expressive，图片用 Coil，网络用 OkHttp，播放用 Media3（ExoPlayer）。设计 token 与 Android 语义解析来自 `android/tokiui/` 快照（见 `android/README.md` 和 `android/tokiui/SYNC.md`），不在本仓库再抄一份色板。底栏在玻璃模糊打开时用 Haze 采样窗口里已经画好的像素。需要 JDK 17 和 Android SDK（platform android-37、build-tools 37.0.0）。克隆下来直接就能构建，不用拉子模块。
 
 ```bash
-git submodule update --init --recursive
 cd android
 bash ./gradlew :app:testDebugUnitTest
 bash ./gradlew :app:assembleDebug
@@ -115,14 +114,14 @@ App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://12
 ## 验证状态
 
 - Windows 共享层：已在本机（Linux、.NET 8 SDK 8.0.428）真实编译通过，产物 `TokiMusic.Core.dll`；xUnit 测试 4 个全部通过（YRC 解析 3 个 + 二维码 base64 解码 1 个；本机虚拟机的回环连接会污染 `dotnet test` 的 vstest 协议，实际是用 xunit console runner 进程内执行验证的；在普通机器上直接 `dotnet test` 即可）。
-- Android：TokiUI 这次改动已在本机跑过 `./gradlew :app:testDebugUnitTest` 和 `./gradlew :app:assembleDebug`（Gradle 9.6.0，compileSdk 37，minSdk 36）。需要先 `git submodule update --init --recursive` 拉下 `TokiUI/`。CI 见 `.github/workflows/android.yml`，私有 submodule 要用 secret `TOKIUI_READ_TOKEN`。
+- Android：TokiUI 这次改动已在本机跑过 `./gradlew :app:testDebugUnitTest` 和 `./gradlew :app:assembleDebug`（Gradle 9.6.0，compileSdk 37，minSdk 36）。CI 见 `.github/workflows/android.yml`，不用配任何 secret。
 - iOS：共享包 `TokiMusicCore` 已在本机用 Linux 版 Swift 6.0.3 真实编译通过，XCTest 2 个全部通过（期间修掉了 `YrcParser.swift` 里 3 处真实的编译错误：元组下标访问、字符串索引类型、复杂表达式拆分）；应用本体的 SwiftUI 源码只做了语法解析检查，未经 Xcode 编译，首次真实编译以 GitHub Actions 的 iOS workflow 结果为准（workflow 文件按上面说明经网页端添加后生效）。Xcode 工程已补齐：完整的 project.pbxproj（源码引用、本地包依赖、共享 scheme TokiMusic）、Assets.xcassets（1024 AppIcon 与 Matcha AccentColor）、未签名 IPA 脚本。Windows 本体的二维码展示与图标同理：代码与资源已备好，但 WinUI 本体未经 Windows 编译验证。
 
 ## 目录
 
 ```
 android/   Kotlin Compose 工程（应用 ID com.tokimusic.app），设计引用 TokiUI
-TokiUI/    TokiUI submodule（语义规范 0.2.0-b1），Android 的 token 与语义解析
+android/tokiui/  TokiUI 快照（语义规范 0.2.0-b1），Android 的 token 与语义解析
 ios/       SwiftUI 工程 + TokiMusicCore Swift Package（界面尚未迁到 TokiUI）
 windows/   WinUI 3 工程（界面尚未迁到 TokiUI）
 docs/      DESIGN.md（Android = TokiUI；iOS/Windows 仍是上一套说明）/ API.md

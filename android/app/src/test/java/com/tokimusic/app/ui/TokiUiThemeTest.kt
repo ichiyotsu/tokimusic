@@ -94,10 +94,11 @@ class TokiUiThemeTest {
 
     private fun read(name: String): String {
         val file = listOf(
+            File("../tokiui/tokens/$name"),
             File("../../TokiUI/tokens/$name"),
             File("../TokiUI/tokens/$name"),
             File("TokiUI/tokens/$name"),
-        ).firstOrNull { it.isFile } ?: error("找不到 $name。请在仓库根目录执行 git submodule update --init --recursive")
+        ).firstOrNull { it.isFile } ?: error("找不到 $name。快照在 android/tokiui/tokens/，见 android/tokiui/SYNC.md")
         return file.readText()
     }
 }

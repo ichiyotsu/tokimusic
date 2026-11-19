@@ -8,7 +8,7 @@ import com.tokimusic.app.R
 
 /**
  * Latin is Inter. Chinese is Source Han Sans, bundled as official Noto Sans SC.
- * Both files are copied from the TokiUI submodule (spec 0.2.0-b1) at build time.
+ * Both files are committed in src/main/res/font (spec 0.2.0-b1, see android/tokiui/SYNC.md).
  * Titles and labels use wght 700. Body and captions use wght 400.
  */
 private fun variableFonts(latin: Int, weight: FontWeight): List<Font> {
