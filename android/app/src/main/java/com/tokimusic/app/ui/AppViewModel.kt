@@ -181,7 +181,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    _qrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查 API 服务"
+                    _qrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查网络后重试"
                     return@launch
                 }
             }
@@ -196,5 +196,4 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
         _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); refreshHome()
     }
-    fun setApiBase(url: String) { store.apiBase = url; refreshSession() }
 }

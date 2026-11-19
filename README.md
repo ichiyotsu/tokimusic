@@ -2,18 +2,18 @@
 
 TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android 这一版是 **0.1.3**，Windows、iOS 与 iPadOS 仍是 **0.1.0**——各端版本号独立更新、分别发布（见 TokiUI 规范）。其中 Android 已正式发布（见仓库的 GitHub Release），iOS / Windows 尚未正式发布。
 
-应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（`android/tokiui/` 快照，语义规范 0.2.0-b1；Android 设计对齐 TokiStudio 0.1.10）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
+Android 直连网易云服务器，不用自备接口服务（见下面的「API 服务」）；iOS 与 Windows 仍需自备兼容 NeteaseCloudMusicApi 的服务。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（`android/tokiui/` 快照，语义规范 0.2.0-b1；Android 设计对齐 TokiStudio 0.1.10）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
 
 ## 功能
 
 - 三页结构：主页、歌单、我的。Android 窄窗口是悬浮胶囊底栏，宽窗口（≥ 840dp）是 NavigationRail；选中项是实色药丸并展开文字。iOS / Windows 仍是上一套底栏说明
 - 主页：顶部胶囊搜索框，右上角是头像，未登录显示默认头像、已登录显示真实头像，点击进入二维码登录；下面是 Banner、每日推荐、新歌速递和推荐歌单；搜索支持单曲、歌手、歌单
 - 歌单：按「我喜欢的音乐（置顶）、我创建的、我收藏的」分组，分组可折叠并带数量，点进歌单看曲目列表
-- 我的：头像、昵称、等级和关注 / 粉丝；统计有收藏歌曲数、听歌时长、歌单数，另有我的收藏、最近播放、听歌排行入口；设置里可以改 API 地址和主题
-- 二维码登录：走 `/login/qr/key`、`/login/qr/create`、`/login/qr/check` 轮询；`/login/qr/create` 返回的 base64 二维码图三端都已实现解码展示（Android 用 BitmapFactory、iOS 用 Data(base64Encoded:) 转 UIImage、Windows 用 BitmapImage + 内存流），登录成功后在本机保存 cookie
+- 我的：头像、昵称、等级和关注 / 粉丝；统计有收藏歌曲数、听歌时长、歌单数，另有我的收藏、最近播放、听歌排行入口；设置里可以测连通性（直连网易云）和改主题
+- 二维码登录：Android 直连网易（`/login/qrcode/unikey`、`/login/qrcode/client/login` 轮询，二维码在 App 内生成）；登录成功后在本机保存 cookie；iOS / Windows 仍走自建服务，`/login/qr/create` 返回的 base64 二维码图三端都已实现解码展示（Android 用 BitmapFactory、iOS 用 Data(base64Encoded:) 转 UIImage、Windows 用 BitmapImage + 内存流）
 - 播放：底部上方有 MiniPlayer（封面、歌名、播放 / 暂停、进度），点开是全屏播放页
 - 歌词页：**歌词居左**，整列左对齐；有逐字歌词时按网易云 YRC 逐字高亮，唱到的字逐个变主色，当前行加粗放大并自动滚动，翻译以小字跟在主行下方、同样居左；没有逐字歌词时回退到 LRC 整行高亮
-- 没有可用的 API 服务时，Android 显示错误与重试，不再用 Demo 数据；iOS / Windows 仍是上一套（待对齐）
+- 连不上网易云时，Android 显示错误与重试，不再用 Demo 数据；iOS / Windows 仍是上一套（待对齐）
 
 ## Android
 
@@ -94,16 +94,21 @@ xcrun swift test --package-path ios/TokiMusicCore
 
 ## API 服务
 
-本 App 不内置网易云官方服务，需要自备兼容 [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) 的服务：
+Android 直连网易云服务器：请求加密（weapi/eapi）是
+[NeteaseCloudMusicApi@4.32.0](https://github.com/Binaryify/NeteaseCloudMusicApi)
+的原生 Kotlin 移植，打开就能用，不用装服务也不用填地址。设置里
+的「测试连接」会明确告诉你是已连通、未登录还是连不上。用到的接口
+清单、加密方式与二维码登录流程在 `docs/API.md`。听歌时长没有现成
+的总时长接口字段，是用 `/user/record` 的记录估算的，界面上会标注来源。
+
+iOS / Windows 仍需自备兼容服务：
 
 ```bash
 npx NeteaseCloudMusicApi@4.32.0   # 默认监听 http://127.0.0.1:3000（钉住经测试的版本，不要用 @latest 裸奔）
 # 或 docker run -d -p 3000:3000 binaryify/netease_cloud_music_api
 ```
 
-App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://127.0.0.1:3000`，模拟器默认 `http://10.0.2.2:3000`）。真机上 127.0.0.1 指的是手机自身，连不上电脑的服务，请填电脑的局域网 IP（例如 `http://192.168.1.10:3000`）；地址旁有「测试连接」按钮，会明确告诉你是已连通、未登录还是连不上。用到的接口清单和二维码登录流程在 `docs/API.md`。听歌时长没有现成的总时长接口字段，是用 `/user/record` 的记录估算的，界面上会标注来源。
-
-无 API 服务或服务不可用时，Android 显示错误页与重试，不再用 Mock 数据展示假内容；iOS / Windows 仍是上一套（待对齐）。登录过期时 Android 会明确提示「登录已过期，请重新扫码登录」，而不是悄悄变回未登录。
+连不上网易云或服务不可用时，Android 显示错误页与重试，不再用 Mock 数据展示假内容；iOS / Windows 仍是上一套（待对齐）。登录过期时 Android 会明确提示「登录已过期，请重新扫码登录」，而不是悄悄变回未登录。
 
 ## 版本号规则
 
@@ -129,4 +134,4 @@ docs/      DESIGN.md（Android = TokiUI；iOS/Windows 仍是上一套说明）/ 
 
 ## 免责声明
 
-第三方非官方应用，与网易、网易云音乐无关。音乐版权归版权方所有。本项目仅供学习交流，需自备 API 服务；请勿用于商业用途或侵犯版权的行为。
+第三方非官方应用，与网易、网易云音乐无关。音乐版权归版权方所有。本项目仅供学习交流（iOS / Windows 需自备 API 服务）；请勿用于商业用途或侵犯版权的行为。

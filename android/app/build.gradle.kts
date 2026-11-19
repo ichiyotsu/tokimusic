@@ -89,7 +89,7 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.material.color.utilities)
     implementation(libs.haze); implementation(libs.haze.blur)
-    implementation(libs.coil.compose); implementation(libs.okhttp)
+    implementation(libs.coil.compose); implementation(libs.okhttp); implementation(libs.zxing.core)
     implementation(libs.media3.exoplayer); implementation(libs.media3.session)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
