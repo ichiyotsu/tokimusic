@@ -24,11 +24,17 @@ import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 
 /**
- * Capsule and title chrome follow TokiStudio at TokiUI 0.1.4.
+ * Capsule and title chrome follow TokiStudio 0.1.10.
  * [HazeInput.Backdrop] samples pixels already drawn in the window.
  * Light frost is a 16% warm dark wash then 46% white. Dark frost is 20% white.
  * Glass off or sampling unavailable: opaque surfaceContainer, and callers add
  * the shared 3dp primary stroke. No second opaque fill on a frosted title.
+ *
+ * 0.1.10 rewrote the scroll-title chip: the frost is ALWAYS on (the old
+ * scroll-overlap reporting, which kept losing the blur on 0.1.7/0.1.8/0.1.9,
+ * is deleted). Size-changing surfaces (nav capsule, title chips) sample from
+ * the content source ([tokiContentGlass]) so the blur never black-edges
+ * during a size animation; fixed-size surfaces keep [tokiGlass].
  */
 @OptIn(ExperimentalHazeApi::class)
 object TokiBlurCapability {
@@ -43,10 +49,31 @@ object TokiBlurCapability {
 fun chromeBlurActive(backdropBlur: Boolean): Boolean =
     backdropBlur && TokiBlurCapability.canSampleInWindow
 
+/**
+ * Fixed-size glass surface (side button, floating toolbar): Haze background
+ * blur when on and sampleable, else opaque surfaceContainer. Frosted glass
+ * also carries a 22% surfaceContainer veil, as in TokiStudio 0.1.10.
+ */
 @Composable
 fun tokiChrome(state: HazeState, backdropBlur: Boolean): Modifier {
     return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiGlass(state)
+        Modifier.tokiGlass(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.22f))
+    } else {
+        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
+    }
+}
+
+/**
+ * Chrome for size-changing surfaces (floating nav capsule): same treatment
+ * as [tokiChrome] (frost + 22% surface veil, opaque fallback), only the
+ * sampling switches to the content source ([tokiContentGlass]) — the capsule
+ * width animates as its label expands, and window-backdrop sampling black-edges
+ * during that size animation while content-source sampling does not.
+ */
+@Composable
+fun tokiContentChrome(state: HazeState, backdropBlur: Boolean): Modifier {
+    return if (chromeBlurActive(backdropBlur)) {
+        Modifier.tokiContentGlass(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.22f))
     } else {
         Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
     }
@@ -88,6 +115,25 @@ fun Modifier.tokiGlass(state: HazeState): Modifier {
     )
 }
 
+/**
+ * Content-source glass: same parameters as [tokiGlass] (radius/tint/fallback/
+ * noise unchanged), only the input changes — [HazeInput.Sources] consumes the
+ * `hazeSource` content root directly. For surfaces whose size animates (nav
+ * capsule, title chips): platform window-background sampling black-edges or
+ * drops out during the size animation; content-source sampling redraws through
+ * Haze and stays complete. (The TokiUI blur ban covers the content-input
+ * mode for navigation; `Sources` is the sanctioned 0.1.10 replacement.)
+ */
+@Composable
+fun Modifier.tokiContentGlass(state: HazeState): Modifier {
+    val dark = LocalDarkTheme.current
+    return hazeBlur(
+        input = HazeInput.Sources(state),
+        style = tokiBlurStyle(dark),
+        performanceMode = HazePerformanceMode.Quality,
+    )
+}
+
 object TokiGlassFade {
     val topFadeExtra: Dp = 56.dp
 }
@@ -120,33 +166,35 @@ object TokiChromeStroke {
 }
 
 /**
- * Scroll title / back chip. Frosted sampling draws only [tokiGlass].
- * Otherwise opaque surfaceContainer plus a 3dp primary stroke.
- * [cover] is 0 when content is not underneath, so nothing is painted.
+ * Scroll title / back chip. TokiStudio 0.1.10: the frost is ALWAYS on — no
+ * scroll reporting, no cover animation. Frosted: content-source glass + a
+ * 24% surfaceContainer veil + a 1dp outlineVariant stroke so the chip reads
+ * on any background. Otherwise opaque surfaceContainer plus a 3dp primary
+ * stroke (same weight as the solid bottom bar).
  */
 @Composable
 fun TokiScrollChipBackdrop(
     shape: Shape,
-    cover: Float,
     backdropBlur: Boolean,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
-    applyBlur: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val frosted = backdropBlur && TokiBlurCapability.canSampleInWindow
-    val canBlur = applyBlur && hazeState != null && cover > 0.01f && frosted
     Box(
         modifier
             .clip(shape)
-            .then(if (canBlur) Modifier.tokiGlass(hazeState) else Modifier)
             .then(
-                if (!frosted && cover > 0f) {
+                if (frosted && hazeState != null) {
+                    Modifier.tokiContentGlass(hazeState)
+                        .background(scheme.surfaceContainer.copy(alpha = 0.24f))
+                        .border(1.dp, scheme.outlineVariant.copy(alpha = 0.45f), shape)
+                } else if (!frosted) {
                     Modifier
-                        .background(scheme.surfaceContainer.copy(alpha = cover))
-                        .border(TokiChromeStroke.width, scheme.primary.copy(alpha = cover), shape)
+                        .background(scheme.surfaceContainer)
+                        .border(TokiChromeStroke.width, scheme.primary, shape)
                 } else {
-                    Modifier
+                    Modifier.background(scheme.surfaceContainer.copy(alpha = 0.24f))
                 },
             ),
     )

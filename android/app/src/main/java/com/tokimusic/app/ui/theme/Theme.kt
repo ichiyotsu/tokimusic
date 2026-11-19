@@ -2,6 +2,7 @@ package com.tokimusic.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
@@ -43,6 +44,12 @@ private fun Typography.withTokiType(family: FontFamily): Typography {
         titleLarge = titleLarge.bold(), titleMedium = titleMedium.bold(), titleSmall = titleSmall.bold(),
         bodyLarge = bodyLarge.regular(), bodyMedium = bodyMedium.regular(), bodySmall = bodySmall.regular(),
         labelLarge = labelLarge.bold(), labelMedium = labelMedium.bold(), labelSmall = labelSmall.bold(),
+        // TokiStudio 0.1.10: the 15 emphasized styles, all Bold like the base scale.
+        displayLargeEmphasized = displayLargeEmphasized.bold(), displayMediumEmphasized = displayMediumEmphasized.bold(), displaySmallEmphasized = displaySmallEmphasized.bold(),
+        headlineLargeEmphasized = headlineLargeEmphasized.bold(), headlineMediumEmphasized = headlineMediumEmphasized.bold(), headlineSmallEmphasized = headlineSmallEmphasized.bold(),
+        titleLargeEmphasized = titleLargeEmphasized.bold(), titleMediumEmphasized = titleMediumEmphasized.bold(), titleSmallEmphasized = titleSmallEmphasized.bold(),
+        bodyLargeEmphasized = bodyLargeEmphasized.bold(), bodyMediumEmphasized = bodyMediumEmphasized.bold(), bodySmallEmphasized = bodySmallEmphasized.bold(),
+        labelLargeEmphasized = labelLargeEmphasized.bold(), labelMediumEmphasized = labelMediumEmphasized.bold(), labelSmallEmphasized = labelSmallEmphasized.bold(),
     )
 }
 
@@ -63,9 +70,13 @@ fun TokiMusicTheme(
     }
     // Touch the capability object before any Haze node is created.
     TokiBlurCapability.canSampleInWindow
-    CompositionLocalProvider(LocalDarkTheme provides dark) {
+    val colorScheme = resolveColorScheme(tokens, dark, useDynamicColor, seedIndex)
+    // MaterialExpressiveTheme does not provide LocalContentColor: bare Text()
+    // would default to black and vanish on dark backgrounds. Provide the
+    // theme's onBackground here, as TokiStudio 0.1.10-aligned apps do.
+    CompositionLocalProvider(LocalDarkTheme provides dark, LocalContentColor provides colorScheme.onBackground) {
         MaterialExpressiveTheme(
-            colorScheme = resolveColorScheme(tokens, dark, useDynamicColor, seedIndex),
+            colorScheme = colorScheme,
             shapes = Shapes(),
             motionScheme = if (reduceMotion) MotionScheme.standard() else MotionScheme.expressive(),
             typography = Typography().withTokiType(InterFamily),

@@ -82,6 +82,8 @@ import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.player.PlayerState
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.TokiScrollBackChip
+import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
 import com.tokimusic.app.ui.pressScale
@@ -94,7 +96,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
     LaunchedEffect(state.index, state.isPlaying) { while (true) { pos = vm.player.currentPosition(); delay(500) } }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     Card(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpen),
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp).clickable(onClick = onOpen),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
@@ -139,7 +141,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean) {
     val state by vm.player.state.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
     val likedIds by vm.likedIds.collectAsState()
@@ -163,6 +165,14 @@ fun PlayerScreen(vm: AppViewModel) {
     val scheme = MaterialTheme.motionScheme
     Box(Modifier.fillMaxSize()) {
         BlurredCoverBackground(song.picUrl)
+        // 0.1.10: every second-level page gets a floating back chip, even the
+        // immersive player — 56dp glass circle, top-left over the cover.
+        Box(
+            Modifier.fillMaxSize().statusBarsPadding().padding(start = 24.dp, top = 4.dp),
+            contentAlignment = Alignment.TopStart,
+        ) {
+            TokiScrollBackChip(backdropBlur, hazeState, onClick = onBack)
+        }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AnimatedContent(
@@ -377,7 +387,7 @@ private fun PlainArtButton(icon: ImageVector, label: String, onClick: () -> Unit
 @Composable
 private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("播放队列", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+        Text("播放队列", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
         LazyColumn(Modifier.fillMaxHeight(0.6f)) {
             itemsIndexed(state.queue) { i, song ->
                 Box(
@@ -396,7 +406,7 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
 @Composable
 private fun MoreSheet(song: Song, liked: Boolean, onToggleLike: () -> Unit, onPlayNext: () -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {

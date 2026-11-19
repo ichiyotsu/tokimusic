@@ -2,7 +2,7 @@
 
 TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki 系列成员。Android 这一版是 **0.1.2**，Windows、iOS 与 iPadOS 仍是 **0.1.0**——各端版本号独立更新、分别发布（见 TokiUI 规范）。其中 Android 已正式发布（见仓库的 GitHub Release），iOS / Windows 尚未正式发布。
 
-应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（仓库根目录的 submodule `TokiUI/`，钉在 `v0.1.4`）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
+应用本身不内置网易云的服务，需要自己准备一个兼容 NeteaseCloudMusicApi 的接口服务（见下面的「API 服务」）。Android 界面以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为标准（仓库根目录的 submodule `TokiUI/`，语义规范 0.2.0-b1；Android 设计对齐 TokiStudio 0.1.10）。iOS 与 Windows 这一版还没有迁过去，仍按 `docs/DESIGN.md` 里标明的上一套说明。
 
 ## 功能
 
@@ -13,7 +13,7 @@ TokiMusic 是一款基于网易云音乐接口的第三方音乐应用，Toki �
 - 二维码登录：走 `/login/qr/key`、`/login/qr/create`、`/login/qr/check` 轮询；`/login/qr/create` 返回的 base64 二维码图三端都已实现解码展示（Android 用 BitmapFactory、iOS 用 Data(base64Encoded:) 转 UIImage、Windows 用 BitmapImage + 内存流），登录成功后在本机保存 cookie
 - 播放：底部上方有 MiniPlayer（封面、歌名、播放 / 暂停、进度），点开是全屏播放页
 - 歌词页：**歌词居左**，整列左对齐；有逐字歌词时按网易云 YRC 逐字高亮，唱到的字逐个变主色，当前行加粗放大并自动滚动，翻译以小字跟在主行下方、同样居左；没有逐字歌词时回退到 LRC 整行高亮
-- 没有可用的 API 服务时，三端都用内置 Mock 数据展示界面并明确标注「Demo 数据」，不会白屏
+- 没有可用的 API 服务时，Android 显示错误与重试，不再用 Demo 数据；iOS / Windows 仍是上一套（待对齐）
 
 ## Android
 
@@ -98,18 +98,18 @@ xcrun swift test --package-path ios/TokiMusicCore
 本 App 不内置网易云官方服务，需要自备兼容 [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) 的服务：
 
 ```bash
-npx NeteaseCloudMusicApi@latest   # 默认监听 http://127.0.0.1:3000
+npx NeteaseCloudMusicApi@4.32.0   # 默认监听 http://127.0.0.1:3000（钉住经测试的版本，不要用 @latest 裸奔）
 # 或 docker run -d -p 3000:3000 binaryify/netease_cloud_music_api
 ```
 
-App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://127.0.0.1:3000`）。真机调试时请填电脑的局域网 IP，不要填 127.0.0.1。用到的接口清单和二维码登录流程在 `docs/API.md`。听歌时长没有现成的总时长接口字段，是用 `/user/record` 的记录估算的，界面上会标注来源。
+App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://127.0.0.1:3000`，模拟器默认 `http://10.0.2.2:3000`）。真机上 127.0.0.1 指的是手机自身，连不上电脑的服务，请填电脑的局域网 IP（例如 `http://192.168.1.10:3000`）；地址旁有「测试连接」按钮，会明确告诉你是已连通、未登录还是连不上。用到的接口清单和二维码登录流程在 `docs/API.md`。听歌时长没有现成的总时长接口字段，是用 `/user/record` 的记录估算的，界面上会标注来源。
 
-无 API 服务或服务不可用时，App 使用内置 Mock 数据展示 UI（界面会明确标注「Demo 数据」），不会白屏；Mock 数据不能播放真实音频，也不能登录。
+无 API 服务或服务不可用时，Android 显示错误页与重试，不再用 Mock 数据展示假内容；iOS / Windows 仍是上一套（待对齐）。登录过期时 Android 会明确提示「登录已过期，请重新扫码登录」，而不是悄悄变回未登录。
 
 ## 版本号规则
 
 - 版本号从 `0.1.0` 开始迭代；各端版本号独立更新，Android 当前正式版本是 `0.1.2`，iOS / Windows 当前是 `0.1.0`（待发布）。
-- 三端版本号保持一致：Android 的 `versionName`、iOS 的 `CFBundleShortVersionString`、Windows 的程序集版本在同一发布里同步。
+- 各端版本号独立更新、分别发布，只有大版本才一起发（见 TokiUI 规范）。
 - 每次发布前先与作者确认版本号，不擅自升版；没有 GitHub Release 之前，本文不写下载链接。
 
 ## 验证状态
@@ -122,7 +122,7 @@ App 内「我的 → 设置 → API 地址」可修改基址（默认 `http://12
 
 ```
 android/   Kotlin Compose 工程（应用 ID com.tokimusic.app），设计引用 TokiUI
-TokiUI/    TokiUI submodule（v0.1.4），Android 的 token 与语义解析
+TokiUI/    TokiUI submodule（语义规范 0.2.0-b1），Android 的 token 与语义解析
 ios/       SwiftUI 工程 + TokiMusicCore Swift Package（界面尚未迁到 TokiUI）
 windows/   WinUI 3 工程（界面尚未迁到 TokiUI）
 docs/      DESIGN.md（Android = TokiUI；iOS/Windows 仍是上一套说明）/ API.md

@@ -1,28 +1,93 @@
 package com.tokimusic.app.player
 import android.content.Context
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.tokimusic.app.data.model.Song
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0) {
     val current: Song? get() = queue.getOrNull(index)
 }
-/** Thin Media3 wrapper: queue, play/pause, next/previous, seek, position polling is done by the UI ticker. */
+/**
+ * Thin Media3 wrapper: queue, play/pause, next/previous, seek, position polling is done by the UI ticker.
+ *
+ * Playback URLs are fetched LAZILY: only the song being started gets its URL
+ * up front (0.1.2 fetched the whole queue first, so tapping a 100-song list
+ * waited on 100 sequential requests). Later tracks load through [urlLoader]
+ * when the player moves to them; a track with no playable copy is skipped
+ * with [onPlaybackError] instead of playing silence.
+ */
 class PlayerController(context: Context) {
     val player: ExoPlayer = ExoPlayer.Builder(context).build()
     private val _state = MutableStateFlow(PlayerState()); val state: StateFlow<PlayerState> = _state
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** Called when the player reaches a track whose URL was not prefetched. */
+    var urlLoader: (suspend (Long) -> String?)? = null
+    /** Playback failures and unplayable tracks, for the UI to explain. */
+    var onPlaybackError: ((String) -> Unit)? = null
+    private val unplayable = mutableSetOf<Long>()
     init { player.addListener(object : Player.Listener {
         override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p) }
-        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)) }
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); ensureUrlForCurrent() }
+        override fun onPlayerError(error: PlaybackException) {
+            // An empty-URI item errors while its URL is being fetched lazily —
+            // ensureUrlForCurrent owns that case (replace or skip + explain).
+            val current = player.currentMediaItem
+            if (current?.localConfiguration?.uri.toString().isBlank() && urlLoader != null) return
+            _state.value = _state.value.copy(isPlaying = false)
+            onPlaybackError?.invoke("播放失败，请检查网络后重试")
+        }
     }) }
-    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>) {
+    private fun ensureUrlForCurrent() {
+        val idx = player.currentMediaItemIndex
+        if (idx < 0 || idx >= player.mediaItemCount) return
+        val item = player.getMediaItemAt(idx)
+        val id = item.mediaId.toLongOrNull() ?: return
+        if (item.localConfiguration?.uri.toString().isNotBlank() || id in unplayable) return
+        val loader = urlLoader ?: return
+        scope.launch {
+            val url = runCatching { loader(id) }.getOrNull()
+            if (player.currentMediaItemIndex != idx) return@launch
+            if (!url.isNullOrBlank()) {
+                player.replaceMediaItem(idx, MediaItem.Builder().setUri(url).setMediaId(id.toString()).build())
+                player.prepare(); player.play()
+            } else {
+                unplayable.add(id)
+                onPlaybackError?.invoke("这首歌暂无播放地址（可能无版权或需 VIP），已跳过")
+                if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.pause()
+            }
+        }
+        // Prefetch the next track too, so skipping to it rarely hits the race above.
+        val nextIdx = idx + 1
+        if (nextIdx < player.mediaItemCount) {
+            val next = player.getMediaItemAt(nextIdx)
+            val nextId = next.mediaId.toLongOrNull()
+            if (nextId != null && next.localConfiguration?.uri.toString().isBlank() && nextId !in unplayable) {
+                scope.launch {
+                    val url = runCatching { loader(nextId) }.getOrNull()
+                    if (!url.isNullOrBlank() && nextIdx < player.mediaItemCount && player.getMediaItemAt(nextIdx).mediaId == nextId.toString()) {
+                        player.replaceMediaItem(nextIdx, MediaItem.Builder().setUri(url).setMediaId(nextId.toString()).build())
+                    }
+                }
+            }
+        }
+    }
+    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, urlLoader: (suspend (Long) -> String?)? = null) {
+        this.urlLoader = urlLoader
+        unplayable.clear()
         player.setMediaItems(songs.map { MediaItem.Builder().setUri(urls[it.id] ?: "").setMediaId(it.id.toString()).build() }, startIndex, 0); player.prepare(); player.play()
         _state.value = PlayerState(songs, startIndex, true)
+        ensureUrlForCurrent()
     }
     fun toggle() { if (player.isPlaying) player.pause() else player.play() }
     fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
@@ -37,7 +102,7 @@ class PlayerController(context: Context) {
     }
     fun seekTo(ms: Long) { player.seekTo(ms) }
     fun currentPosition(): Long = player.currentPosition.coerceAtLeast(0)
-    fun release() { player.release() }
+    fun release() { scope.cancel(); player.release() }
 }
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null

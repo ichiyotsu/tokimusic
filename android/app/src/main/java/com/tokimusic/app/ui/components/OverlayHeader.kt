@@ -1,6 +1,5 @@
 package com.tokimusic.app.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -21,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,14 +36,15 @@ import com.tokimusic.app.ui.theme.tokiSpace
 import dev.chrisbanes.haze.HazeState
 
 /**
- * Large title and optional back button.
- * Overlap pads them with the same frost as the bottom bar. Text stays onSurface.
- * No chip when nothing has scrolled underneath.
+ * The one title header for the whole app (TokiStudio 0.1.10).
+ * Title uses one text role (headlineMedium Bold); the back key is a 56dp
+ * round chip with a 24dp icon. Back chip and title carry the same frost (or
+ * the solid fallback) BY DEFAULT — they no longer appear/disappear with
+ * scrolling, and the back↔title gap is a fixed 12dp. Text stays onSurface.
  */
 @Composable
 fun OverlayTitleHeader(
     title: String,
-    overlapped: Boolean,
     onBack: (() -> Unit)?,
     onHeightMeasured: (Dp) -> Unit,
     backdropBlur: Boolean,
@@ -54,7 +53,6 @@ fun OverlayTitleHeader(
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
-    val cover by animateFloatAsState(if (overlapped) 1f else 0f, label = "scrollChip")
     val titleShape = RoundedCornerShape(percent = 50)
     Row(
         modifier
@@ -62,11 +60,11 @@ fun OverlayTitleHeader(
             .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .statusBarsPadding()
             .heightIn(min = 64.dp)
-            .padding(horizontal = tokiSpace("lg")),
+            .padding(horizontal = tokiSpace("xl")),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
-            TokiScrollBackChip(overlapped, backdropBlur, hazeState, onBack)
+            TokiScrollBackChip(backdropBlur, hazeState, onBack)
             Spacer(Modifier.width(tokiSpace("md")))
         }
         Box(
@@ -78,10 +76,8 @@ fun OverlayTitleHeader(
         ) {
             TokiScrollChipBackdrop(
                 shape = titleShape,
-                cover = cover,
                 backdropBlur = backdropBlur,
                 hazeState = hazeState,
-                applyBlur = true,
                 modifier = Modifier.matchParentSize(),
             )
             Text(
@@ -97,15 +93,14 @@ fun OverlayTitleHeader(
     }
 }
 
+/** Back key: its own 56dp round chip, same frost as the title, always on. */
 @Composable
-private fun TokiScrollBackChip(
-    overlapped: Boolean,
+fun TokiScrollBackChip(
     backdropBlur: Boolean,
     hazeState: HazeState,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val cover by animateFloatAsState(if (overlapped) 1f else 0f, label = "backChip")
     val content = MaterialTheme.colorScheme.onSurface
     TokiLongPressLabel("返回") {
         Box(
@@ -118,10 +113,8 @@ private fun TokiScrollBackChip(
         ) {
             TokiScrollChipBackdrop(
                 shape = CircleShape,
-                cover = cover,
                 backdropBlur = backdropBlur,
                 hazeState = hazeState,
-                applyBlur = true,
                 modifier = Modifier.matchParentSize(),
             )
             Icon(

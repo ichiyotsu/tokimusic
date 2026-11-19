@@ -7,7 +7,7 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.com
 // env vars the release build falls back to the debug key so it always compiles.
 val releaseKeystore: String? = System.getenv("TOKIMUSIC_KEYSTORE")
 
-// TokiUI is the design source of truth (git submodule at the repository root, pinned to v0.1.4).
+// TokiUI is the design source of truth (git submodule at the repository root, pinned to the 0.2.0-b1 spec).
 // Paths match docs/复用.md: Kotlin adapters and token JSON are referenced, not copied.
 val tokiUiDir = rootProject.file("../TokiUI")
 val tokiTokens = tokiUiDir.resolve("tokens/tokiui.semantic.tokens.json")
@@ -99,5 +99,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
+    testImplementation(libs.okhttp.mockwebserver)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
