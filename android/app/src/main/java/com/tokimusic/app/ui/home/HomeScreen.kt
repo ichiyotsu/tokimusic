@@ -61,6 +61,7 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
+import kotlinx.coroutines.delay
 
 /**
  * Home, rebuilt from the reference: a large in-content title with the avatar at
@@ -81,7 +82,8 @@ fun HomeScreen(
     val home by vm.home.collectAsState()
     val profile by vm.profile.collectAsState()
     var query by remember { mutableStateOf("") }
-    LaunchedEffect(query) { vm.search(query) }
+    // Debounced: one request per pause in typing, not one per keystroke.
+    LaunchedEffect(query) { delay(400); vm.search(query) }
     var entered by remember { mutableStateOf(false) }
     val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
     LaunchedEffect(Unit) { entered = true }
@@ -90,10 +92,10 @@ fun HomeScreen(
     LazyColumn(
         Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha },
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("主页", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 TokiLongPressLabel(if (profile == null) "登录" else "我的") {
@@ -107,7 +109,7 @@ fun HomeScreen(
             OutlinedTextField(
                 query,
                 { query = it },
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 placeholder = { Text("搜索歌曲、歌手、歌单") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
@@ -115,7 +117,7 @@ fun HomeScreen(
             )
         }
         if (home.searching) {
-            item { Text("搜索结果", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge) }
+            item { Text("搜索结果", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge) }
             items(home.searchResults) { song ->
                 SongRow(song) { vm.play(home.searchResults, home.searchResults.indexOf(song)) }
             }
@@ -132,7 +134,7 @@ fun HomeScreen(
         if (home.error && !hasContent) {
             item {
                 Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 32.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -143,7 +145,8 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    FilledTonalButton(onClick = { vm.refreshHome() }) { Text("重试") }
+                    FilledTonalButton(onClick = { vm.refreshHome() }, Modifier.height(56.dp)) { Text("重试") }
+                    FilledTonalButton(onClick = onOpenLogin, Modifier.height(56.dp)) { Text("去设置 API 地址") }
                 }
             }
             return@LazyColumn
@@ -152,10 +155,9 @@ fun HomeScreen(
         val showRadar = !home.loggedIn || home.radar.isNotEmpty()
         if (showDaily || showRadar) {
             item {
-                Spacer(Modifier.height(8.dp))
                 Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (showDaily) {
                         RecommendCard(
@@ -180,27 +182,26 @@ fun HomeScreen(
         }
         if (!home.loggedIn || home.recent.isNotEmpty()) {
             item {
-                Spacer(Modifier.height(8.dp))
-                Text("最近播放", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Text("最近播放", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 if (!home.loggedIn) {
                     Card(
                         onClick = onOpenLogin,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                         shape = MaterialTheme.shapes.extraLarge,
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     ) {
                         Text(
                             "登录后查看最近播放",
-                            Modifier.padding(16.dp),
+                            Modifier.padding(24.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 } else {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(home.recent) { index, song ->
                             RecentCard(song) { vm.play(home.recent, index) }
@@ -211,12 +212,11 @@ fun HomeScreen(
         }
         if (home.playlists.isNotEmpty()) {
             item {
-                Spacer(Modifier.height(8.dp))
-                Text("推荐歌单", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Text("推荐歌单", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(home.playlists) { playlist ->
                         PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
@@ -227,7 +227,7 @@ fun HomeScreen(
         if (home.newSongs.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("推荐新歌", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+                Text("推荐新歌", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             }
             items(home.newSongs) { song ->
                 SongRow(song) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
@@ -266,7 +266,7 @@ private fun RecommendCard(
                         ),
                     ),
                 )
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White)
                     Text(
                         artistLine(songs),
@@ -285,7 +285,7 @@ private fun RecommendCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
                 }
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     Text(
                         "登录后查看",

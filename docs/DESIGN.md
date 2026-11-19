@@ -6,16 +6,16 @@ Android 以 [TokiUI](https://github.com/ichiyotsu/TokiUI) 为唯一界面标准�
 
 不要再把本文旧的 Matcha 色表、TokiShapes 或 Haze 30dp 配方当作 Android 标准。那些数值不进 Android 主题。
 
-源头是仓库根的 git submodule `TokiUI/`，钉在正式标签 **v0.1.4**（`0edda3289be65e0ddd531515352d309a72f5089e`）。阅读顺序与 TokiUI 仓库一致：`docs/README.md`、`docs/复用.md`、`docs/语义.md`、`docs/组件契约.md`、`docs/platforms/android.md`、`docs/platforms/材质.md`，再是 `tokens/tokiui.semantic.tokens.json` 与 `tokens/showcase.inventory.json`。`TokiUI/tokistudio/docs/DESIGN.md` 只是 Android / MD3E 的实现记录；和语义层或 `docs/platforms/android.md` 冲突时，以后者为准。不要读 `docs/history/tokinote-0.1.0/`。音乐界面的版式对照 TokiStudio 0.1.4 的音乐工具样例（`MusicScreen.kt`），播放、歌词和登录仍是 TokiMusic 自己的功能。
+源头是 `android/tokiui/` 里的 TokiUI 快照，取自正式标签 **v0.1.4**（`0edda3289be65e0ddd531515352d309a72f5089e`，见 `android/tokiui/SYNC.md`）。阅读顺序与 TokiUI 仓库一致：`docs/README.md`、`docs/复用.md`、`docs/语义.md`、`docs/组件契约.md`、`docs/platforms/android.md`、`docs/platforms/材质.md`，再是 `tokens/tokiui.semantic.tokens.json` 与 `tokens/showcase.inventory.json`。`TokiUI/tokistudio/docs/DESIGN.md` 只是 Android / MD3E 的实现记录；和语义层或 `docs/platforms/android.md` 冲突时，以后者为准。不要读 `docs/history/tokinote-0.1.0/`。音乐界面的版式对照 TokiStudio 0.1.4 的音乐工具样例（`MusicScreen.kt`），播放、歌词和登录仍是 TokiMusic 自己的功能。
 
 Android 工程不复制色板。`android/app/build.gradle.kts` 按 `docs/复用.md` 引用：
 
 ```kotlin
-kotlin.directories.add("../../TokiUI/platforms/android/src/main/kotlin")
-assets.directories.add("../../TokiUI/tokens")
+kotlin.directories.add("../tokiui/src/main/kotlin")
+assets.directories.add("../tokiui/tokens")
 ```
 
-运行时 `SemanticTokens.parse` / `ShowcaseInventory.parse` 读 assets 里的 JSON。种子列表来自 `color.seeds`。启动图标底色在构建时从 `color.seed` 生成，不另写一份色表。拉丁字体 Inter 与思源黑体的官方发行 Noto Sans SC（`res/font/inter.ttf`、`res/font/noto_sans_sc.ttf`）从 submodule 拷进生成资源，供编译使用。
+运行时 `SemanticTokens.parse` / `ShowcaseInventory.parse` 读 assets 里的 JSON。种子列表来自 `color.seeds`。启动图标底色在构建时从 `color.seed` 生成，不另写一份色表。拉丁字体 Inter 与思源黑体的官方发行 Noto Sans SC（`res/font/inter.ttf`、`res/font/noto_sans_sc.ttf`）直接提交在仓库里，供编译使用。
 
 ### 主题
 
@@ -126,3 +126,13 @@ NavigationView PaneDisplayMode=Auto 窄窗口自动收缩；最小窗口 640×48
 逐字：已唱字用强调色、未唱字用次要文字色；当前行放大加粗；
 翻译小字在主行下方、同样左对齐。
 Android 的歌词画在深色罩上，强调色是纯白、未唱与远处行是半透白。iOS / Windows 在迁到 TokiUI 之前，强调色仍按上面的 Matcha `primary` / `onSurfaceVariant`。
+
+### Android 对齐 TokiStudio 0.1.10（2026-11-18，未发版）
+
+- 顶栏：全 App 一个 `OverlayTitleHeader`，标题 headlineMedium 粗体，返回键 56dp 圆 chip、24dp 图标；磨砂默认常开，不再随滚动出现消失；返回键与标题间距固定 12dp；标题字形内缩 16dp，页面边距 24dp。
+- 字阶：基础 15 档 + 强调 15 档全部补齐，只用粗体（700）/ 常规（400）两档；主题根部提供 `LocalContentColor = onBackground`（MaterialExpressiveTheme 不提供，裸 Text 在深色下会变黑看不见）。
+- 深色对比：背景与 surface 压暗 8%，surfaceContainer 阶梯从 3% 抬到 9%；页面底色是 surfaceContainer → surface → background 的纵向渐变。
+- 底栏：悬浮胶囊按 0.1.10 结构重写（玻璃挂在 matchParentSize 的兄弟层上，条目行是唯一撑尺寸的普通子项；裁剪护栏挂在条目行上，留 8dp 余量）；胶囊右侧 8dp 一颗 56dp 独立圆形玻璃钮（正在播放），玻璃关闭时填 primary；宽窗口用 NavigationRail，条目补长按名称提示。
+- 间距：页面边距 24dp、卡片内边距 24dp、卡片间距 16dp、设置行 64dp；主要按钮 56dp 高。
+- 播放页是沉浸式二级页，仍无顶栏底栏，但左上角补了一颗 56dp 磨砂返回 chip；歌词左对齐、逐字高亮不变。
+- 图标：白底黑色 music-cast 字形，2.0× 居中（与 TokiStudio / TokiFonts / TokiLive 同一套黑白图标语言）。

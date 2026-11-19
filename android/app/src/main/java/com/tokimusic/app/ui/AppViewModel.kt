@@ -4,22 +4,29 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tokimusic.app.BuildConfig
 import com.tokimusic.app.TokiMusicApplication
-import com.tokimusic.app.data.api.MockData
+import com.tokimusic.app.data.api.ApiErrorKind
+import com.tokimusic.app.data.api.ApiException
+import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.data.api.QrCheck
+import com.tokimusic.app.data.api.apiErrorText
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+/** Login state, kept distinct from network state: "offline" must never look like "logged out". */
+enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
+
 /**
- * Home state, fed only by the NetEase API service. No Demo data: when the service is
- * unreachable the home shows an error + retry; login-gated sections (daily / radar /
- * recent) show a login prompt until the user signs in. [isDemo] is retained only
- * because PlaylistsScreen still reads it for its own Demo fallback.
+ * Home state, fed only by the NetEase API service. No Demo data anywhere: a
+ * dead service shows an error + retry, login-gated sections (daily / radar /
+ * recent) show a login prompt until the user signs in.
  */
-data class HomeUiState(val loading: Boolean = true, val isDemo: Boolean = false, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searching: Boolean = false)
+data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searching: Boolean = false)
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -28,73 +35,166 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val versionName: String = BuildConfig.VERSION_NAME // real version, never hardcoded in UI
     private val _home = MutableStateFlow(HomeUiState()); val home: StateFlow<HomeUiState> = _home
     private val _profile = MutableStateFlow<UserProfile?>(null); val profile: StateFlow<UserProfile?> = _profile
+    private val _authState = MutableStateFlow(AuthState.Unknown); val authState: StateFlow<AuthState> = _authState
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList()); val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
     private val _mine = MutableStateFlow(MineUiState()); val mine: StateFlow<MineUiState> = _mine
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList()); val lyrics: StateFlow<List<LyricLine>> = _lyrics
     private val _likedIds = MutableStateFlow<Set<Long>>(emptySet()); val likedIds: StateFlow<Set<Long>> = _likedIds
     val qrState = MutableStateFlow<QrCheck?>(null); val qrImage = MutableStateFlow("")
+    private val _qrError = MutableStateFlow<String?>(null); val qrError: StateFlow<String?> = _qrError
+    private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
+    private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
+    fun consumeMessage() { _userMessage.value = null }
+    private var searchJob: Job? = null
+    private var qrJob: Job? = null
 
-    init { refreshHome(); refreshSession() }
-    fun refreshSession() = viewModelScope.launch {
-        _profile.value = runCatching { api.loginStatus() }.getOrNull()
-        val uid = _profile.value?.uid ?: return@launch
-        runCatching {
-            val detail = api.userDetail(uid); _profile.value = detail
-            val pls = api.userPlaylists(uid); _myPlaylists.value = pls
-            val likes = api.likeList(uid); _likedIds.value = likes.toSet()
-            val record = api.userRecord(uid, weekly = false)
-            // Listening time is estimated: sum(duration * playCount) from /user/record — labelled as such in UI.
-            val minutes = record.sumOf { it.song.durationMs * it.playCount } / 60_000
-            _mine.value = MineUiState(detail, likes.size, pls.size, record, api.recentSongs(), minutes)
+    init {
+        player.onPlaybackError = { _userMessage.value = it }
+        refreshSession()
+    }
+
+    fun refreshSession() = viewModelScope.launch { loadSession() }
+    fun refreshHome() = viewModelScope.launch { loadHome() }
+
+    private suspend fun loadSession() {
+        if (store.cookie.isNotBlank()) api.refreshLogin()
+        try {
+            val p = api.loginStatus()
+            if (p == null) {
+                _profile.value = null; _authState.value = AuthState.LoggedOut
+                _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet()
+            } else {
+                _profile.value = p; _authState.value = AuthState.LoggedIn
+                runCatching {
+                    val detail = api.userDetail(p.uid); _profile.value = detail
+                    val pls = api.userPlaylists(p.uid); _myPlaylists.value = pls
+                    val likes = api.likeList(p.uid); _likedIds.value = likes.toSet()
+                    val record = api.userRecord(p.uid, weekly = false)
+                    // Listening time is estimated: sum(duration * playCount) from /user/record — labelled as such in UI.
+                    val minutes = record.sumOf { it.song.durationMs * it.playCount } / 60_000
+                    _mine.value = MineUiState(detail, likes.size, pls.size, record, api.recentSongs(), minutes)
+                }
+            }
+        } catch (e: ApiException) {
+            when (e.kind) {
+                ApiErrorKind.NotLoggedIn -> {
+                    // Expired only if we actually had a credential; a first-run
+                    // user with no cookie at all is simply logged out.
+                    val hadCookie = store.cookie.isNotBlank()
+                    api.clearSession()
+                    _profile.value = null; _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet()
+                    _authState.value = if (hadCookie) AuthState.Expired else AuthState.LoggedOut
+                    if (hadCookie) _userMessage.value = "登录已过期，请重新扫码登录"
+                }
+                else -> { _authState.value = AuthState.Offline }
+            }
+        } catch (e: Exception) {
+            _authState.value = AuthState.Offline
         }
         // The uid is only known after login-status resolves, so the login-gated
         // home sections (daily / radar / recent) load here, not in init's first pass.
-        refreshHome()
+        loadHome()
     }
-    fun refreshHome() = viewModelScope.launch {
+
+    private suspend fun loadHome() {
         _home.value = _home.value.copy(loading = true, error = false)
-        runCatching {
-            val pls = api.personalized(); val news = api.newSongs()
-            val profile = _profile.value
-            val daily = if (profile != null) api.dailySongs() else emptyList()
-            // No dedicated radar endpoint exists: the radar mix is built from the
-            // weekly listening record (top songs by score), which is what the
-            // radar is — songs matching the user's current taste.
-            val radar = if (profile != null) runCatching { api.userRecord(profile.uid, weekly = true) }.getOrDefault(emptyList()).map { it.song }.take(20) else emptyList()
-            val recent = if (profile != null) api.recentSongs() else emptyList()
-            _home.value = _home.value.copy(loading = false, isDemo = false, loggedIn = profile != null, daily = daily, radar = radar, recent = recent, playlists = pls, newSongs = news)
-        }.onFailure { _home.value = _home.value.copy(loading = false, error = true, isDemo = true) }
+        // Each section loads independently: one flaky endpoint must not blank the whole page.
+        val pls = runCatching { api.personalized() }.getOrNull()
+        val news = runCatching { api.newSongs() }.getOrNull()
+        val profile = _profile.value
+        val daily = if (profile != null) api.dailySongs() else emptyList()
+        // No dedicated radar endpoint exists: the radar mix is built from the
+        // weekly listening record (top songs by score), which is what the
+        // radar is — songs matching the user's current taste.
+        val radar = if (profile != null) runCatching { api.userRecord(profile.uid, weekly = true) }.getOrDefault(emptyList()).map { it.song }.take(20) else emptyList()
+        val recent = if (profile != null) api.recentSongs() else emptyList()
+        _home.value = _home.value.copy(
+            loading = false,
+            error = pls == null && news == null,
+            loggedIn = profile != null,
+            daily = daily, radar = radar, recent = recent,
+            playlists = pls ?: emptyList(), newSongs = news ?: emptyList(),
+        )
     }
-    fun search(keywords: String) = viewModelScope.launch {
-        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searching = false); return@launch }
-        _home.value = _home.value.copy(searching = true)
-        _home.value = _home.value.copy(searchResults = runCatching { api.search(keywords) }.getOrDefault(MockData.songs.filter { it.name.contains(keywords) }))
+
+    fun search(keywords: String) {
+        searchJob?.cancel()
+        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searching = false); return }
+        searchJob = viewModelScope.launch {
+            _home.value = _home.value.copy(searching = true)
+            // A failed search is an empty result with a retry, never Demo data.
+            _home.value = _home.value.copy(searchResults = runCatching { api.search(keywords) }.getOrDefault(emptyList()), searching = false)
+        }
     }
     fun play(songs: List<Song>, index: Int) = viewModelScope.launch {
-        val urls = songs.associate { it.id to runCatching { api.songUrl(it.id) }.getOrNull() }
-        player.playQueue(songs, index, urls); loadLyrics(songs[index].id)
+        val first = songs.getOrNull(index) ?: return@launch
+        // Only the song being started gets its URL up front; the rest of the
+        // queue loads lazily through the player's urlLoader as it plays.
+        val result = try {
+            api.songUrl(first.id)
+        } catch (e: ApiException) {
+            _userMessage.value = apiErrorText(e); return@launch
+        } catch (e: Exception) {
+            _userMessage.value = "无法获取播放地址，请重试"; return@launch
+        }
+        val url = result.url
+        if (url.isNullOrBlank()) {
+            _userMessage.value = if (result.isTrial) "这首歌仅提供试听，暂无完整播放地址" else "这首歌暂无播放地址（可能无版权或需 VIP）"
+            return@launch
+        }
+        player.playQueue(songs, index, mapOf(first.id to url)) { id -> runCatching { api.songUrl(id).url }.getOrNull() }
+        loadLyrics(first.id)
     }
     fun playNext(song: Song) = viewModelScope.launch {
         if (player.state.value.queue.isEmpty()) { play(listOf(song), 0); return@launch }
-        player.playNext(song, runCatching { api.songUrl(song.id) }.getOrNull())
+        player.playNext(song, runCatching { api.songUrl(song.id).url }.getOrNull())
     }
     fun toggleLike(songId: Long) = viewModelScope.launch {
         val liked = songId in _likedIds.value
         runCatching { api.like(songId, !liked) }.onSuccess {
             _likedIds.value = if (liked) _likedIds.value - songId else _likedIds.value + songId
             _mine.value = _mine.value.copy(likeCount = _likedIds.value.size)
+        }.onFailure { e ->
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "喜欢失败，请重试"
         }
     }
     fun loadLyrics(songId: Long) = viewModelScope.launch {
         _lyrics.value = runCatching { val p = api.lyric(songId); YrcParser.parse(p.yrc, p.lrc, p.tlyric) }.getOrDefault(emptyList())
     }
-    fun startQrLogin() = viewModelScope.launch {
-        runCatching {
-            val key = api.qrKey(); qrImage.value = api.qrCreate(key)
-            while (true) { val check = api.qrCheck(key); qrState.value = check; if (check.code == 803 || check.code == 800) break; delay(2000) }
-            if (qrState.value?.code == 803) { refreshSession(); refreshHome() }
+    fun startQrLogin() {
+        qrJob?.cancel()
+        _qrError.value = null
+        qrJob = viewModelScope.launch {
+            // A QR code lives ~5 minutes; on expiry (800) fetch a fresh key
+            // instead of leaving the dialog stuck on "waiting".
+            var attempts = 0
+            while (attempts < 3) {
+                attempts++
+                try {
+                    val key = api.qrKey(); qrImage.value = api.qrCreate(key)
+                    while (true) {
+                        val check = api.qrCheck(key); qrState.value = check
+                        if (check.code == 803) { refreshSession(); return@launch }
+                        if (check.code == 800) break
+                        delay(2000)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _qrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查 API 服务"
+                    return@launch
+                }
+            }
+            _qrError.value = "二维码已过期，请重新生成"
         }
     }
-    fun logout() { store.cookie = ""; _profile.value = null; _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); refreshHome() }
-    fun setApiBase(url: String) { store.apiBase = url; refreshHome(); refreshSession() }
+    fun cancelQrLogin() {
+        qrJob?.cancel(); qrState.value = null; qrImage.value = ""; _qrError.value = null
+    }
+    fun testConnection() = viewModelScope.launch { _health.value = api.apiHealth() }
+    fun logout() {
+        api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
+        _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); refreshHome()
+    }
+    fun setApiBase(url: String) { store.apiBase = url; refreshSession() }
 }

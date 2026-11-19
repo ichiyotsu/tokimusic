@@ -8,8 +8,8 @@ import com.tokiui.semantic.SemanticTokens
 import com.tokiui.semantic.ShowcaseInventory
 
 /**
- * Runtime view of the TokiUI files packaged from the submodule (`tokens/` assets).
- * Values are parsed, not re-declared.
+ * Runtime view of the TokiUI files packaged from the snapshot (`tokens/` assets,
+ * see android/tokiui/SYNC.md). Values are parsed, not re-declared.
  */
 object TokiUiHolder {
     lateinit var semantic: SemanticTokens

@@ -10,10 +10,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -36,11 +38,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.R
@@ -57,9 +62,18 @@ val navEntries = listOf(
 )
 
 /**
- * Narrow-window capsule. Glass on: frost only, no thick stroke.
- * Glass off: opaque surface passed in as [glass], plus a 3dp primary stroke
- * and a 6dp gap before the selected pill.
+ * Narrow-window capsule, TokiStudio 0.1.10 structure.
+ *
+ * Size animation and clipping are separated: the glass lives on a
+ * matchParentSize sibling (the ONLY regular child — the item row — is what
+ * sizes the capsule; two matchParentSize children would collapse it to 0,
+ * the 0.1.7 vanishing-bar bug). The label expands with a fast spring and
+ * overshoots, so the clip guard sits on the item row: it clips to the row
+ * width plus an 8dp slack into the gap before the side button, never on the
+ * outer box (clipping the glass box would blacken its edge mid-animation).
+ *
+ * Glass on: frost only, no thick stroke. Glass off: opaque surface passed in
+ * as [glass], plus a 3dp primary stroke and a 6dp gap before the selected pill.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -72,23 +86,88 @@ fun FloatingNavBar(
 ) {
     val shape = RoundedCornerShape(percent = 50)
     val inset = if (solidStroke) TokiChromeStroke.width + TokiChromeStroke.barGap else 8.dp
-    Row(
+    Box(
         modifier = modifier
-            .clipToBounds()
-            .animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec())
-            .clip(shape)
-            .then(glass)
-            .then(
-                if (solidStroke) {
-                    Modifier.border(TokiChromeStroke.width, MaterialTheme.colorScheme.primary, shape)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = inset, vertical = inset),
-        verticalAlignment = Alignment.CenterVertically,
+            .animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()),
+        contentAlignment = Alignment.Center,
     ) {
-        navEntries.forEach { entry -> NavItem(entry, current == entry.dest, onSelect) }
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(shape)
+                .then(glass)
+                .then(
+                    if (solidStroke) {
+                        Modifier.border(TokiChromeStroke.width, MaterialTheme.colorScheme.primary, shape)
+                    } else {
+                        Modifier
+                    },
+                ),
+        )
+        Row(
+            modifier = Modifier
+                .padding(horizontal = inset, vertical = inset)
+                .drawWithContent {
+                    val slack = 8.dp.toPx()
+                    clipRect(left = -slack, top = 0f, right = size.width + slack, bottom = size.height) {
+                        this@drawWithContent.drawContent()
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            navEntries.forEach { entry -> NavItem(entry, current == entry.dest, onSelect) }
+        }
+    }
+}
+
+/**
+ * Independent round glass button beside the capsule (TokiStudio 0.1.10,
+ * after TokiNote's standalone button): 56dp circle, 8dp from the capsule,
+ * same glass layer as the capsule. Glass off （莫奈悬浮底栏）: no glass, no
+ * stroke — the whole circle fills with the bar's border colour (primary)
+ * and the icon turns onPrimary. Callers pass [solidFill] with the same
+ * state as the bar's [FloatingNavBar.solidStroke].
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun TokiSideActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    glass: Modifier,
+    modifier: Modifier = Modifier,
+    solidFill: Boolean = false,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val haptic = LocalHapticFeedback.current
+    // Layout and hit area lock inside the 56dp circle. Blur and press-scale
+    // must not draw outside it, or the animation would cover the capsule.
+    // The visible 8dp gap still comes from the outer row.
+    Box(modifier.requiredSize(56.dp).clipToBounds()) {
+        TokiLongPressLabel(contentDescription) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .then(if (solidFill) Modifier.background(MaterialTheme.colorScheme.primary) else glass)
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = ripple(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+                    ) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onClick()
+                    }
+                    .pressScale(interaction),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = contentDescription,
+                    tint = if (solidFill) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
     }
 }
 
@@ -134,6 +213,7 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
                     Text(
                         label,
                         style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
                         color = scheme.onPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

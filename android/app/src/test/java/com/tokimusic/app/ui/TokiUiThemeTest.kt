@@ -68,6 +68,20 @@ class TokiUiThemeTest {
         assertTrue(nav.contains("PlainTooltip") || nav.contains("TokiLongPressLabel"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/AppTypeface.kt").readText().contains("R.font.inter"))
         assertFalse(File("src/main/java/com/tokimusic/app/ui/theme/Shape.kt").exists())
+        // TokiStudio 0.1.10 alignment: dark contrast + page gradient, always-on
+        // header frost, emphasized type scale, capsule + side button.
+        val color = File("src/main/java/com/tokimusic/app/ui/theme/Color.kt").readText()
+        assertTrue(color.contains("withDarkContrast"))
+        assertTrue(color.contains("tokiPageBackground"))
+        assertTrue(color.contains("compositeOver"))
+        assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Theme.kt").readText().contains("Emphasized"))
+        assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Theme.kt").readText().contains("LocalContentColor"))
+        assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Glass.kt").readText().contains("tokiContentGlass"))
+        assertFalse(header.contains("overlapped"))
+        assertFalse(header.contains("headerScrollOffset"))
+        assertTrue(nav.contains("TokiSideActionButton"))
+        assertTrue(nav.contains("clipRect"))
+        assertFalse(File("src/main/java/com/tokimusic/app/ui/HeaderScroll.kt").readText().contains("headerScrollOffset"))
     }
 
     @Test
@@ -78,38 +92,13 @@ class TokiUiThemeTest {
         assertTrue(usesNavigationRail(1200f))
     }
 
-    @Test
-    fun pullDownAtTopStaysClear() {
-        assertEquals(0f, headerScrollOffset(0f, consumedY = 0f, availableY = 12f), 0f)
-        assertFalse(headerOverlapsContent(0f, thresholdPx = 8f))
-    }
-
-    @Test
-    fun scrollingContentUnderHeaderOverlaps() {
-        val offset = headerScrollOffset(0f, consumedY = -30f, availableY = 0f)
-        assertTrue(offset < 0f)
-        assertTrue(headerOverlapsContent(offset, thresholdPx = 8f))
-        assertFalse(headerOverlapsContent(headerScrollOffset(0f, consumedY = -4f, availableY = 0f), thresholdPx = 8f))
-    }
-
-    @Test
-    fun scrollingBackToTopClearsTheChip() {
-        assertEquals(0f, headerScrollOffset(-10f, consumedY = 40f, availableY = 0f), 0f)
-    }
-
-    @Test
-    fun restingAtTheBottomKeepsTheOverlap() {
-        val offset = headerScrollOffset(-40f, consumedY = 0f, availableY = -20f)
-        assertEquals(-40f, offset, 0f)
-        assertTrue(headerOverlapsContent(offset, thresholdPx = 8f))
-    }
-
     private fun read(name: String): String {
         val file = listOf(
+            File("../tokiui/tokens/$name"),
             File("../../TokiUI/tokens/$name"),
             File("../TokiUI/tokens/$name"),
             File("TokiUI/tokens/$name"),
-        ).firstOrNull { it.isFile } ?: error("找不到 $name。请在仓库根目录执行 git submodule update --init --recursive")
+        ).firstOrNull { it.isFile } ?: error("找不到 $name。快照在 android/tokiui/tokens/，见 android/tokiui/SYNC.md")
         return file.readText()
     }
 }
