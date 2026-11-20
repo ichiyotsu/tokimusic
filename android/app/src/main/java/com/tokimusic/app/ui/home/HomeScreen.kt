@@ -139,14 +139,14 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("无法连接网易云 API 服务", style = MaterialTheme.typography.titleMedium)
+                    Text("无法连接网易云", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "请确认 API 服务正在运行，地址可在“我的”中设置",
+                        "请检查网络后重试",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     FilledTonalButton(onClick = { vm.refreshHome() }, Modifier.height(56.dp)) { Text("重试") }
-                    FilledTonalButton(onClick = onOpenLogin, Modifier.height(56.dp)) { Text("去设置 API 地址") }
+                    FilledTonalButton(onClick = onOpenLogin, Modifier.height(56.dp)) { Text("去登录") }
                 }
             }
             return@LazyColumn

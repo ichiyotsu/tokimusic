@@ -284,6 +284,12 @@ class NeteaseClient(
             }
             if (!it.isSuccessful) {
                 if (it.code == 460 || it.code == 503) throw ApiException(ApiErrorKind.RateLimited, httpCode = it.code)
+                // NetEase answers a blocked route with HTTP 400 carrying body
+                // code -460 (seen live from a flagged IP): that is a rate
+                // limit, not a generic HTTP error — surface it as RateLimited
+                // so the song-URL fallback can count it and report it honestly.
+                val blocked = runCatching { JSONObject(respBody).optInt("code") == -460 }.getOrDefault(false)
+                if (blocked) throw ApiException(ApiErrorKind.RateLimited, httpCode = it.code, apiCode = -460)
                 throw ApiException(ApiErrorKind.HttpStatus, httpCode = it.code)
             }
             val json = try {
@@ -477,22 +483,53 @@ class NeteaseClient(
     }.getOrDefault(emptyList())
 
     override suspend fun songUrl(id: Long): SongUrlResult {
-        // standard first, exhigh as fallback; a blank URL means no playable
-        // copy at that level (no copyright / VIP), not a network error.
+        // Multi-route fallback: the EAPI v1 endpoint is the one NetEase
+        // rate-limits most aggressively — a body code of -460 means the
+        // route itself is blocked, NOT that the song has no copyright, so
+        // it must try the next route instead of giving up (0.1.4 treated
+        // -460 exactly like a blank URL, which is why "无播放地址" showed
+        // up even for ordinary songs). Routes mirror upstream
+        // NeteaseCloudMusicApi: /song/url/v1 (eapi, then weapi) and the
+        // classic /song/url (weapi, bitrate ladder). A blank URL means no
+        // playable copy at that level (no copyright / VIP), not a network
+        // error — that result is kept and returned at the end.
+        var sawRateLimit = false
         var last = SongUrlResult(null)
-        for (level in listOf("standard", "exhigh")) {
-            val d = post(
-                "/api/song/enhance/player/url/v1",
-                obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"),
-                Crypto.EAPI,
-            ).body.arr("data").optJSONObject(0) ?: continue
+
+        // One attempt: false = no playable URL from this route, keep going.
+        suspend fun attempt(crypto: Crypto, uri: String, data: JSONObject): Boolean {
+            val body = try {
+                post(uri, data, crypto).body
+            } catch (e: ApiException) {
+                if (e.kind == ApiErrorKind.RateLimited) { sawRateLimit = true; return false }
+                // Login expiry / offline is not a route problem: surface it.
+                if (e.kind == ApiErrorKind.NotLoggedIn || e.kind == ApiErrorKind.Unreachable) throw e
+                return false
+            }
+            if (body.optInt("code") == -460) { sawRateLimit = true; return false }
+            val d = body.arr("data").optJSONObject(0) ?: return false
             val url = d.optString("url").ifBlank { null }
             val fee = d.optInt("fee")
             val trialEnd = d.optJSONObject("freeTrialInfo")?.optInt("end")
                 ?: d.optJSONObject("freeTrialPrivilege")?.optInt("end") ?: 0
             last = SongUrlResult(url, fee, trialEnd)
-            if (url != null) return last
+            return url != null
         }
+
+        for (level in listOf("standard", "exhigh")) {
+            if (attempt(Crypto.EAPI, "/api/song/enhance/player/url/v1",
+                    obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"))) return last
+        }
+        for (level in listOf("standard", "higher", "exhigh", "lossless")) {
+            if (attempt(Crypto.WEAPI, "/api/song/enhance/player/url/v1",
+                    obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"))) return last
+        }
+        if (attempt(Crypto.WEAPI, "/api/song/enhance/player/url",
+                obj("ids" to "[$id]", "br" to 999000))) return last
+        // Every route answered -460 (or HTTP 460/503): say so, instead of
+        // blaming the song's copyright — the UI already maps RateLimited
+        // to "请求太频繁，被网易暂时限制了，稍后再试".
+        if (sawRateLimit) throw ApiException(ApiErrorKind.RateLimited, apiCode = -460)
         return last
     }
 

@@ -30,6 +30,9 @@ import java.net.URLDecoder
  * - an 803 with no credential anywhere is a failure, not a login
  * - a blank playback URL at standard falls back to exhigh instead of silence
  * - /lyric/v1 answering empty falls back to /lyric
+ * - a -460 on the EAPI song-URL route falls back to the WEAPI v1 and
+ *   classic routes; -460 on every route surfaces as RateLimited, not
+ *   "no copyright"
  */
 class NeteaseClientTest {
     private lateinit var server: MockWebServer
@@ -235,6 +238,72 @@ class NeteaseClientTest {
         val second = server.takeRequest()
         val (_, secondData) = eapiPayload(second)
         assertEquals("exhigh", secondData.getString("level"))
+    }
+
+    @Test
+    fun songUrlFallsBackToWeapiV1WhenEapiIsRateLimited() = runBlocking {
+        server.enqueue(json("""{"code":-460}"""))
+        server.enqueue(json("""{"code":-460}"""))
+        server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"https://example.com/weapi.mp3","fee":0}]}"""))
+        val result = client.songUrl(1)
+        assertEquals("https://example.com/weapi.mp3", result.url)
+        assertEquals("/eapi/song/enhance/player/url/v1", server.takeRequest().path)
+        assertEquals("/eapi/song/enhance/player/url/v1", server.takeRequest().path)
+        assertEquals("/weapi/song/enhance/player/url/v1", server.takeRequest().path)
+    }
+
+    @Test
+    fun songUrlFallsBackToClassicWhenV1RoutesAreBlank() = runBlocking {
+        repeat(2) { server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"","fee":0}]}""")) }
+        repeat(4) { server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"","fee":0}]}""")) }
+        server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"https://example.com/classic.mp3","fee":0}]}"""))
+        val result = client.songUrl(1)
+        assertEquals("https://example.com/classic.mp3", result.url)
+        repeat(2) { assertEquals("/eapi/song/enhance/player/url/v1", server.takeRequest().path) }
+        repeat(4) { assertEquals("/weapi/song/enhance/player/url/v1", server.takeRequest().path) }
+        assertEquals("/weapi/song/enhance/player/url", server.takeRequest().path)
+    }
+
+    @Test
+    fun songUrlThrowsRateLimitedWhenEveryRouteIsRateLimited() = runBlocking {
+        repeat(7) { server.enqueue(json("""{"code":-460}""")) }
+        try {
+            client.songUrl(1)
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(ApiErrorKind.RateLimited, e.kind)
+        }
+        assertEquals(7, server.requestCount)
+    }
+
+    @Test
+    fun songUrlThrowsRateLimitedWhenEveryRouteAnswersHttp400WithBody460() = runBlocking {
+        // Live shape of a -460: HTTP 400 with {"code":-460} in the body.
+        // execute() must map it to RateLimited, not generic HttpStatus,
+        // or the fallback never learns the routes were blocked.
+        repeat(7) {
+            server.enqueue(
+                MockResponse().setResponseCode(400)
+                    .setBody("""{"code":-460,"message":"检测到您的网络环境存在风险"}""")
+                    .addHeader("Content-Type", "application/json"),
+            )
+        }
+        try {
+            client.songUrl(1)
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(ApiErrorKind.RateLimited, e.kind)
+        }
+        assertEquals(7, server.requestCount)
+    }
+
+    @Test
+    fun songUrlReturnsNullWhenAllRoutesAreBlankWithoutRateLimit() = runBlocking {
+        repeat(7) { server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"","fee":1}]}""")) }
+        val result = client.songUrl(1)
+        assertNull(result.url)
+        assertEquals(1, result.fee)
+        assertEquals(7, server.requestCount)
     }
 
     @Test

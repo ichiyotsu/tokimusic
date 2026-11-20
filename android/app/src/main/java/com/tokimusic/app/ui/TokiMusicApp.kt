@@ -252,7 +252,7 @@ fun TokiMusicApp() {
                                             backdropBlur = theme.backdropBlur,
                                         )
                                         (key as? String)?.startsWith("playlist:") == true -> PlaylistDetailScreen(
-                                            vm, (key as String).removePrefix("playlist:").toLong(), topPadding, bottomPadding,
+                                            vm, (key as String).removePrefix("playlist:").toLong(), bottomPadding,
                                             onTitle = { playlistTitle = it },
                                         )
                                         key == Dest.Home -> HomeScreen(
