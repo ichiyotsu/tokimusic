@@ -1,7 +1,6 @@
 package com.tokimusic.app.ui.mine
 import android.graphics.BitmapFactory
 import android.util.Base64
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.Dp
@@ -19,6 +17,8 @@ import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.SectionTitle
+import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.theme.ThemeMode
 import com.tokimusic.app.ui.theme.ThemePreferences
@@ -40,7 +40,7 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
             Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(profile?.avatarUrl ?: "", 64); Spacer(Modifier.width(16.dp))
                 Column {
-                    Text(profile?.nickname ?: "未登录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(profile?.nickname ?: "未登录", style = MaterialTheme.typography.headlineSmall)
                     Text(profile?.let { "Lv.${it.level} · 关注 ${it.follows} · 粉丝 ${it.followeds}" } ?: "点击下方按钮扫码登录网易云", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -70,18 +70,18 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
             }
             Text("听歌时长由听歌排行（/user/record）按歌曲时长 × 播放次数估算", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        item { ListItem(headlineContent = { Text("我的收藏") }, supportingContent = { Text("${mine.likeCount} 首喜欢的歌曲") }) }
-        item { ListItem(headlineContent = { Text("听歌排行") }, supportingContent = { Text("按播放次数排序") }, modifier = Modifier.clickable { showRecord = !showRecord }) }
-        if (showRecord) items(mine.record.take(20)) { r -> ListItem(headlineContent = { Text(r.song.name) }, supportingContent = { Text(r.song.artistText) }, trailingContent = { Text("${r.playCount} 次") }, modifier = Modifier.clickable { }) }
-        item { Text("最近播放", Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        item { SettingsRow("我的收藏", "${mine.likeCount} 首喜欢的歌曲") }
+        item { SettingsRow("听歌排行", "按播放次数排序", onClick = { showRecord = !showRecord }) }
+        if (showRecord) items(mine.record.take(20)) { r -> SettingsRow(r.song.name, r.song.artistText, trailing = { Text("${r.playCount} 次") }) }
+        item { SectionTitle("最近播放") }
         items(mine.recent) { song -> SongRow(song) { vm.play(mine.recent, mine.recent.indexOf(song)) } }
         item {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Text("设置", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            ListItem(
-                headlineContent = { Text("直连网易云") },
-                supportingContent = { Text("无需自建 API 服务，打开就能用") },
-                trailingContent = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
+            SectionTitle("设置")
+            SettingsRow(
+                "直连网易云",
+                "无需自建 API 服务，打开就能用",
+                trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
             )
             when (val h = health) {
                 is ApiHealth.Connected -> Text(
@@ -101,20 +101,18 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
             Spacer(Modifier.height(12.dp))
             ThemeSettings(theme, onTheme)
             // About: version read from BuildConfig via ViewModel, never hardcoded.
-            ListItem(
-                headlineContent = { Text("关于 TokiMusic") },
-                supportingContent = {
-                    Text("版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号")
-                },
+            SettingsRow(
+                "关于 TokiMusic",
+                "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号",
             )
-            if (profile != null) TextButton(onClick = { vm.logout() }, Modifier.padding(horizontal = 16.dp)) { Text("退出登录") }
+            if (profile != null) TextButton(onClick = { vm.logout() }, Modifier.padding(horizontal = 24.dp)) { Text("退出登录") }
         }
     }
     if (showLogin) LoginDialog(vm) { showLogin = false }
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun ThemeSettings(theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit) {
-    Text("主题", Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SectionTitle("主题")
     FlowRow(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ThemeMode.entries.forEach { m ->
             FilterChip(
@@ -157,7 +155,7 @@ import com.tokimusic.app.ui.theme.supportsDynamicColor
     }
 }
 @Composable private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier, shape = MaterialTheme.shapes.extraLarge) { Column(Modifier.padding(24.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) } }
+    Card(modifier, shape = MaterialTheme.shapes.extraLarge) { Column(Modifier.padding(24.dp)) { Text(value, style = MaterialTheme.typography.titleLarge); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) } }
 }
 @Composable fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val qr by vm.qrState.collectAsState(); val img by vm.qrImage.collectAsState(); val qrError by vm.qrError.collectAsState()

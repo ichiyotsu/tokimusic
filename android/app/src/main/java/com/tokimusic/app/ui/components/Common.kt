@@ -15,6 +15,42 @@ import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 
+/**
+ * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
+ * 24dp、下边距 8dp，含 24dp 页边距，直接放在 LazyColumn 的 item 里。
+ */
+@Composable fun SectionTitle(title: String, note: String? = null) {
+    Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+        if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * 设置行：取代 M3 ListItem —— 它的内置 16dp 内边距与 24dp 页边距对不
+ * 上，行会比页内其他内容偏左。64dp 高，左右 24dp，标题 titleMedium，
+ * 说明 bodySmall，右侧可放操作控件。
+ */
+@Composable fun SettingsRow(
+    headline: String,
+    supporting: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(headline, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (supporting != null) Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (trailing != null) { Spacer(Modifier.width(12.dp)); trailing() }
+    }
+}
 @Composable fun SongRow(song: Song, index: Int? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }

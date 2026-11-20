@@ -25,7 +25,7 @@ interface NeteaseApi {
     suspend fun like(id: Long, like: Boolean)          // /like — add/remove from "我喜欢的音乐"
     suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> // /user/record?type=
     suspend fun recentSongs(): List<Song>             // /history/recent/songs
-    suspend fun songUrl(id: Long): SongUrlResult      // /song/url/v1 — standard, exhigh fallback; url null = no playable copy
+    suspend fun songUrl(id: Long): SongUrlResult      // multi-route: EAPI /song/url/v1, then WEAPI /song/url/v1, then classic /song/url; -460 on every route throws RateLimited, url null = no playable copy
     suspend fun songDetail(ids: List<Long>): List<Song> // /song/detail
     suspend fun lyric(id: Long): LyricPayload         // /lyric/new preferred, /lyric fallback (also when /lyric/new answers empty)
 }
