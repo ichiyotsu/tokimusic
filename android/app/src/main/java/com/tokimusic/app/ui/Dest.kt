@@ -10,7 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 
-enum class Dest { Home, Playlists, Mine }
+enum class Dest { Home, Discover, Library, Search }
 
 /** Press scale follows the current MotionScheme. No hardcoded spring. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

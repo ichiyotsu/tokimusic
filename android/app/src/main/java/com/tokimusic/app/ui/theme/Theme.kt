@@ -33,6 +33,8 @@ data class ThemePreferences(
     val seedIndex: Int = 0,
     val reduceMotion: Boolean = false,
     val backdropBlur: Boolean = true,
+    /** Cirro 外观（用户 2026-11-21 确认）：锁定深色 + 固定色板，动态取色与种子色在其下失效。 */
+    val cirroAppearance: Boolean = true,
 )
 
 private fun Typography.withTokiType(family: FontFamily): Typography {
@@ -61,20 +63,26 @@ fun TokiMusicTheme(
     useDynamicColor: Boolean = true,
     seedIndex: Int = 0,
     reduceMotion: Boolean = false,
+    cirroAppearance: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val dark = when (mode) {
+    val dark = if (cirroAppearance) true else when (mode) {
         ThemeMode.System -> isSystemInDarkTheme()
         ThemeMode.Light -> false
         ThemeMode.Dark -> true
     }
     // Touch the capability object before any Haze node is created.
     TokiBlurCapability.canSampleInWindow
-    val colorScheme = resolveColorScheme(tokens, dark, useDynamicColor, seedIndex)
+    val colorScheme = if (cirroAppearance) cirroColorScheme()
+        else resolveColorScheme(tokens, dark, useDynamicColor, seedIndex)
     // MaterialExpressiveTheme does not provide LocalContentColor: bare Text()
     // would default to black and vanish on dark backgrounds. Provide the
     // theme's onBackground here, as TokiStudio 0.1.10-aligned apps do.
-    CompositionLocalProvider(LocalDarkTheme provides dark, LocalContentColor provides colorScheme.onBackground) {
+    CompositionLocalProvider(
+        LocalDarkTheme provides dark,
+        LocalCirroAppearance provides cirroAppearance,
+        LocalContentColor provides colorScheme.onBackground,
+    ) {
         MaterialExpressiveTheme(
             colorScheme = colorScheme,
             shapes = Shapes(),

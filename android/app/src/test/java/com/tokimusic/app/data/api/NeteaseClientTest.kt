@@ -42,6 +42,7 @@ class NeteaseClientTest {
     private class FakeSettings : ApiSettings {
         override var cookie: String = ""
         override var deviceId: String = "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2"
+        override var audioQuality: String = "standard"
     }
 
     @Before
@@ -163,6 +164,41 @@ class NeteaseClientTest {
     }
 
     @Test
+    fun artistSublistUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"data":[{"id":2,"name":"周杰伦","img1v1Url":"https://example.com/jay.jpg"},{"id":3,"name":"林俊杰","img1v1Url":""}]}"""))
+        val artists = client.artistSublist()
+        assertEquals(2, artists.size)
+        assertEquals("周杰伦", artists[0].name)
+        assertEquals("https://example.com/jay.jpg", artists[0].picUrl)
+        val req = server.takeRequest()
+        assertEquals("/weapi/artist/sublist", req.path)
+    }
+
+    @Test
+    fun albumSublistUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"data":[{"id":11,"name":"叶惠美","picUrl":"https://example.com/al.jpg","artists":[{"name":"周杰伦"}],"size":11}]}"""))
+        val albums = client.albumSublist()
+        assertEquals(1, albums.size)
+        assertEquals("叶惠美", albums[0].name)
+        assertEquals("周杰伦", albums[0].artistText)
+        assertEquals(11, albums[0].trackCount)
+        val req = server.takeRequest()
+        assertEquals("/weapi/album/sublist", req.path)
+    }
+
+    @Test
+    fun toplistUsesEapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"list":[{"id":19723756,"name":"飙升榜","coverImgUrl":"https://example.com/t.jpg","trackCount":100}]}"""))
+        val lists = client.toplist()
+        assertEquals(1, lists.size)
+        assertEquals("飙升榜", lists[0].name)
+        val req = server.takeRequest()
+        assertEquals("/eapi/toplist", req.path)
+        val (uri, _) = eapiPayload(req)
+        assertEquals("/api/toplist", uri)
+    }
+
+    @Test
     fun qrFlowNeverSendsStoredCookieAndKeepsNmtid() = runBlocking {
         val s = FakeSettings()
         s.cookie = "MUSIC_U=old; MUSIC_A=anon123"
@@ -224,6 +260,18 @@ class NeteaseClientTest {
         assertEquals("/eapi/v2/banner/get", banner.path)
         assertTrue("the banner request carries the fresh MUSIC_A", (banner.getHeader("Cookie") ?: "").contains("MUSIC_A=newanon"))
         assertTrue(s.cookie.contains("MUSIC_A=newanon"))
+    }
+
+    @Test
+    fun songUrlTriesLosslessFirstWhenQualityIsLossless() = runBlocking {
+        settings.audioQuality = "lossless"
+        server.enqueue(json("""{"code":200,"data":[{"id":1,"url":"https://example.com/l.flac","fee":0}]}"""))
+        val result = client.songUrl(1)
+        assertEquals("https://example.com/l.flac", result.url)
+        val req = server.takeRequest()
+        assertEquals("/eapi/song/enhance/player/url/v1", req.path)
+        val (_, data) = eapiPayload(req)
+        assertEquals("lossless", data.getString("level"))
     }
 
     @Test

@@ -4,13 +4,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,12 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,7 +32,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,7 +58,6 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
-import kotlinx.coroutines.delay
 
 /**
  * Home, rebuilt from the reference: a large in-content title with the avatar at
@@ -81,9 +77,6 @@ fun HomeScreen(
 ) {
     val home by vm.home.collectAsState()
     val profile by vm.profile.collectAsState()
-    var query by remember { mutableStateOf("") }
-    // Debounced: one request per pause in typing, not one per keystroke.
-    LaunchedEffect(query) { delay(400); vm.search(query) }
     var entered by remember { mutableStateOf(false) }
     val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
     LaunchedEffect(Unit) { entered = true }
@@ -100,28 +93,10 @@ fun HomeScreen(
                 Spacer(Modifier.weight(1f))
                 TokiLongPressLabel(if (profile == null) "登录" else "我的") {
                     IconButton(onClick = onOpenLogin) {
-                        Avatar(profile?.avatarUrl ?: "", 40)
+                        Avatar(profile?.avatarUrl ?: "", 48)
                     }
                 }
             }
-        }
-        item {
-            OutlinedTextField(
-                query,
-                { query = it },
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                placeholder = { Text("搜索歌曲、歌手、歌单") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(percent = 50),
-            )
-        }
-        if (home.searching) {
-            item { Text("搜索结果", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge) }
-            items(home.searchResults) { song ->
-                SongRow(song) { vm.play(home.searchResults, home.searchResults.indexOf(song)) }
-            }
-            return@LazyColumn
         }
         if (home.loading && !hasContent) {
             item {
@@ -155,8 +130,9 @@ fun HomeScreen(
         val showRadar = !home.loggedIn || home.radar.isNotEmpty()
         if (showDaily || showRadar) {
             item {
+                // Cirro：每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
                 Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (showDaily) {
@@ -166,6 +142,7 @@ fun HomeScreen(
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
                             onPlay = { vm.play(home.daily, 0) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     if (showRadar) {
@@ -175,8 +152,10 @@ fun HomeScreen(
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
                             onPlay = { vm.play(home.radar, 0) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
+                    if (!showDaily || !showRadar) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -244,10 +223,11 @@ private fun RecommendCard(
     loggedIn: Boolean,
     onLogin: () -> Unit,
     onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = if (loggedIn) onPlay else onLogin,
-        modifier = Modifier.size(width = 200.dp, height = 260.dp),
+        modifier = modifier.fillMaxWidth().aspectRatio(200f / 260f),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
@@ -305,11 +285,11 @@ private fun artistLine(songs: List<Song>): String {
 
 @Composable
 private fun RecentCard(song: Song, onClick: () -> Unit) {
-    Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
+    Column(Modifier.width(112.dp).clickable(onClick = onClick)) {
         AsyncImage(
             song.picUrl,
             song.name,
-            Modifier.size(140.dp).clip(MaterialTheme.shapes.extraLarge),
+            Modifier.size(112.dp).clip(MaterialTheme.shapes.extraLarge),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.height(8.dp))

@@ -26,7 +26,7 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
  * dead service shows an error + retry, login-gated sections (daily / radar /
  * recent) show a login prompt until the user signs in.
  */
-data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searching: Boolean = false)
+data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false)
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -45,6 +45,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
+    // 资料库（Cirro Library）：懒加载，首次打开对应行时才拉取。
+    private val _likedSongs = MutableStateFlow<List<Song>>(emptyList()); val likedSongs: StateFlow<List<Song>> = _likedSongs
+    private var likedSongsLoaded = false
+    private val _artists = MutableStateFlow<List<Artist>>(emptyList()); val artists: StateFlow<List<Artist>> = _artists
+    private var artistsLoaded = false
+    private val _albums = MutableStateFlow<List<Album>>(emptyList()); val albums: StateFlow<List<Album>> = _albums
+    private var albumsLoaded = false
+    private val _toplist = MutableStateFlow<List<Playlist>>(emptyList()); val toplist: StateFlow<List<Playlist>> = _toplist
+    private var toplistLoaded = false
     private var searchJob: Job? = null
     private var qrJob: Job? = null
 
@@ -119,11 +128,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun search(keywords: String) {
         searchJob?.cancel()
-        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searching = false); return }
+        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searching = false); return }
         searchJob = viewModelScope.launch {
             _home.value = _home.value.copy(searching = true)
             // A failed search is an empty result with a retry, never Demo data.
-            _home.value = _home.value.copy(searchResults = runCatching { api.search(keywords) }.getOrDefault(emptyList()), searching = false)
+            val songs = runCatching { api.search(keywords) }.getOrDefault(emptyList())
+            val playlists = runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList())
+            _home.value = _home.value.copy(searchResults = songs, searchPlaylists = playlists, searching = false)
         }
     }
     fun play(songs: List<Song>, index: Int) = viewModelScope.launch {
@@ -154,6 +165,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { api.like(songId, !liked) }.onSuccess {
             _likedIds.value = if (liked) _likedIds.value - songId else _likedIds.value + songId
             _mine.value = _mine.value.copy(likeCount = _likedIds.value.size)
+            likedSongsLoaded = false // 下次打开喜爱歌曲时重新拉取详情
         }.onFailure { e ->
             _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "喜欢失败，请重试"
         }
@@ -195,5 +207,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
         _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); refreshHome()
+        _likedSongs.value = emptyList(); likedSongsLoaded = false
+        _artists.value = emptyList(); artistsLoaded = false
+        _albums.value = emptyList(); albumsLoaded = false
+        _toplist.value = emptyList(); toplistLoaded = false
+    }
+
+    /** 喜爱歌曲：喜欢的 id 列表 + /song/detail 分批取详情（一次最多 100 个 id）。 */
+    fun loadLikedSongs() {
+        if (likedSongsLoaded) return
+        likedSongsLoaded = true
+        viewModelScope.launch {
+            val ids = _likedIds.value.toList()
+            if (ids.isEmpty()) { _likedSongs.value = emptyList(); return@launch }
+            _likedSongs.value = ids.chunked(100).flatMap { chunk ->
+                runCatching { api.songDetail(chunk) }.getOrDefault(emptyList())
+            }
+        }
+    }
+
+    fun loadArtists() {
+        if (artistsLoaded) return
+        artistsLoaded = true
+        viewModelScope.launch { _artists.value = runCatching { api.artistSublist() }.getOrDefault(emptyList()) }
+    }
+
+    fun loadAlbums() {
+        if (albumsLoaded) return
+        albumsLoaded = true
+        viewModelScope.launch { _albums.value = runCatching { api.albumSublist() }.getOrDefault(emptyList()) }
+    }
+
+    fun loadToplist() {
+        if (toplistLoaded) return
+        toplistLoaded = true
+        viewModelScope.launch { _toplist.value = runCatching { api.toplist() }.getOrDefault(emptyList()) }
     }
 }

@@ -1,6 +1,7 @@
 package com.tokimusic.app.data.lyric
 data class LyricWord(val startMs: Long, val durationMs: Long, val text: String)
-data class LyricLine(val startMs: Long, val durationMs: Long, val words: List<LyricWord>, var translation: String? = null) {
+data class LyricLine(val startMs: Long, val durationMs: Long, val words: List<LyricWord>, var translation: String? = null, var romaji: String? = null) {
+    // romaji 预留：网易 YRC 不提供罗马音，v1 不填（见 PLAN §2.5）。
     val text: String get() = words.joinToString("") { it.text }
     val endMs: Long get() = startMs + durationMs
 }

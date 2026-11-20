@@ -27,8 +27,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,14 +54,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tokimusic.app.ui.components.FloatingNavBar
 import com.tokimusic.app.ui.components.OverlayTitleHeader
 import com.tokimusic.app.ui.components.TokiLongPressLabel
-import com.tokimusic.app.ui.components.TokiSideActionButton
 import com.tokimusic.app.ui.components.navEntries
+import com.tokimusic.app.ui.discover.DiscoverScreen
 import com.tokimusic.app.ui.home.HomeScreen
-import com.tokimusic.app.ui.mine.MineScreen
+import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
-import com.tokimusic.app.ui.playlists.PlaylistsScreen
+import com.tokimusic.app.ui.search.SearchScreen
+import com.tokimusic.app.ui.settings.SettingsScreen
 import com.tokimusic.app.ui.theme.ThemeMode
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
@@ -96,6 +95,7 @@ fun TokiMusicApp() {
                 seedIndex = vm.store.seedIndex,
                 reduceMotion = vm.store.reduceMotion,
                 backdropBlur = vm.store.backdropBlur,
+                cirroAppearance = vm.store.cirroAppearance,
             ),
         )
     }
@@ -106,6 +106,7 @@ fun TokiMusicApp() {
         vm.store.seedIndex = next.seedIndex
         vm.store.reduceMotion = next.reduceMotion
         vm.store.backdropBlur = next.backdropBlur
+        vm.store.cirroAppearance = next.cirroAppearance
     }
 
     TokiMusicTheme(
@@ -113,11 +114,14 @@ fun TokiMusicApp() {
         useDynamicColor = theme.useDynamicColor,
         seedIndex = theme.seedIndex,
         reduceMotion = theme.reduceMotion,
+        cirroAppearance = theme.cirroAppearance,
     ) {
         var dest by remember { mutableStateOf(Dest.Home) }
         var playlistId by remember { mutableStateOf<Long?>(null) }
         var playlistTitle by remember { mutableStateOf("歌单") }
         var showPlayer by remember { mutableStateOf(false) }
+        // 设置页：独立页，左上 X 关闭 + 居中标题（Cirro）。
+        var showSettings by remember { mutableStateOf(false) }
         val hazeState = rememberHazeState()
         val glass = tokiChrome(hazeState, theme.backdropBlur)
         // The nav capsule changes width as its label expands: content-source
@@ -126,29 +130,28 @@ fun TokiMusicApp() {
         val density = LocalDensity.current
 
         val playerState by vm.player.state.collectAsState()
-        val homeTitle = stringResource(navEntries[0].label)
-        val playlistsTitle = stringResource(navEntries[1].label)
-        val mineTitle = stringResource(navEntries[2].label)
         val pageTitle = when {
             showPlayer -> "正在播放"
+            showSettings -> "账户与设置"
             playlistId != null -> playlistTitle
-            dest == Dest.Home -> homeTitle
-            dest == Dest.Playlists -> playlistsTitle
-            else -> mineTitle
+            else -> stringResource(navEntries.first { it.dest == dest }.label)
         }
         // The player is a second-level page: no top bar, no bottom bar, no
         // rail — but it now carries its own floating back chip (0.1.10: every
-        // second-level page gets one). Home draws its own large title +
-        // avatar in content, so the pinned overlay header is hidden there too.
-        val chromeVisible = !showPlayer
-        val headerVisible = chromeVisible && (playlistId != null || dest != Dest.Home)
+        // second-level page gets one). Home / Discover / Library / Search draw
+        // their own large in-content titles (Cirro), so the pinned overlay
+        // header only shows for playlist detail.
+        val chromeVisible = !showPlayer && !showSettings
+        val headerVisible = chromeVisible && playlistId != null
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
+            showSettings -> ({ showSettings = false })
             playlistId != null -> ({ playlistId = null })
             else -> null
         }
         BackHandler(enabled = showPlayer) { showPlayer = false }
-        BackHandler(enabled = !showPlayer && playlistId != null) { playlistId = null }
+        BackHandler(enabled = showSettings) { showSettings = false }
+        BackHandler(enabled = !showPlayer && !showSettings && playlistId != null) { playlistId = null }
 
         val contentGap = tokiSpace("lg")
         val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -162,6 +165,7 @@ fun TokiMusicApp() {
         // bottom, a playlist detail slides in from the right, tabs crossfade.
         val pageKey: Any = when {
             showPlayer -> "player"
+            showSettings -> "settings"
             playlistId != null -> "playlist:$playlistId"
             else -> dest
         }
@@ -251,17 +255,19 @@ fun TokiMusicApp() {
                                             hazeState = hazeState,
                                             backdropBlur = theme.backdropBlur,
                                         )
+                                        key == "settings" -> SettingsScreen(vm, theme, updateTheme, onClose = { showSettings = false })
                                         (key as? String)?.startsWith("playlist:") == true -> PlaylistDetailScreen(
                                             vm, (key as String).removePrefix("playlist:").toLong(), bottomPadding,
                                             onTitle = { playlistTitle = it },
                                         )
                                         key == Dest.Home -> HomeScreen(
                                             vm, statusBarHeight, bottomPadding,
-                                            onOpenLogin = { dest = Dest.Mine },
+                                            onOpenLogin = { showSettings = true },
                                             onOpenPlaylist = { playlistId = it },
                                         )
-                                        key == Dest.Playlists -> PlaylistsScreen(vm, topPadding, bottomPadding) { playlistId = it }
-                                        else -> MineScreen(vm, topPadding, bottomPadding, theme, updateTheme)
+                                        key == Dest.Discover -> DiscoverScreen(vm, topPadding, bottomPadding) { playlistId = it }
+                                        key == Dest.Library -> LibraryScreen(vm, topPadding, bottomPadding, onOpenSettings = { showSettings = true }) { playlistId = it }
+                                        else -> SearchScreen(vm, topPadding, bottomPadding) { playlistId = it; playlistTitle = "" }
                                     }
                                 }
                             }
@@ -337,22 +343,8 @@ private fun BottomChrome(
         ) {
             if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer)
             if (!wide) {
-                // 0.1.10 bottom row: the capsule plus, 8dp to its right, one
-                // independent round glass button (opens the player). In wide
-                // windows the rail owns navigation and the button stays hidden.
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FloatingNavBar(dest, onSelect, glass = barGlass, solidStroke = solidStroke)
-                    TokiSideActionButton(
-                        icon = Icons.Filled.QueueMusic,
-                        contentDescription = "正在播放",
-                        onClick = onOpenPlayer,
-                        glass = glass,
-                        solidFill = solidStroke,
-                    )
-                }
+                // Cirro：只有胶囊导航，没有胶囊旁的独立队列按钮（队列入口在播放器底部）。
+                FloatingNavBar(dest, onSelect, glass = barGlass, solidStroke = solidStroke)
             }
         }
     }

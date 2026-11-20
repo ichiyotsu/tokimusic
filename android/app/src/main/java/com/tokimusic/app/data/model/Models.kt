@@ -1,5 +1,6 @@
 package com.tokimusic.app.data.model
-data class Artist(val id: Long, val name: String)
+data class Artist(val id: Long, val name: String, val picUrl: String = "")
+data class Album(val id: Long, val name: String, val coverUrl: String = "", val artistText: String = "", val trackCount: Int = 0)
 data class Song(val id: Long, val name: String, val artists: List<Artist>, val albumName: String = "", val picUrl: String = "", val durationMs: Long = 0, val fee: Int = 0) {
     val artistText: String get() = artists.joinToString(" / ") { it.name }
 }
