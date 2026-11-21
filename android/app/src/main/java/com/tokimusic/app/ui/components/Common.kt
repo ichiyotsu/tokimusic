@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Playlist
@@ -33,18 +34,22 @@ import com.tokimusic.app.data.model.Song
  * 设置行：取代 M3 ListItem —— 它的内置 16dp 内边距与 24dp 页边距对不
  * 上，行会比页内其他内容偏左。64dp 高，左右 24dp，标题 titleMedium，
  * 说明 bodySmall，右侧可放操作控件。
+ *
+ * [horizontalPadding]：弹窗内使用时传 4dp（弹窗容器已有 20dp 内边距，
+ * 合计 24dp 与页边距一致）。
  */
 @Composable fun SettingsRow(
     headline: String,
     supporting: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    horizontalPadding: Dp = 24.dp,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth()
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .heightIn(min = 64.dp)
-            .padding(horizontal = 24.dp, vertical = 8.dp),
+            .padding(horizontal = horizontalPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -54,7 +59,7 @@ import com.tokimusic.app.data.model.Song
         if (trailing != null) { Spacer(Modifier.width(12.dp)); trailing() }
     }
 }
-@Composable fun SongRow(song: Song, index: Int? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
         AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
@@ -63,7 +68,9 @@ import com.tokimusic.app.data.model.Song
             Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(listOf(song.artistText, song.albumName).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (song.durationMs > 0) Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // trailingText 优先（听歌排行显示“x 次”）；否则显示歌曲时长。
+        if (trailingText != null) Text(trailingText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else if (song.durationMs > 0) Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable fun PlaylistCard(playlist: Playlist, onClick: () -> Unit) {
@@ -78,23 +85,28 @@ import com.tokimusic.app.data.model.Song
     AsyncImage(url, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
 fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60) }
+/** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
+fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(s % 60)}秒" }
 fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }
 
 /**
  * Cirro 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
  * 可选说明 + 右侧 chevron，整行可点。圆角 20dp，卡片色 surfaceContainer
  *（Cirro 模式下为 #1C1C1E）。
+ *
+ * [horizontalPadding]：弹窗内使用时传 4dp（弹窗容器已有 20dp 内边距）。
  */
 @Composable
 fun CirroCardRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String? = null,
+    horizontalPadding: Dp = 24.dp,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = horizontalPadding)
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
@@ -109,5 +121,32 @@ fun CirroCardRow(
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * 底部弹窗容器（TokiNote SheetContainer 配方，见 ProfileSheet.kt /
+ * NoteSheets.kt）：ModalBottomSheet，容器色 surfaceContainerLow，顶部圆角
+ * 32dp，横向内边距 20dp，底部 28dp。设置 / 搜索 / 队列三个弹窗共用。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TokiSheetContainer(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        modifier = modifier,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            content = content,
+        )
     }
 }

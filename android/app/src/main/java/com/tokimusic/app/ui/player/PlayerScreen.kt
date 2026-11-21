@@ -3,6 +3,7 @@ package com.tokimusic.app.ui.player
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -26,15 +27,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -44,8 +44,9 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -79,9 +80,12 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.player.PlayerState
+import com.tokimusic.app.player.rememberCastActive
+import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
-import com.tokimusic.app.ui.components.TokiScrollBackChip
+import com.tokimusic.app.ui.components.TokiSheetContainer
 import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
@@ -96,21 +100,25 @@ import kotlinx.coroutines.delay
 /**
  * Cirro 迷你播放器：深灰胶囊（#2C2C2E），16dp 边距，小封面 + 歌名/歌手 +
  * 播放/下一曲两钮，底部 2dp 细进度线。悬浮在导航胶囊上方。
+ *
+ * 第二轮第 1 项：迷你播放器之前是纯色卡片、完全没有模糊，亮背景下显透。
+ * 现在与导航胶囊同配方——加强档磨砂（32dp 模糊 + 45% veil）；玻璃关闭时
+ * 回退纯色 #2C2C2E（Cirro）/ surfaceContainerLow。
  */
 @Composable
-fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
+fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false) {
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.index, state.isPlaying) { while (true) { pos = vm.player.currentPosition(); delay(500) } }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     val cirro = LocalCirroAppearance.current
     val scheme = MaterialTheme.colorScheme
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpen),
-        shape = if (cirro) RoundedCornerShape(percent = 50) else MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(
-            containerColor = if (cirro) CirroMiniPlayer else scheme.surfaceContainerLow,
-        ),
+    val shape = if (cirro) RoundedCornerShape(percent = 50) else MaterialTheme.shapes.extraLarge
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .clip(shape)
+            .then(if (glassOn) glass else Modifier.background(if (cirro) CirroMiniPlayer else scheme.surfaceContainerLow))
+            .clickable(onClick = onOpen),
     ) {
         Column {
             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -149,6 +157,11 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
  * the app chrome hides while it is open). The top area flips between the large
  * cover and the full-screen lyrics; the control cluster below is shared.
  * Background is the cover-color warm gradient (Cirro), not blurred artwork.
+ *
+ * 第二轮：圆角面板形态（面板在 TokiMusicApp 里包，顶部圆角 32dp、高度略低
+ * 于全屏）；左上返回按钮已删，点空白区域返回（封面/歌词区与控制区有
+ * 无操作点击屏蔽，不会误触）；逐字高亮固定开启，麦克风按钮已删；
+ * 文字与按钮底色全部跟随封面取色。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
@@ -159,15 +172,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val song = state.current
     var pos by remember { mutableLongStateOf(0L) }
     var showLyrics by remember { mutableStateOf(false) }
-    var karaoke by remember { mutableStateOf(vm.store.karaokeHighlight) }
     var showQueue by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    // 投放选中态：第 18 项，订阅 MediaRouter 回调（当前路由非默认时为真）。
+    val castActive = rememberCastActive()
     val context = LocalContext.current
     LaunchedEffect(state.index) { song?.let { vm.loadLyrics(it.id) } }
     LaunchedEffect(state.isPlaying, state.index) { while (true) { pos = vm.player.currentPosition(); delay(200) } }
     if (song == null) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-            Text("暂无播放中的歌曲", style = MaterialTheme.typography.bodyLarge)
+            Text("暂无播放中的歌曲", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
         }
         return
     }
@@ -176,17 +190,26 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val scheme = MaterialTheme.motionScheme
     // Cirro：背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。
     val coverColors = rememberCoverColors(song.id, song.picUrl)
-    Box(Modifier.fillMaxSize()) {
+    // 第 12 项：播放器页文字与按钮底色全部跟随封面取色。
+    val onCover = coverColors.onCoverText()
+    val onCoverDim = coverColors.onCoverTextDim()
+    val buttonBg = coverColors.onCoverButtonBg()
+    // 第 13 项：播放键圆角随播放态做动画——播放时全圆角胶囊，暂停时 28dp。
+    val playCorner by animateDpAsState(
+        targetValue = if (state.isPlaying) 42.dp else 28.dp,
+        animationSpec = scheme.defaultSpatialSpec(),
+        label = "playKeyCorner",
+    )
+    // 第 11 项：点空白区域返回。根布局接点击；封面/歌词区与控制区各放
+    // 一个无操作点击屏蔽，点它们不返回（按钮/滑块/歌词滚动照常）。
+    val blankBack = remember { MutableInteractionSource() }
+    val shield = remember { MutableInteractionSource() }
+    Box(
+        Modifier.fillMaxSize()
+            .clickable(interactionSource = blankBack, indication = null) { onBack() },
+    ) {
         Box(Modifier.fillMaxSize().background(coverColors.toBrush()))
-        // 0.1.10: every second-level page gets a floating back chip, even the
-        // immersive player — 56dp glass circle, top-left over the cover.
-        Box(
-            Modifier.fillMaxSize().statusBarsPadding().padding(start = 24.dp, top = 4.dp),
-            contentAlignment = Alignment.TopStart,
-        ) {
-            TokiScrollBackChip(backdropBlur, hazeState, onClick = onBack)
-        }
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().padding(top = 8.dp).navigationBarsPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AnimatedContent(
                     targetState = showLyrics,
@@ -198,22 +221,26 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     modifier = Modifier.fillMaxSize(),
                 ) { lyricsMode ->
                     if (lyricsMode) {
-                        Box(Modifier.fillMaxSize()) {
-                            LyricsView(lyrics, pos, Modifier.fillMaxSize().padding(horizontal = 24.dp), karaoke = karaoke, showTranslation = vm.store.showTranslation, coverColors = coverColors)
-                            Box(
-                                Modifier.fillMaxSize().padding(end = 16.dp),
-                                contentAlignment = Alignment.CenterEnd,
-                            ) {
-                                TokiLongPressLabel(if (karaoke) "关闭逐字高亮" else "开启逐字高亮") {
-                                    CircleArtButton(Icons.Filled.Mic, if (karaoke) Color.White else Color.White.copy(alpha = 0.55f)) {
-                                        karaoke = !karaoke
-                                        vm.store.karaokeHighlight = karaoke
-                                    }
-                                }
-                            }
+                        Box(
+                            Modifier.fillMaxSize()
+                                .clickable(interactionSource = shield, indication = null) {},
+                        ) {
+                            LyricsView(
+                                lyrics,
+                                positionProvider = { vm.player.currentPosition() },
+                                Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                                showTranslation = vm.store.showTranslation,
+                                coverColors = coverColors,
+                                hazeState = hazeState,
+                                backdropBlur = backdropBlur,
+                            )
                         }
                     } else {
-                        Box(Modifier.fillMaxSize().padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier.fillMaxSize().padding(horizontal = 24.dp)
+                                .clickable(interactionSource = shield, indication = null) {},
+                            contentAlignment = Alignment.Center,
+                        ) {
                             AsyncImage(
                                 song.picUrl,
                                 song.name,
@@ -227,20 +254,21 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                 }
             }
             Column(
-                Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 8.dp),
+                Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 8.dp)
+                    .clickable(interactionSource = shield, indication = null) {},
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (showLyrics) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                         Spacer(Modifier.width(12.dp))
-                        SongTitleBlock(song, Modifier.weight(1f))
-                        TitleActions(liked, { vm.toggleLike(song.id) }) { showMore = true }
+                        SongTitleBlock(song, Modifier.weight(1f), textColor = onCover, dimColor = onCoverDim)
+                        TitleActions(liked, { vm.toggleLike(song.id) }, buttonTint = onCover, buttonBg = buttonBg) { showMore = true }
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SongTitleBlock(song, Modifier.weight(1f))
-                        TitleActions(liked, { vm.toggleLike(song.id) }) { showMore = true }
+                        SongTitleBlock(song, Modifier.weight(1f), textColor = onCover, dimColor = onCoverDim)
+                        TitleActions(liked, { vm.toggleLike(song.id) }, buttonTint = onCover, buttonBg = buttonBg) { showMore = true }
                     }
                 }
                 // Cirro 进度条：T 形滑块（竖线手柄穿过横线）。SliderState 版才有
@@ -257,21 +285,21 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         onValueChange = { vm.player.seekTo(it.toLong()); pos = it.toLong() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color.White,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                            thumbColor = onCover,
+                            activeTrackColor = onCover,
+                            inactiveTrackColor = onCover.copy(alpha = 0.3f),
                         ),
                         interactionSource = sliderInteraction,
                         thumb = {
                             Box(
                                 Modifier.size(width = 4.dp, height = 28.dp)
-                                    .background(Color.White, RoundedCornerShape(2.dp)),
+                                    .background(onCover, RoundedCornerShape(2.dp)),
                             )
                         },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatClock(pos), style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        Text(formatClock(song.durationMs), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.6f))
+                        Text(formatClock(pos), style = MaterialTheme.typography.labelLarge, color = onCover)
+                        Text(formatClock(song.durationMs), style = MaterialTheme.typography.labelLarge, color = onCoverDim)
                     }
                 }
                 Row(
@@ -280,7 +308,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TokiLongPressLabel("上一首") {
-                        CircleArtButton(Icons.Filled.SkipPrevious, Color.White, size = 72.dp, iconSize = 36.dp) { vm.player.previous() }
+                        CircleArtButton(Icons.Filled.SkipPrevious, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.previous() }
                     }
                     Spacer(Modifier.width(28.dp))
                     TokiLongPressLabel(playLabel) {
@@ -288,7 +316,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         val cirro = LocalCirroAppearance.current
                         Box(
                             Modifier.size(width = 128.dp, height = 84.dp)
-                                .clip(RoundedCornerShape(28.dp))
+                                .clip(RoundedCornerShape(playCorner))
                                 .background(if (cirro) CirroPlayKey else Color.White)
                                 .clickable(interactionSource = interaction, indication = ripple()) { vm.player.toggle() }
                                 .pressScale(interaction),
@@ -304,28 +332,28 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     }
                     Spacer(Modifier.width(28.dp))
                     TokiLongPressLabel("下一首") {
-                        CircleArtButton(Icons.Filled.SkipNext, Color.White, size = 72.dp, iconSize = 36.dp) { vm.player.next() }
+                        CircleArtButton(Icons.Filled.SkipNext, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.next() }
                     }
                 }
+                // 第 14 项：底部三钮各备空心/实心两套图标，选中态用实心。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TokiLongPressLabel(if (showLyrics) "返回封面" else "歌词") {
-                        if (showLyrics) {
-                            CircleArtButton(Icons.Filled.FormatQuote, Color.White) { showLyrics = false }
-                        } else {
-                            PlainArtButton(Icons.Filled.FormatQuote, "歌词") { showLyrics = true }
-                        }
+                        PlainArtButton(if (showLyrics) Icons.Filled.FormatQuote else Icons.Outlined.FormatQuote, "歌词", tint = onCover) { showLyrics = !showLyrics }
                     }
                     TokiLongPressLabel("投放") {
-                        PlainArtButton(Icons.Filled.Cast, "投放") {
-                            Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
+                        PlainArtButton(if (castActive) Icons.Filled.Cast else Icons.Outlined.Cast, "投放", tint = onCover) {
+                            // 第 18 项：打开安卓原生投放窗；选路后音频立即切换。
+                            val activity = context as? androidx.fragment.app.FragmentActivity
+                            if (activity != null) showCastChooser(activity)
+                            else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
                         }
                     }
                     TokiLongPressLabel("播放队列") {
-                        PlainArtButton(Icons.Filled.QueueMusic, "播放队列") { showQueue = true }
+                        PlainArtButton(if (showQueue) Icons.Filled.QueueMusic else Icons.Outlined.QueueMusic, "播放队列", tint = onCover) { showQueue = true }
                     }
                 }
             }
@@ -346,32 +374,32 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
 }
 
 @Composable
-private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier) {
+private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f)) {
     Column(modifier) {
-        Text(song.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(song.artistText, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(song.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(song.artistText, style = MaterialTheme.typography.titleMedium, color = dimColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
-private fun RowScope.TitleActions(liked: Boolean, onToggleLike: () -> Unit, onMore: () -> Unit) {
+private fun RowScope.TitleActions(liked: Boolean, onToggleLike: () -> Unit, buttonTint: Color = Color.White, buttonBg: Color = Color.White.copy(alpha = 0.14f), onMore: () -> Unit) {
     TokiLongPressLabel(if (liked) "取消喜欢" else "喜欢") {
-        CircleArtButton(if (liked) Icons.Filled.Star else Icons.Filled.StarBorder, Color.White, onClick = onToggleLike)
+        CircleArtButton(if (liked) Icons.Filled.Star else Icons.Filled.StarBorder, buttonTint, bgColor = buttonBg, onClick = onToggleLike)
     }
     Spacer(Modifier.width(12.dp))
     TokiLongPressLabel("更多") {
-        CircleArtButton(Icons.Filled.MoreHoriz, Color.White, onClick = onMore)
+        CircleArtButton(Icons.Filled.MoreHoriz, buttonTint, bgColor = buttonBg, onClick = onMore)
     }
 }
 
 /** Round translucent button used over the artwork background. */
 @Composable
-private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compose.ui.unit.Dp = 48.dp, iconSize: androidx.compose.ui.unit.Dp = 24.dp, onClick: () -> Unit) {
+private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compose.ui.unit.Dp = 48.dp, iconSize: androidx.compose.ui.unit.Dp = 24.dp, bgColor: Color = Color.White.copy(alpha = 0.14f), onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier.size(size)
             .clip(RoundedCornerShape(percent = 50))
-            .background(Color.White.copy(alpha = 0.14f))
+            .background(bgColor)
             .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
             .pressScale(interaction),
         contentAlignment = Alignment.Center,
@@ -382,7 +410,7 @@ private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compo
 
 /** Plain icon button used over the artwork background (no circle). */
 @Composable
-private fun PlainArtButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun PlainArtButton(icon: ImageVector, label: String, tint: Color = Color.White.copy(alpha = 0.85f), onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier.size(48.dp)
@@ -391,26 +419,53 @@ private fun PlainArtButton(icon: ImageVector, label: String, onClick: () -> Unit
             .pressScale(interaction),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(28.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(28.dp))
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 播放队列弹窗（第二轮第 19 项，TokiUI 设计）：TokiSheetContainer 配方
+ * （顶部圆角 32dp、surfaceContainerLow、标题 + 36dp 关闭钮），
+ * SectionTitle 分段——正在播放 / 接下来，当前曲用 primaryContainer
+ * 35% 高亮。点行跳转并关闭弹窗。
+ */
 @Composable
 private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("播放队列", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
-        LazyColumn(Modifier.fillMaxHeight(0.6f)) {
-            itemsIndexed(state.queue) { i, song ->
-                Box(
-                    Modifier.fillMaxWidth()
-                        .background(if (i == state.index) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent),
-                ) {
-                    SongRow(song) { onJump(i); onDismiss() }
+    TokiSheetContainer(onDismiss = onDismiss) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.7f)) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "播放队列",
+                    Modifier.weight(1f).padding(start = 8.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                androidx.compose.material3.IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "关闭")
+                }
+            }
+            LazyColumn(Modifier.weight(1f)) {
+                if (state.queue.isNotEmpty() && state.index in state.queue.indices) {
+                    item { SectionTitle("正在播放") }
+                    item {
+                        Box(
+                            Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
+                        ) {
+                            SongRow(state.queue[state.index]) { onJump(state.index); onDismiss() }
+                        }
+                    }
+                    if (state.index + 1 < state.queue.size) {
+                        item { SectionTitle("接下来") }
+                        itemsIndexed(state.queue) { i, song ->
+                            if (i > state.index) SongRow(song) { onJump(i); onDismiss() }
+                        }
+                    }
+                } else {
+                    itemsIndexed(state.queue) { i, song -> SongRow(song) { onJump(i); onDismiss() } }
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -439,6 +494,7 @@ private fun MoreSheet(song: Song, liked: Boolean, onToggleLike: () -> Unit, onPl
                 Text(
                     "时长 ${formatDuration(song.durationMs)}",
                     style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )

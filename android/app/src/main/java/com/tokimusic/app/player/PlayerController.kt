@@ -1,5 +1,7 @@
 package com.tokimusic.app.player
 import android.content.Context
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -90,6 +92,24 @@ class PlayerController(context: Context) {
         ensureUrlForCurrent()
     }
     fun toggle() { if (player.isPlaying) player.pause() else player.play() }
+    /**
+     * 空间音频开关（第二轮第 6 项 B，spike 未证实杜比片源，见 spike 报告）：
+     * 不依赖服务端杜比档位，对立体声内容做系统级空间化（AudioAttributes
+     * spatializationBehavior，设备需有 Spatializer；无支持时开关无效果）。
+     * 新属性从下一首歌（下一次创建 AudioTrack 时）生效。
+     */
+    fun setSpatialAudio(enabled: Boolean) {
+        player.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .setSpatializationBehavior(
+                    if (enabled) C.SPATIALIZATION_BEHAVIOR_AUTO else C.SPATIALIZATION_BEHAVIOR_NEVER,
+                )
+                .build(),
+            /* handleAudioFocus= */ true,
+        )
+    }
     fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
     fun previous() { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() }
     /** Jump the queue sheet's tap target: index change flows back through onMediaItemTransition. */

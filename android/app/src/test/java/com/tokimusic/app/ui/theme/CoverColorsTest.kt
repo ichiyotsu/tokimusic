@@ -56,4 +56,29 @@ class CoverColorsTest {
         assertEquals(0, channel(top, 8))
         assertTrue(channel(bottom, 16) < channel(top, 16))
     }
+
+    @Test
+    fun luminanceOfBlackWhiteAndMidGrey() {
+        // WCAG 相对亮度：黑 0、白 1、中灰约 0.21。
+        assertEquals(0.0, androidx.compose.ui.graphics.Color.Black.relativeLuminance(), 0.001)
+        assertEquals(1.0, androidx.compose.ui.graphics.Color.White.relativeLuminance(), 0.001)
+        val grey = androidx.compose.ui.graphics.Color(0xFF808080)
+        assertTrue(grey.relativeLuminance() in 0.18..0.24)
+    }
+
+    @Test
+    fun onCoverTextIsWhiteOnDarkAndDarkOnLight() {
+        val dark = CoverColors(androidx.compose.ui.graphics.Color(0xFF5A2A12), androidx.compose.ui.graphics.Color(0xFF2E1A0C))
+        assertEquals(androidx.compose.ui.graphics.Color.White, dark.onCoverText())
+        val light = CoverColors(androidx.compose.ui.graphics.Color(0xFFE8E0D0), androidx.compose.ui.graphics.Color(0xFF8A7A60))
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF1C1C1E), light.onCoverText())
+    }
+
+    @Test
+    fun totalDurationKeepsMinutesPastOneHour() {
+        // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
+        assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))
+        assertEquals("3分05秒", com.tokimusic.app.ui.components.formatTotalDurationMs(185_000L))
+        assertEquals("0分00秒", com.tokimusic.app.ui.components.formatTotalDurationMs(0L))
+    }
 }

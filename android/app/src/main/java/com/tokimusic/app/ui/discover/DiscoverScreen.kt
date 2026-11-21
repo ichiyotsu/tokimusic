@@ -14,7 +14,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
@@ -33,14 +32,7 @@ fun DiscoverScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPl
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Text(
-                "发现",
-                Modifier.padding(horizontal = 24.dp),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题。
         if (toplist.isNotEmpty()) {
             item {
                 Text("排行榜", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
