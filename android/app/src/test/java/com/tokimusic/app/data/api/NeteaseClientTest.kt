@@ -186,6 +186,57 @@ class NeteaseClientTest {
         assertEquals("/weapi/album/sublist", req.path)
     }
 
+    // 第三轮第 12 项：歌手详情 / 热门歌曲 / 专辑列表 / 专辑详情。
+    // 样例 JSON 按 2026-11-21 上游模块直连 music.163.com 的实测形状写。
+    @Test
+    fun artistDetailUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"data":{"artist":{"id":6452,"name":"周杰伦","avatar":"https://example.com/avatar.jpg","cover":"https://example.com/cover.jpg","briefDesc":"华语流行乐男歌手","musicSize":591,"albumSize":49}}}"""))
+        val artist = client.artistDetail(6452)
+        assertEquals(6452L, artist.id)
+        assertEquals("周杰伦", artist.name)
+        assertEquals("https://example.com/avatar.jpg", artist.picUrl)
+        assertEquals("华语流行乐男歌手", artist.briefDesc)
+        assertEquals(591, artist.musicSize)
+        assertEquals(49, artist.albumSize)
+        val req = server.takeRequest()
+        assertEquals("/weapi/artist/head/info/get", req.path)
+    }
+
+    @Test
+    fun artistTopSongsUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"songs":[{"id":1,"name":"晴天","ar":[{"id":2,"name":"周杰伦"}],"al":{"name":"叶惠美","picUrl":""},"dt":269000,"fee":0}]}"""))
+        val songs = client.artistTopSongs(6452)
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+        assertEquals("周杰伦", songs[0].artistText)
+        val req = server.takeRequest()
+        assertEquals("/weapi/artist/top/song", req.path)
+    }
+
+    @Test
+    fun artistAlbumsUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"hotAlbums":[{"id":11,"name":"叶惠美","picUrl":"https://example.com/al.jpg","artists":[{"name":"周杰伦"}],"size":11}]}"""))
+        val albums = client.artistAlbums(6452)
+        assertEquals(1, albums.size)
+        assertEquals("叶惠美", albums[0].name)
+        assertEquals("周杰伦", albums[0].artistText)
+        assertEquals(11, albums[0].trackCount)
+        val req = server.takeRequest()
+        assertEquals("/weapi/artist/albums/6452", req.path)
+    }
+
+    @Test
+    fun albumDetailUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"album":{"id":11,"name":"叶惠美","picUrl":"https://example.com/al.jpg","artists":[{"name":"周杰伦"}],"size":11},"songs":[{"id":1,"name":"晴天","ar":[{"id":2,"name":"周杰伦"}],"al":{"name":"叶惠美","picUrl":""},"dt":269000,"fee":0}]}"""))
+        val (album, tracks) = client.albumDetail(11)
+        assertEquals("叶惠美", album.name)
+        assertEquals("周杰伦", album.artistText)
+        assertEquals(1, tracks.size)
+        assertEquals("晴天", tracks[0].name)
+        val req = server.takeRequest()
+        assertEquals("/weapi/v1/album/11", req.path)
+    }
+
     @Test
     fun toplistUsesEapi() = runBlocking {
         server.enqueue(json("""{"code":200,"list":[{"id":19723756,"name":"飙升榜","coverImgUrl":"https://example.com/t.jpg","trackCount":100}]}"""))

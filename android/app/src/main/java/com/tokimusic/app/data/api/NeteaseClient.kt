@@ -336,6 +336,11 @@ class NeteaseClient(
         val creator = o.optJSONObject("creator")
         return Playlist(o.optLong("id"), o.optString("name"), o.optString("coverImgUrl", o.optString("picUrl")), o.optInt("trackCount"), creator?.optString("nickname") ?: "", creator?.optLong("userId") ?: 0, o.optBoolean("subscribed"), o.optLong("playCount"), o.optString("description"))
     }
+    private fun parseAlbum(o: JSONObject): Album {
+        val ar = o.optJSONArray("artists") ?: JSONArray()
+        val artistText = (0 until ar.length()).joinToString(" / ") { ar.getJSONObject(it).optString("name") }
+        return Album(o.optLong("id"), o.optString("name"), o.optString("picUrl"), artistText, o.optInt("size"))
+    }
 
     override suspend fun qrKey(): String =
         post("/api/login/qrcode/unikey", obj("type" to 3), Crypto.EAPI, skipAuthCookie = true)
@@ -491,16 +496,34 @@ class NeteaseClient(
                 }
             }
 
+    // 第三轮第 12 项：歌手详情 / 热门歌曲 / 专辑列表 / 专辑详情。
+    // artist_detail 上游模块未指定 crypto，实测 weapi 可用（2026-11-21，
+    // 上游模块直连 music.163.com 验证：plain 与 weapi 均返回 code 200）。
+    override suspend fun artistDetail(id: Long): Artist {
+        val a = post("/api/artist/head/info/get", obj("id" to id), Crypto.WEAPI)
+            .body.getJSONObject("data").getJSONObject("artist")
+        val pic = a.optString("avatar").ifBlank { a.optString("cover") }.ifBlank { a.optString("picUrl") }
+        return Artist(a.optLong("id"), a.optString("name"), pic, a.optString("briefDesc"), a.optInt("musicSize"), a.optInt("albumSize"))
+    }
+
+    override suspend fun artistTopSongs(id: Long): List<Song> =
+        post("/api/artist/top/song", obj("id" to id), Crypto.WEAPI)
+            .body.arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+
+    override suspend fun artistAlbums(id: Long): List<Album> =
+        post("/api/artist/albums/$id", obj("limit" to 30, "offset" to 0, "total" to true), Crypto.WEAPI)
+            .body.arr("hotAlbums").let { a -> (0 until a.length()).map { parseAlbum(a.getJSONObject(it)) } }
+
+    override suspend fun albumDetail(id: Long): Pair<Album, List<Song>> {
+        val o = post("/api/v1/album/$id", obj(), Crypto.WEAPI).body
+        val album = parseAlbum(o.getJSONObject("album"))
+        val tracks = o.arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+        return album to tracks
+    }
+
     override suspend fun albumSublist(): List<Album> =
         post("/api/album/sublist", obj("limit" to 100, "offset" to 0, "total" to true), Crypto.WEAPI)
-            .body.arr("data").let { a ->
-                (0 until a.length()).map {
-                    val o = a.getJSONObject(it)
-                    val ar = o.optJSONArray("artists") ?: JSONArray()
-                    val artistText = (0 until ar.length()).joinToString(" / ") { ar.getJSONObject(it).optString("name") }
-                    Album(o.optLong("id"), o.optString("name"), o.optString("picUrl"), artistText, o.optInt("size"))
-                }
-            }
+            .body.arr("data").let { a -> (0 until a.length()).map { parseAlbum(a.getJSONObject(it)) } }
 
     override suspend fun toplist(): List<Playlist> =
         post("/api/toplist", obj(), Crypto.EAPI)

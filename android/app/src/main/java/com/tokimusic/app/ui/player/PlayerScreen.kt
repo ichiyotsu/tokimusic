@@ -4,10 +4,13 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -93,8 +97,9 @@ import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.CirroMiniPlayer
 import com.tokimusic.app.ui.theme.CirroPlayKey
 import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
+import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.LocalCirroAppearance
-import com.tokimusic.app.ui.theme.rememberCoverColors
+import com.tokimusic.app.ui.theme.lyricFontFamily
 import kotlinx.coroutines.delay
 
 /**
@@ -162,10 +167,12 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
  * 于全屏）；左上返回按钮已删，点空白区域返回（封面/歌词区与控制区有
  * 无操作点击屏蔽，不会误触）；逐字高亮固定开启，麦克风按钮已删；
  * 文字与按钮底色全部跟随封面取色。
+ * 第三轮第 8 项：封面↔歌词切换按方向区分（进歌词：封面缩小淡出、歌词
+ * 淡入上移；回封面反向），歌词行切页时 stagger 入场（只触发一次）。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors) {
     val state by vm.player.state.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
     val likedIds by vm.likedIds.collectAsState()
@@ -188,8 +195,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     val liked = song.id in likedIds
     val scheme = MaterialTheme.motionScheme
-    // Cirro：背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。
-    val coverColors = rememberCoverColors(song.id, song.picUrl)
+    // Cirro：背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。取色由
+    // TokiMusicApp 传入（第三轮第 21 项：外层满屏 Box 共用同一份取色）。
     // 第 12 项：播放器页文字与按钮底色全部跟随封面取色。
     val onCover = coverColors.onCoverText()
     val onCoverDim = coverColors.onCoverTextDim()
@@ -214,8 +221,17 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                 AnimatedContent(
                     targetState = showLyrics,
                     transitionSpec = {
-                        (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), 0.96f)) togetherWith
-                            (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), 0.96f))
+                        // 第三轮第 8 项：按方向区分——进歌词时封面缩小淡出、
+                        // 歌词淡入上移；回封面时反向。淡入淡出/缩放走
+                        // motionScheme 的 expressive spec，位移 300ms
+                        //（与第 5 项标题动画同量级）。
+                        if (targetState) {
+                            (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(tween(300)) { it / 12 }) togetherWith
+                                (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), 0.96f))
+                        } else {
+                            (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), 0.96f)) togetherWith
+                                (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(tween(300)) { it / 12 })
+                        }
                     },
                     label = "coverLyrics",
                     modifier = Modifier.fillMaxSize(),
@@ -233,6 +249,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 coverColors = coverColors,
                                 hazeState = hazeState,
                                 backdropBlur = backdropBlur,
+                                // 第三轮第 8 项：切页时行 stagger 入场。
+                                animateEntrance = true,
+                                // 第三轮第 16 项：歌词字体预设（设置 → 歌词）。
+                                fontFamily = lyricFontFamily(vm.store.lyricFontPreset),
                             )
                         }
                     } else {
@@ -444,7 +464,11 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
                     Icon(Icons.Filled.Close, contentDescription = "关闭")
                 }
             }
-            LazyColumn(Modifier.weight(1f)) {
+            // 第三轮第 14 项：队列弹窗内容区上下边缘 24dp 淡出（淡出色取
+            // 弹窗底色 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
+            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
+            Box(Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize()) {
                 if (state.queue.isNotEmpty() && state.index in state.queue.indices) {
                     item { SectionTitle("正在播放") }
                     item {
@@ -464,6 +488,17 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
                 } else {
                     itemsIndexed(state.queue) { i, song -> SongRow(song) { onJump(i); onDismiss() } }
                 }
+            }
+            Box(
+                Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
+                    Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
+                ),
+            )
+            Box(
+                Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
+                    Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                ),
+            )
             }
         }
     }

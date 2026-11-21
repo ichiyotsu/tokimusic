@@ -2,6 +2,7 @@ package com.tokimusic.app.ui.settings
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,21 +12,19 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,24 +44,32 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.ui.components.Avatar
-import com.tokimusic.app.ui.components.CirroCardRow
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiSheetContainer
 import com.tokimusic.app.ui.theme.CirroLogoutRed
+import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
+import com.tokimusic.app.ui.theme.LyricFontInterPingFangBold
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiUiHolder
+import com.tokimusic.app.update.LatestRelease
+import com.tokimusic.app.update.UpdateCheckResult
+import com.tokimusic.app.update.UpdateChecker
+import com.tokimusic.app.update.UpdatePrompt
+import kotlinx.coroutines.launch
 
 private enum class SettingsSub(val title: String) { General("通用"), Personalize("个性化"), Audio("音频"), Lyrics("歌词") }
 
@@ -71,6 +78,10 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
  * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——顶部圆角
  * 32dp、surfaceContainerLow、标题 + 36dp 关闭钮；头像卡片 + 通用 / 个性化 /
  * 音频 / 歌词 4 行 + 红色退出登录。子页在弹窗内切换。
+ *
+ * 第三轮第 1 项（用户定 A）：保留底部弹窗，只按 TokiUI 重做内容——
+ * 入口行无图标、无底卡（plain 行 + chevron），退出登录是 SettingsRow
+ * 形态的红色警示行；关闭钮保持 36dp。
  *
  * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
  * 因此永久禁用的主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
@@ -102,8 +113,12 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     )
                 }
             }
+            // 第三轮第 14 项：弹窗内容区上下边缘 24dp 淡出（淡出色取
+            // 弹窗底色 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
+            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
+            Box(Modifier.weight(1f)) {
             LazyColumn(
-                Modifier.weight(1f),
+                Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -114,6 +129,17 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     SettingsSub.Audio -> audioSection(vm)
                     SettingsSub.Lyrics -> lyricsSection(vm)
                 }
+            }
+            Box(
+                Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
+                    Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
+                ),
+            )
+            Box(
+                Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
+                    Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                ),
+            )
             }
         }
     }
@@ -171,29 +197,40 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     }
     item {
         Spacer(Modifier.height(8.dp))
-        SubRow(Icons.Filled.Settings, "通用") { onOpenSub(SettingsSub.General) }
+        SubRow("通用") { onOpenSub(SettingsSub.General) }
     }
-    item { SubRow(Icons.Filled.Brush, "个性化") { onOpenSub(SettingsSub.Personalize) } }
-    item { SubRow(Icons.Filled.VolumeUp, "音频") { onOpenSub(SettingsSub.Audio) } }
-    item { SubRow(Icons.Filled.FormatQuote, "歌词") { onOpenSub(SettingsSub.Lyrics) } }
+    item { SubRow("个性化") { onOpenSub(SettingsSub.Personalize) } }
+    item { SubRow("音频") { onOpenSub(SettingsSub.Audio) } }
+    item { SubRow("歌词") { onOpenSub(SettingsSub.Lyrics) } }
     if (profile != null) item {
         Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .clickable { vm.logout() }
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-        ) {
-            Text("退出登录", style = MaterialTheme.typography.titleMedium, color = CirroLogoutRed)
-        }
+        // 第三轮第 1 项：退出登录是 SettingsRow 形态的红色警示行。
+        SettingsRow(
+            "退出登录",
+            onClick = { vm.logout() },
+            horizontalPadding = 4.dp,
+            headlineColor = CirroLogoutRed,
+        )
     }
     if (showLogin) item { LoginDialog(vm) { onShowLogin(false) } }
 }
 
+/**
+ * 设置入口行（第三轮第 1 项，TokiUI 形态）：无图标、无底卡的 plain 行，
+ * 标题 + 右侧 chevron，64dp 高；关闭钮保持 36dp（见 SettingsSheet）。
+ */
 @Composable
-private fun SubRow(icon: ImageVector, title: String, onClick: () -> Unit) {
-    CirroCardRow(icon, title, onClick = onClick, horizontalPadding = 4.dp)
+private fun SubRow(title: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: AppViewModel, health: ApiHealth?) {
@@ -240,11 +277,36 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             null -> {}
         }
     }
+    // 第三轮第 15 项：手动检查更新（自动检查每天最多一次，见 TokiMusicApp）。
+    item {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var checking by remember { mutableStateOf(false) }
+        var update by remember { mutableStateOf<LatestRelease?>(null) }
+        SettingsRow(
+            "检查更新",
+            "当前版本 ${vm.versionName}",
+            horizontalPadding = 4.dp,
+            onClick = {
+                if (checking) return@SettingsRow
+                checking = true
+                scope.launch {
+                    when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
+                        is UpdateCheckResult.UpdateAvailable -> update = r.release
+                        UpdateCheckResult.UpToDate -> Toast.makeText(context, "已是最新版本", Toast.LENGTH_SHORT).show()
+                        UpdateCheckResult.Failed -> Toast.makeText(context, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                    }
+                    checking = false
+                }
+            },
+        )
+        if (update != null) UpdatePrompt(update!!) { update = null }
+    }
     item {
         // About: version read from BuildConfig via ViewModel, never hardcoded.
         SettingsRow(
             "关于 TokiMusic",
-            "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号",
+            "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version}",
             horizontalPadding = 4.dp,
         )
     }
@@ -338,6 +400,29 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
                 checked = vm.store.showTranslation,
                 onCheckedChange = { vm.store.showTranslation = it },
             )
+        }
+    }
+    // 第三轮第 16 项：歌词字体预设（两个均为粗体；行内用对应字体实时预览）。
+    item {
+        Text("歌词字体", Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+    }
+    item {
+        var preset by remember { mutableStateOf(vm.store.lyricFontPreset) }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+            Row(
+                Modifier.fillMaxWidth().clickable { preset = "inter_pingfang"; vm.store.lyricFontPreset = preset }.height(56.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = preset == "inter_pingfang", onClick = { preset = "inter_pingfang"; vm.store.lyricFontPreset = preset })
+                Text("Inter Bold + PingFang Bold", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontFamily = LyricFontInterPingFangBold)
+            }
+            Row(
+                Modifier.fillMaxWidth().clickable { preset = "google_noto"; vm.store.lyricFontPreset = preset }.height(56.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = preset == "google_noto", onClick = { preset = "google_noto"; vm.store.lyricFontPreset = preset })
+                Text("GoogleSans Bold + 思源黑体粗体", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontFamily = LyricFontGoogleSansNotoBold)
+            }
         }
     }
 }

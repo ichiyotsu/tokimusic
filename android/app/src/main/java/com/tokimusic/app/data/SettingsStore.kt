@@ -50,4 +50,10 @@ class SettingsStore(context: Context) : ApiSettings {
     /** 空间音频开关（第二轮第 6 项 B，默认关）。 */
     var spatialAudioEnabled: Boolean get() = prefs.getBoolean("spatial_audio_enabled", false)
         set(v) { prefs.edit().putBoolean("spatial_audio_enabled", v).apply() }
+    /** 上次自动检查更新的时间戳（毫秒；第三轮第 15 项，每天最多自动查一次）。 */
+    var lastUpdateCheckMs: Long get() = prefs.getLong("last_update_check_ms", 0L)
+        set(v) { prefs.edit().putLong("last_update_check_ms", v).apply() }
+    /** 歌词字体预设（第三轮第 16 项）："inter_pingfang"（默认）或 "google_noto"。 */
+    var lyricFontPreset: String get() = prefs.getString("lyric_font_preset", "inter_pingfang") ?: "inter_pingfang"
+        set(v) { prefs.edit().putString("lyric_font_preset", v).apply() }
 }

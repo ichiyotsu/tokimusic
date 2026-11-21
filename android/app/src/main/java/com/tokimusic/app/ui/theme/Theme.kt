@@ -21,7 +21,9 @@ import com.tokiui.semantic.SemanticTokens
  * Colors: dynamic color, or a semantic-token seed through SchemeTonalSpot.
  * Motion: expressive by default, standard when reduce-motion is on.
  * Shapes and the type scale sizes are Material defaults.
- * Latin is Inter, Chinese is Source Han Sans. Titles and labels are Bold.
+ * Latin is Inter, Chinese is Source Han Sans. All text is Bold
+ * (user 2026-11-21: global Bold, intentionally deviates from the
+ * TokiUI 0.2.0-b1 rule of titles Bold / body Regular).
  */
 enum class ThemeMode { System, Light, Dark }
 
@@ -39,12 +41,11 @@ data class ThemePreferences(
 
 private fun Typography.withTokiType(family: FontFamily): Typography {
     fun TextStyle.bold() = copy(fontFamily = family, fontWeight = FontWeight.Bold)
-    fun TextStyle.regular() = copy(fontFamily = family, fontWeight = FontWeight.Normal)
     return Typography(
         displayLarge = displayLarge.bold(), displayMedium = displayMedium.bold(), displaySmall = displaySmall.bold(),
         headlineLarge = headlineLarge.bold(), headlineMedium = headlineMedium.bold(), headlineSmall = headlineSmall.bold(),
         titleLarge = titleLarge.bold(), titleMedium = titleMedium.bold(), titleSmall = titleSmall.bold(),
-        bodyLarge = bodyLarge.regular(), bodyMedium = bodyMedium.regular(), bodySmall = bodySmall.regular(),
+        bodyLarge = bodyLarge.bold(), bodyMedium = bodyMedium.bold(), bodySmall = bodySmall.bold(),
         labelLarge = labelLarge.bold(), labelMedium = labelMedium.bold(), labelSmall = labelSmall.bold(),
         // TokiStudio 0.1.10: the 15 emphasized styles, all Bold like the base scale.
         displayLargeEmphasized = displayLargeEmphasized.bold(), displayMediumEmphasized = displayMediumEmphasized.bold(), displaySmallEmphasized = displaySmallEmphasized.bold(),

@@ -26,6 +26,10 @@ interface NeteaseApi {
     suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> // /user/record?type=
     suspend fun recentSongs(): List<Song>             // /history/recent/songs
     suspend fun artistSublist(): List<Artist>         // /artist/sublist （我关注的歌手）
+    suspend fun artistDetail(id: Long): Artist        // /artist/head/info/get （第三轮第 12 项，weapi；上游模块未指定 crypto，实测 weapi 可用）
+    suspend fun artistTopSongs(id: Long): List<Song>  // /artist/top/song （第三轮第 12 项，weapi，热门 50 首）
+    suspend fun artistAlbums(id: Long): List<Album>   // /artist/albums/{id} （第三轮第 12 项，weapi，首屏 30 张）
+    suspend fun albumDetail(id: Long): Pair<Album, List<Song>> // /v1/album/{id} （第三轮第 12 项，weapi）
     suspend fun albumSublist(): List<Album>           // /album/sublist （我收藏的专辑）
     suspend fun toplist(): List<Playlist>             // /toplist （所有榜单）
     suspend fun songUrl(id: Long): SongUrlResult      // multi-route: EAPI /song/url/v1, then WEAPI /song/url/v1, then classic /song/url; -460 on every route throws RateLimited, url null = no playable copy
