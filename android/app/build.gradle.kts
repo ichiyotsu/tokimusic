@@ -91,6 +91,10 @@ dependencies {
     implementation(libs.haze); implementation(libs.haze.blur)
     implementation(libs.coil.compose); implementation(libs.okhttp); implementation(libs.zxing.core)
     implementation(libs.media3.exoplayer); implementation(libs.media3.session)
+    implementation(libs.androidx.mediarouter)
+    // mediarouter 把 fragment 标为 runtime 依赖，不进编译 classpath；
+    // 原生投放窗（DialogFragment）与 FragmentActivity 需要它显式引入。
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)

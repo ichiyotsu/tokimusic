@@ -23,6 +23,27 @@ import kotlinx.coroutines.withContext
 /** 播放器背景：封面取色的暖渐变（上浅下深）。 */
 data class CoverColors(val top: Color, val bottom: Color) {
     fun toBrush(): Brush = Brush.verticalGradient(listOf(top, bottom))
+
+    /**
+     * 封面自适应文字色（第二轮第 7/10/12 项共用）：按渐变上端色亮度决定
+     * 用白字还是深字。取色已把最亮通道压到 0.45 左右，白字在绝大多数
+     * 封面上可读；只有亮度仍偏高的浅色封面改用深字。
+     */
+    fun isLight(): Boolean = top.relativeLuminance() > 0.35
+    fun onCoverText(): Color = if (isLight()) Color(0xFF1C1C1E) else Color.White
+    fun onCoverTextDim(): Color = onCoverText().copy(alpha = 0.7f)
+    /** 封面自适应按钮底色：亮封面用深色半透明，暗封面用白色半透明。 */
+    fun onCoverButtonBg(): Color =
+        if (isLight()) Color.Black.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.14f)
+}
+
+/** WCAG 相对亮度（0 黑 → 1 白），纯函数，可单测。 */
+fun Color.relativeLuminance(): Double {
+    fun lin(c: Float): Double {
+        val v = c.toDouble()
+        return if (v <= 0.04045) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * lin(red) + 0.7152 * lin(green) + 0.0722 * lin(blue)
 }
 
 val CoverColorsFallback: CoverColors = CoverColors(CirroWarmTop, CirroWarmBottom)

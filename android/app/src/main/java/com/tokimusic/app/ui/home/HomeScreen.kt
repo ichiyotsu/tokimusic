@@ -30,7 +30,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,17 +46,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.AppViewModel
-import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
-import com.tokimusic.app.ui.components.TokiLongPressLabel
+import com.tokimusic.app.ui.theme.tokiGlassFade
 
 /**
  * Home, rebuilt from the reference: a large in-content title with the avatar at
@@ -72,11 +69,12 @@ fun HomeScreen(
     vm: AppViewModel,
     topPadding: Dp,
     bottomPadding: Dp,
+    hazeState: dev.chrisbanes.haze.HazeState,
+    backdropBlur: Boolean,
     onOpenLogin: () -> Unit,
     onOpenPlaylist: (Long) -> Unit,
 ) {
     val home by vm.home.collectAsState()
-    val profile by vm.profile.collectAsState()
     var entered by remember { mutableStateOf(false) }
     val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
     LaunchedEffect(Unit) { entered = true }
@@ -87,17 +85,8 @@ fun HomeScreen(
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("主页", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                TokiLongPressLabel(if (profile == null) "登录" else "我的") {
-                    IconButton(onClick = onOpenLogin) {
-                        Avatar(profile?.avatarUrl ?: "", 48)
-                    }
-                }
-            }
-        }
+        // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
+        // 头像入口在标题行右侧（见 TokiMusicApp）。
         if (home.loading && !hasContent) {
             item {
                 Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
@@ -142,6 +131,8 @@ fun HomeScreen(
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
                             onPlay = { vm.play(home.daily, 0) },
+                            hazeState = hazeState,
+                            backdropBlur = backdropBlur,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -152,6 +143,8 @@ fun HomeScreen(
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
                             onPlay = { vm.play(home.radar, 0) },
+                            hazeState = hazeState,
+                            backdropBlur = backdropBlur,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -215,7 +208,12 @@ fun HomeScreen(
     }
 }
 
-/** Tall recommendation card: cover art full-bleed with a scrim, label + artists at the bottom. */
+/** Tall recommendation card: cover art full-bleed with a scrim, label + artists at the bottom.
+ *
+ * 第二轮第 7 项：圆角 28dp → 20dp；标题与介绍文字读封面取色自适应
+ * （亮封面深字、暗封面白字）；文字背景用淡出的模糊层（底部渐进磨砂，
+ * 与底栏同配方），黑罩只留少量兜底；图片仍全幅铺满。
+ */
 @Composable
 private fun RecommendCard(
     title: String,
@@ -223,35 +221,51 @@ private fun RecommendCard(
     loggedIn: Boolean,
     onLogin: () -> Unit,
     onPlay: () -> Unit,
+    hazeState: dev.chrisbanes.haze.HazeState,
+    backdropBlur: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val hasCover = loggedIn && songs.isNotEmpty()
+    val coverColors = if (hasCover) com.tokimusic.app.ui.theme.rememberCoverColors(songs.first().id, songs.first().picUrl)
+        else null
+    val textColor = coverColors?.onCoverText() ?: Color.White
+    val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.8f)
+    val blurOn = com.tokimusic.app.ui.theme.chromeBlurActive(backdropBlur)
     Card(
         onClick = if (loggedIn) onPlay else onLogin,
         modifier = modifier.fillMaxWidth().aspectRatio(200f / 260f),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
-            if (loggedIn && songs.isNotEmpty()) {
+            if (hasCover) {
                 AsyncImage(
                     songs.first().picUrl,
                     title,
                     Modifier.matchParentSize(),
                     contentScale = ContentScale.Crop,
                 )
+                // 淡出的模糊层：只盖底部文字区，自下而上渐弱；玻璃关闭时不画。
+                if (blurOn) {
+                    Box(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().height(132.dp)
+                            .tokiGlassFade(hazeState, fadeFromTop = false),
+                    )
+                }
                 Box(
                     Modifier.matchParentSize().background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.8f)),
+                            if (blurOn) listOf(Color.Transparent, Color.Black.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.32f))
+                            else listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.8f)),
                         ),
                     ),
                 )
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Text(title, style = MaterialTheme.typography.titleLarge, color = textColor)
                     Text(
                         artistLine(songs),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.8f),
+                        color = dimColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )

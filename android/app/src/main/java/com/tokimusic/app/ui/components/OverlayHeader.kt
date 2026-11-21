@@ -41,6 +41,9 @@ import dev.chrisbanes.haze.HazeState
  * round chip with a 24dp icon. Back chip and title carry the same frost (or
  * the solid fallback) BY DEFAULT — they no longer appear/disappear with
  * scrolling, and the back↔title gap is a fixed 12dp. Text stays onSurface.
+ *
+ * [strong]（第二轮第 3 项）：标题与底栏同配方——32dp 模糊 + 45% veil。
+ * [trailing]：标题行右侧的附加内容（tab 页的头像入口）；歌单详情页不传。
  */
 @Composable
 fun OverlayTitleHeader(
@@ -50,6 +53,8 @@ fun OverlayTitleHeader(
     backdropBlur: Boolean,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
+    strong: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
@@ -64,7 +69,7 @@ fun OverlayTitleHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
-            TokiScrollBackChip(backdropBlur, hazeState, onBack)
+            TokiScrollBackChip(backdropBlur, hazeState, onBack, strong = strong)
             Spacer(Modifier.width(tokiSpace("md")))
         }
         Box(
@@ -78,6 +83,7 @@ fun OverlayTitleHeader(
                 shape = titleShape,
                 backdropBlur = backdropBlur,
                 hazeState = hazeState,
+                strong = strong,
                 modifier = Modifier.matchParentSize(),
             )
             Text(
@@ -90,6 +96,10 @@ fun OverlayTitleHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        if (trailing != null) {
+            Spacer(Modifier.width(tokiSpace("md")))
+            trailing()
+        }
     }
 }
 
@@ -99,6 +109,7 @@ fun TokiScrollBackChip(
     backdropBlur: Boolean,
     hazeState: HazeState,
     onClick: () -> Unit,
+    strong: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val content = MaterialTheme.colorScheme.onSurface
@@ -115,6 +126,7 @@ fun TokiScrollBackChip(
                 shape = CircleShape,
                 backdropBlur = backdropBlur,
                 hazeState = hazeState,
+                strong = strong,
                 modifier = Modifier.matchParentSize(),
             )
             Icon(

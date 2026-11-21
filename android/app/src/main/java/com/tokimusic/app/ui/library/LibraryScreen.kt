@@ -54,9 +54,8 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.CirroCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
-import com.tokimusic.app.ui.components.TokiLongPressLabel
 
-private enum class LibrarySection(val title: String) { Liked("喜爱歌曲"), Playlists("播放列表"), Artists("艺人"), Albums("专辑"), Songs("歌曲") }
+private enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("艺人"), Albums("专辑"), Songs("歌曲") }
 
 /**
  * Cirro 资料库页：大标题 + 右上头像（点进设置），5 行深灰卡片
@@ -92,17 +91,8 @@ fun LibraryScreen(
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("资料库", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
-                    IconButton(onClick = onOpenSettings) {
-                        Avatar(profile?.avatarUrl ?: "", 48)
-                    }
-                }
-            }
-        }
+        // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
+        // 头像入口在标题行右侧（见 TokiMusicApp）。
         if (open != null) {
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -123,16 +113,26 @@ fun LibraryScreen(
             return@LazyColumn
         }
         val loggedIn = profile != null
+        // 第二轮第 21 项：收藏歌曲 / 听歌时长 / 歌单三张统计卡移到最上方。
+        if (loggedIn) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    StatCard("收藏歌曲", "${mine.likeCount}", Modifier.weight(1f))
+                    StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f))
+                    StatCard("歌单", "${mine.playlistCount}", Modifier.weight(1f))
+                }
+            }
+        }
         item {
             Spacer(Modifier.height(8.dp))
             CirroCardRow(
-                Icons.Filled.Star, "喜爱歌曲",
+                Icons.Filled.Star, "收藏",
                 if (loggedIn) "${mine.likeCount} 首" else "登录后查看",
             ) { if (loggedIn) open = LibrarySection.Liked else onOpenSettings() }
         }
         item {
             CirroCardRow(
-                Icons.Filled.QueueMusic, "播放列表",
+                Icons.Filled.QueueMusic, "歌单",
                 if (loggedIn) "${mine.playlistCount} 个歌单" else "登录后查看",
             ) { if (loggedIn) open = LibrarySection.Playlists else onOpenSettings() }
         }
@@ -175,16 +175,11 @@ fun LibraryScreen(
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            item {
-                Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    StatCard("收藏歌曲", "${mine.likeCount}", Modifier.weight(1f))
-                    StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f))
-                    StatCard("歌单", "${mine.playlistCount}", Modifier.weight(1f))
-                }
-            }
             item { SectionTitle("听歌排行") }
+            // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
+            // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i) { vm.play(mine.record.take(10).map { it.song }, i) }
+                SongRow(r.song, i, trailingText = "${r.playCount} 次") { vm.play(mine.record.take(10).map { it.song }, i) }
             }
         }
     }

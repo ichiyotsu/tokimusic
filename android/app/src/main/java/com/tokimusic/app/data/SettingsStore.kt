@@ -44,4 +44,10 @@ class SettingsStore(context: Context) : ApiSettings {
     /** 歌词翻译显示开关。 */
     var showTranslation: Boolean get() = prefs.getBoolean("show_translation", true)
         set(v) { prefs.edit().putBoolean("show_translation", v).apply() }
+    /** 实时通知（Live Updates）开关（第二轮第 5 项，默认开）。 */
+    var liveUpdatesEnabled: Boolean get() = prefs.getBoolean("live_updates_enabled", true)
+        set(v) { prefs.edit().putBoolean("live_updates_enabled", v).apply() }
+    /** 空间音频开关（第二轮第 6 项 B，默认关）。 */
+    var spatialAudioEnabled: Boolean get() = prefs.getBoolean("spatial_audio_enabled", false)
+        set(v) { prefs.edit().putBoolean("spatial_audio_enabled", v).apply() }
 }

@@ -12,6 +12,7 @@ import com.tokimusic.app.data.api.apiErrorText
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
+import com.tokimusic.app.player.LiveUpdateNotifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,8 +58,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: Job? = null
     private var qrJob: Job? = null
 
+    // 第二轮第 5 项：实时通知（Live Updates）随播放状态发 / 消。
+    private val liveUpdateNotifier = LiveUpdateNotifier(app.applicationContext, player, store)
+    // 第二轮第 6 项 B：启动时按设置应用空间音频开关。
     init {
         player.onPlaybackError = { _userMessage.value = it }
+        player.setSpatialAudio(store.spatialAudioEnabled)
+        liveUpdateNotifier.start()
         refreshSession()
     }
 

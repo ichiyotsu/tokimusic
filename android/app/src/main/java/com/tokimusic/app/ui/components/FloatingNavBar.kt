@@ -16,11 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,12 +47,11 @@ import com.tokimusic.app.ui.theme.TokiChromeStroke
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
-/** Cirro：底部悬浮胶囊 4 tab，纯图标无文字（主页 / 发现 / 资料库 / 搜索）。 */
+/** Cirro：底部悬浮胶囊 3 tab，纯图标无文字（主页 / 发现 / 资料库）。搜索不在 tab 里，改走胶囊旁的独立搜索按钮（第二轮第 23 项）。 */
 val navEntries = listOf(
     NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Filled.Home, R.string.nav_home),
     NavBarEntry(Dest.Discover, Icons.Outlined.GridView, Icons.Filled.GridView, R.string.nav_discover),
     NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic, R.string.nav_library),
-    NavBarEntry(Dest.Search, Icons.Outlined.Search, Icons.Filled.Search, R.string.nav_search),
 )
 
 /**

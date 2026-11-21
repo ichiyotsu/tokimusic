@@ -79,9 +79,38 @@ fun tokiContentChrome(state: HazeState, backdropBlur: Boolean): Modifier {
     }
 }
 
+/** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。 */
+@Composable
+fun tokiContentChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
+    return if (chromeBlurActive(backdropBlur)) {
+        Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
+    } else {
+        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
+    }
+}
+
+/** 加强档 chrome（固定尺寸面，见 [tokiChrome]）。 */
+@Composable
+fun tokiChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
+    return if (chromeBlurActive(backdropBlur)) {
+        Modifier.tokiGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
+    } else {
+        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
+    }
+}
+
 object TokiGlassParams {
     val blurRadius: Dp = 24.dp
     const val noise: Float = 0.02f
+
+    /**
+     * 加强档（第二轮第 1 项）：底栏在亮背景下显透，磨砂要更强。
+     * 模糊半径 24dp → 32dp，surface veil 22% → 45%，深色 tint 白 20% → 30%。
+     * 底栏（导航胶囊 + 迷你播放器）与悬浮标题共用这一组参数；普通玻璃不动。
+     */
+    val strongBlurRadius: Dp = 32.dp
+    const val strongVeilAlpha: Float = 0.45f
+    const val strongDarkTintAlpha: Float = 0.30f
 
     fun tints(dark: Boolean): List<HazeColorEffect> = if (dark) {
         listOf(HazeColorEffect.tint(Color.White.copy(alpha = 0.20f)))
@@ -92,15 +121,24 @@ object TokiGlassParams {
         )
     }
 
+    fun strongTints(dark: Boolean): List<HazeColorEffect> = if (dark) {
+        listOf(HazeColorEffect.tint(Color.White.copy(alpha = strongDarkTintAlpha)))
+    } else {
+        listOf(
+            HazeColorEffect.tint(Color(0xFF2A2622).copy(alpha = 0.16f)),
+            HazeColorEffect.tint(Color.White.copy(alpha = 0.46f)),
+        )
+    }
+
     fun fallback(dark: Boolean): Color = Color.Black.copy(alpha = if (dark) 0.45f else 0.30f)
 }
 
-internal fun tokiBlurStyle(dark: Boolean, fade: HazeProgressive? = null): HazeBlurStyle = HazeBlurStyle {
+internal fun tokiBlurStyle(dark: Boolean, fade: HazeProgressive? = null, strong: Boolean = false): HazeBlurStyle = HazeBlurStyle {
     blurEnabled(true)
-    blurRadius(TokiGlassParams.blurRadius)
+    blurRadius(if (strong) TokiGlassParams.strongBlurRadius else TokiGlassParams.blurRadius)
     noiseFactor(TokiGlassParams.noise)
     backgroundColor(Color.Transparent)
-    colorEffects(TokiGlassParams.tints(dark))
+    colorEffects(if (strong) TokiGlassParams.strongTints(dark) else TokiGlassParams.tints(dark))
     fallbackColorEffect(HazeColorEffect.tint(TokiGlassParams.fallback(dark)))
     if (fade != null) progressive(fade)
 }
@@ -130,6 +168,28 @@ fun Modifier.tokiContentGlass(state: HazeState): Modifier {
     return hazeBlur(
         input = HazeInput.Sources(state),
         style = tokiBlurStyle(dark),
+        performanceMode = HazePerformanceMode.Quality,
+    )
+}
+
+/** 加强档内容源玻璃（底栏/悬浮标题，见 [TokiGlassParams]）。 */
+@Composable
+fun Modifier.tokiContentGlassStrong(state: HazeState): Modifier {
+    val dark = LocalDarkTheme.current
+    return hazeBlur(
+        input = HazeInput.Sources(state),
+        style = tokiBlurStyle(dark, strong = true),
+        performanceMode = HazePerformanceMode.Quality,
+    )
+}
+
+/** 加强档窗口背景玻璃（固定尺寸面，见 [TokiGlassParams]）。 */
+@Composable
+fun Modifier.tokiGlassStrong(state: HazeState): Modifier {
+    val dark = LocalDarkTheme.current
+    return hazeBlur(
+        input = HazeInput.Backdrop(state),
+        style = tokiBlurStyle(dark, strong = true),
         performanceMode = HazePerformanceMode.Quality,
     )
 }
@@ -171,6 +231,8 @@ object TokiChromeStroke {
  * 24% surfaceContainer veil + a 1dp outlineVariant stroke so the chip reads
  * on any background. Otherwise opaque surfaceContainer plus a 3dp primary
  * stroke (same weight as the solid bottom bar).
+ *
+ * [strong]（第二轮第 1/3 项）：悬浮标题与底栏同配方——32dp 模糊 + 45% veil。
  */
 @Composable
 fun TokiScrollChipBackdrop(
@@ -178,23 +240,25 @@ fun TokiScrollChipBackdrop(
     backdropBlur: Boolean,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    strong: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val frosted = backdropBlur && TokiBlurCapability.canSampleInWindow
+    val veil = if (strong) TokiGlassParams.strongVeilAlpha else 0.24f
     Box(
         modifier
             .clip(shape)
             .then(
                 if (frosted && hazeState != null) {
-                    Modifier.tokiContentGlass(hazeState)
-                        .background(scheme.surfaceContainer.copy(alpha = 0.24f))
+                    (if (strong) Modifier.tokiContentGlassStrong(hazeState) else Modifier.tokiContentGlass(hazeState))
+                        .background(scheme.surfaceContainer.copy(alpha = veil))
                         .border(1.dp, scheme.outlineVariant.copy(alpha = 0.45f), shape)
                 } else if (!frosted) {
                     Modifier
                         .background(scheme.surfaceContainer)
                         .border(TokiChromeStroke.width, scheme.primary, shape)
                 } else {
-                    Modifier.background(scheme.surfaceContainer.copy(alpha = 0.24f))
+                    Modifier.background(scheme.surfaceContainer.copy(alpha = veil))
                 },
             ),
     )

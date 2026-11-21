@@ -2,24 +2,19 @@ package com.tokimusic.app.ui.settings
 
 import android.graphics.BitmapFactory
 import android.util.Base64
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -35,7 +30,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,47 +58,43 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.CirroCardRow
-import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SettingsRow
+import com.tokimusic.app.ui.components.TokiSheetContainer
 import com.tokimusic.app.ui.theme.CirroLogoutRed
-import com.tokimusic.app.ui.theme.ThemeMode
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiUiHolder
-import com.tokimusic.app.ui.theme.supportsDynamicColor
 
 private enum class SettingsSub(val title: String) { General("通用"), Personalize("个性化"), Audio("音频"), Lyrics("歌词") }
 
 /**
- * Cirro 账户与设置页：左上 X 关闭 + 居中标题，头像卡片（昵称 + UID），
- * 通用 / 个性化 / 音频 / 歌词 4 行深灰卡片，红色退出登录。
- * 从右上角头像进入；子页在同一文件内（先不拆文件）。
+ * 账户与设置弹窗（第二轮第 4 项）：参考 TokiNote〈我的〉页
+ * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——顶部圆角
+ * 32dp、surfaceContainerLow、标题 + 36dp 关闭钮；头像卡片 + 通用 / 个性化 /
+ * 音频 / 歌词 4 行 + 红色退出登录。子页在弹窗内切换。
+ *
+ * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
+ * 因此永久禁用的主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
+ * 玻璃模糊两个开关）。cirroAppearance 字段本身保留，恒为 true。
  */
 @Composable
-fun SettingsScreen(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit, onClose: () -> Unit) {
+fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit, onClose: () -> Unit) {
     var sub by remember { mutableStateOf<SettingsSub?>(null) }
     val profile by vm.profile.collectAsState()
     val authState by vm.authState.collectAsState()
     val health by vm.health.collectAsState()
     var showLogin by remember { mutableStateOf(false) }
-    BackHandler { if (sub != null) sub = null else onClose() }
-    LazyColumn(
-        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+    TokiSheetContainer(onDismiss = onClose) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (sub == null) "账户与设置" else sub!!.title,
+                    Modifier.weight(1f).padding(start = 8.dp),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Box(
-                    Modifier.align(Alignment.CenterStart).size(56.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .clickable { if (sub != null) sub = null else onClose() },
-                    contentAlignment = Alignment.Center,
+                IconButton(
+                    onClick = { if (sub != null) sub = null else onClose() },
+                    modifier = Modifier.size(36.dp),
                 ) {
                     Icon(
                         if (sub == null) Icons.Filled.Close else Icons.Filled.ArrowBack,
@@ -112,13 +102,19 @@ fun SettingsScreen(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePre
                     )
                 }
             }
-        }
-        when (sub) {
-            null -> mainSections(vm, theme, onTheme, profile, authState, showLogin, { showLogin = it }) { sub = it }
-            SettingsSub.General -> generalSection(vm, health)
-            SettingsSub.Personalize -> personalizeSection(theme, onTheme)
-            SettingsSub.Audio -> audioSection(vm)
-            SettingsSub.Lyrics -> lyricsSection(vm)
+            LazyColumn(
+                Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                when (sub) {
+                    null -> mainSections(vm, theme, onTheme, profile, authState, showLogin, { showLogin = it }) { sub = it }
+                    SettingsSub.General -> generalSection(vm, health)
+                    SettingsSub.Personalize -> personalizeSection(theme, onTheme)
+                    SettingsSub.Audio -> audioSection(vm)
+                    SettingsSub.Lyrics -> lyricsSection(vm)
+                }
+            }
         }
     }
 }
@@ -136,7 +132,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     item {
         Spacer(Modifier.height(8.dp))
         Card(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         ) {
@@ -161,7 +157,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     if (authState == AuthState.Expired) item {
         Card(
             onClick = { onShowLogin(true) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
             shape = MaterialTheme.shapes.extraLarge,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         ) {
@@ -183,7 +179,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     if (profile != null) item {
         Spacer(Modifier.height(8.dp))
         Box(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .clickable { vm.logout() }
@@ -197,7 +193,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
 
 @Composable
 private fun SubRow(icon: ImageVector, title: String, onClick: () -> Unit) {
-    CirroCardRow(icon, title, onClick = onClick)
+    CirroCardRow(icon, title, onClick = onClick, horizontalPadding = 4.dp)
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: AppViewModel, health: ApiHealth?) {
@@ -206,19 +202,38 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             "直连网易云",
             "无需自建 API 服务，打开就能用",
             trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
+            horizontalPadding = 4.dp,
+        )
+    }
+    item {
+        // 第二轮第 5 项：实时通知开关（默认开）。MediaStyle 通知升不成
+        // Live Update，开启后另发一条进度通知并请求提升。
+        var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("实时通知", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = liveUpdates,
+                onCheckedChange = { liveUpdates = it; vm.store.liveUpdatesEnabled = it },
+            )
+        }
+        Text(
+            "播放时在状态栏显示实时进度；会多发一条进度通知，媒体通知不受影响。需要通知权限。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     item {
         when (val h = health) {
             is ApiHealth.Connected -> Text(
                 if (h.loggedIn) "已连通网易云，已登录为 ${h.nickname ?: "网易云账号"}" else "已连通网易云，尚未登录",
-                Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             is ApiHealth.Unreachable -> Text(
                 "连不上网易云：${h.reason}",
-                Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -230,77 +245,25 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
         SettingsRow(
             "关于 TokiMusic",
             "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version} · 检查更新：正式发布后读取 GitHub Releases（github.com/ichiyotsu/tokimusic）比对版本号",
+            horizontalPadding = 4.dp,
         )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     theme: ThemePreferences,
     onTheme: (ThemePreferences) -> Unit,
 ) {
-    val cirro = theme.cirroAppearance
+    // Cirro 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
+    // 种子色控件随之删除；个性化只剩减少动效与玻璃模糊。
     item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Cirro 外观", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = cirro, onCheckedChange = { onTheme(theme.copy(cirroAppearance = it)) })
-        }
-        Text(
-            "开启后锁定深色与 Cirro 固定色板，下面的主题、动态取色与种子色不生效。",
-            Modifier.padding(horizontal = 24.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    item { SectionTitle("主题") }
-    item {
-        FlowRow(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeMode.entries.forEach { m ->
-                FilterChip(
-                    selected = theme.mode == m,
-                    onClick = { onTheme(theme.copy(mode = m)) },
-                    label = { Text(when (m) { ThemeMode.System -> "跟随系统"; ThemeMode.Light -> "浅色"; ThemeMode.Dark -> "深色" }) },
-                    enabled = !cirro,
-                )
-            }
-        }
-    }
-    item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("动态取色", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Switch(
-                checked = theme.useDynamicColor,
-                onCheckedChange = { onTheme(theme.copy(useDynamicColor = it)) },
-                enabled = supportsDynamicColor && !cirro,
-            )
-        }
-        Text(
-            if (supportsDynamicColor) "打开时跟随系统壁纸。点一个种子色会改用 HCT 配色。" else "当前系统没有动态取色，使用种子色。",
-            Modifier.padding(horizontal = 24.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    item {
-        FlowRow(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TokiUiHolder.semantic.seeds.forEachIndexed { index, seed ->
-                FilterChip(
-                    selected = !theme.useDynamicColor && theme.seedIndex == index,
-                    onClick = { onTheme(theme.copy(useDynamicColor = false, seedIndex = index)) },
-                    label = { Text(seed.name) },
-                    enabled = !cirro,
-                )
-            }
-        }
-    }
-    item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
             Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
         }
     }
     item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("玻璃模糊", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
             Switch(checked = theme.backdropBlur, onCheckedChange = { onTheme(theme.copy(backdropBlur = it)) })
         }
@@ -318,14 +281,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppV
     item {
         Text(
             "播放音质",
-            Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
             style = MaterialTheme.typography.titleLarge,
         )
     }
     options.forEach { (key, label) ->
         item {
             Row(
-                Modifier.fillMaxWidth().clickable { vm.store.audioQuality = key }.padding(horizontal = 24.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().clickable { vm.store.audioQuality = key }.padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButton(selected = quality == key, onClick = { vm.store.audioQuality = key })
@@ -337,7 +300,29 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppV
     item {
         Text(
             "无损需要歌曲本身提供无损版本，否则自动用较低音质；新选择从下一首歌生效。",
-            Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    item {
+        // 第二轮第 6 项 B：杜比 spike 未证实第三方可取杜比流（见 spike 报告），
+        // 做空间音频开关——不依赖服务端杜比档位，对立体声内容做系统级空间化。
+        var spatialAudio by remember { mutableStateOf(vm.store.spatialAudioEnabled) }
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("空间音频", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = spatialAudio,
+                onCheckedChange = {
+                    spatialAudio = it
+                    vm.store.spatialAudioEnabled = it
+                    vm.player.setSpatialAudio(it)
+                },
+            )
+        }
+        Text(
+            "对立体声内容做系统级空间化，从下一首歌生效；需要设备支持空间音频，不支持的设备上无效果。",
+            Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -345,23 +330,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppV
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: AppViewModel) {
+    // 逐字高亮开关已删（第二轮第 15 项）：逐字显示固定开启，无开关。
     item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("逐字高亮", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Switch(
-                checked = vm.store.karaokeHighlight,
-                onCheckedChange = { vm.store.karaokeHighlight = it },
-            )
-        }
-        Text(
-            "与播放器内的麦克风按钮同步。",
-            Modifier.padding(horizontal = 24.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    item {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("翻译显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
             Switch(
                 checked = vm.store.showTranslation,
