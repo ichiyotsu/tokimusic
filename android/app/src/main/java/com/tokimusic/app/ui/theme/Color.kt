@@ -134,6 +134,8 @@ private fun ColorScheme.withDarkContrast(): ColorScheme {
  */
 @Composable
 fun tokiPageBackground(): Brush {
+    // Cirro 外观：浏览页纯黑，不用 TokiUI 的 surface 渐变。
+    if (LocalCirroAppearance.current) return Brush.verticalGradient(listOf(CirroBlack, CirroBlack, CirroBlack))
     val scheme = androidx.compose.material3.MaterialTheme.colorScheme
     return Brush.verticalGradient(listOf(scheme.surfaceContainer, scheme.surface, scheme.background))
 }

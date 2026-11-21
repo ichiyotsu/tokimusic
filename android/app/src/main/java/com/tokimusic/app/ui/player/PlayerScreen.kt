@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +53,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -65,12 +67,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -87,18 +86,31 @@ import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
 import com.tokimusic.app.ui.pressScale
+import com.tokimusic.app.ui.theme.CirroMiniPlayer
+import com.tokimusic.app.ui.theme.CirroPlayKey
+import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
+import com.tokimusic.app.ui.theme.LocalCirroAppearance
+import com.tokimusic.app.ui.theme.rememberCoverColors
 import kotlinx.coroutines.delay
 
+/**
+ * Cirro 迷你播放器：深灰胶囊（#2C2C2E），16dp 边距，小封面 + 歌名/歌手 +
+ * 播放/下一曲两钮，底部 2dp 细进度线。悬浮在导航胶囊上方。
+ */
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.index, state.isPlaying) { while (true) { pos = vm.player.currentPosition(); delay(500) } }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
+    val cirro = LocalCirroAppearance.current
+    val scheme = MaterialTheme.colorScheme
     Card(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp).clickable(onClick = onOpen),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpen),
+        shape = if (cirro) RoundedCornerShape(percent = 50) else MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = if (cirro) CirroMiniPlayer else scheme.surfaceContainerLow,
+        ),
     ) {
         Column {
             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -136,8 +148,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit) {
  * Immersive full-screen player (a second-level page: no top bar, no bottom bar —
  * the app chrome hides while it is open). The top area flips between the large
  * cover and the full-screen lyrics; the control cluster below is shared.
- * Background is the cover art, blurred and scrimmed. (The TokiUI blur ban
- * covers navigation chrome only; this is artwork, not navigation.)
+ * Background is the cover-color warm gradient (Cirro), not blurred artwork.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
@@ -148,7 +159,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val song = state.current
     var pos by remember { mutableLongStateOf(0L) }
     var showLyrics by remember { mutableStateOf(false) }
-    var karaoke by remember { mutableStateOf(true) }
+    var karaoke by remember { mutableStateOf(vm.store.karaokeHighlight) }
     var showQueue by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -163,8 +174,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     val liked = song.id in likedIds
     val scheme = MaterialTheme.motionScheme
+    // Cirro：背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。
+    val coverColors = rememberCoverColors(song.id, song.picUrl)
     Box(Modifier.fillMaxSize()) {
-        BlurredCoverBackground(song.picUrl)
+        Box(Modifier.fillMaxSize().background(coverColors.toBrush()))
         // 0.1.10: every second-level page gets a floating back chip, even the
         // immersive player — 56dp glass circle, top-left over the cover.
         Box(
@@ -186,13 +199,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                 ) { lyricsMode ->
                     if (lyricsMode) {
                         Box(Modifier.fillMaxSize()) {
-                            LyricsView(lyrics, pos, Modifier.fillMaxSize().padding(horizontal = 24.dp), karaoke = karaoke)
+                            LyricsView(lyrics, pos, Modifier.fillMaxSize().padding(horizontal = 24.dp), karaoke = karaoke, showTranslation = vm.store.showTranslation, coverColors = coverColors)
                             Box(
-                                Modifier.fillMaxSize().padding(end = 16.dp, bottom = 16.dp),
-                                contentAlignment = Alignment.BottomEnd,
+                                Modifier.fillMaxSize().padding(end = 16.dp),
+                                contentAlignment = Alignment.CenterEnd,
                             ) {
                                 TokiLongPressLabel(if (karaoke) "关闭逐字高亮" else "开启逐字高亮") {
-                                    CircleArtButton(Icons.Filled.Mic, if (karaoke) Color.White else Color.White.copy(alpha = 0.55f)) { karaoke = !karaoke }
+                                    CircleArtButton(Icons.Filled.Mic, if (karaoke) Color.White else Color.White.copy(alpha = 0.55f)) {
+                                        karaoke = !karaoke
+                                        vm.store.karaokeHighlight = karaoke
+                                    }
                                 }
                             }
                         }
@@ -202,8 +218,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 song.picUrl,
                                 song.name,
                                 Modifier.fillMaxWidth().aspectRatio(1f)
-                                    .shadow(24.dp, RoundedCornerShape(32.dp), clip = false)
-                                    .clip(RoundedCornerShape(32.dp)),
+                                    .shadow(24.dp, RoundedCornerShape(20.dp), clip = false)
+                                    .clip(RoundedCornerShape(20.dp)),
                                 contentScale = ContentScale.Crop,
                             )
                         }
@@ -227,17 +243,31 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         TitleActions(liked, { vm.toggleLike(song.id) }) { showMore = true }
                     }
                 }
+                // Cirro 进度条：T 形滑块（竖线手柄穿过横线）。SliderState 版才有
+                // thumb 插槽；拖拽中不同步播放进度，松手后恢复跟随。
+                val sliderInteraction = remember { MutableInteractionSource() }
+                val sliderDragging by sliderInteraction.collectIsDraggedAsState()
+                val sliderState = remember(song.id, song.durationMs) {
+                    SliderState(0f, 0, 0f..song.durationMs.coerceAtLeast(1).toFloat())
+                }
+                LaunchedEffect(pos) { if (!sliderDragging) sliderState.value = pos.toFloat() }
                 Column {
                     Slider(
-                        pos.toFloat(),
-                        { vm.player.seekTo(it.toLong()); pos = it.toLong() },
-                        valueRange = 0f..(song.durationMs.coerceAtLeast(1).toFloat()),
+                        state = sliderState,
+                        onValueChange = { vm.player.seekTo(it.toLong()); pos = it.toLong() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
                             activeTrackColor = Color.White,
                             inactiveTrackColor = Color.White.copy(alpha = 0.3f),
                         ),
+                        interactionSource = sliderInteraction,
+                        thumb = {
+                            Box(
+                                Modifier.size(width = 4.dp, height = 28.dp)
+                                    .background(Color.White, RoundedCornerShape(2.dp)),
+                            )
+                        },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatClock(pos), style = MaterialTheme.typography.labelLarge, color = Color.White)
@@ -255,10 +285,11 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     Spacer(Modifier.width(28.dp))
                     TokiLongPressLabel(playLabel) {
                         val interaction = remember { MutableInteractionSource() }
+                        val cirro = LocalCirroAppearance.current
                         Box(
                             Modifier.size(width = 128.dp, height = 84.dp)
                                 .clip(RoundedCornerShape(28.dp))
-                                .background(Color.White)
+                                .background(if (cirro) CirroPlayKey else Color.White)
                                 .clickable(interactionSource = interaction, indication = ripple()) { vm.player.toggle() }
                                 .pressScale(interaction),
                             contentAlignment = Alignment.Center,
@@ -266,7 +297,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                             Icon(
                                 if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = playLabel,
-                                tint = Color.Black,
+                                tint = if (cirro) CirroPlayKeyIcon else Color.Black,
                                 modifier = Modifier.size(40.dp),
                             )
                         }
@@ -312,25 +343,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         },
         onDismiss = { showMore = false },
     )
-}
-
-@Composable
-private fun BlurredCoverBackground(picUrl: String) {
-    Box(Modifier.fillMaxSize()) {
-        AsyncImage(
-            picUrl,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = 1.2f; scaleY = 1.2f }.blur(48.dp),
-            contentScale = ContentScale.Crop,
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    listOf(Color.Black.copy(alpha = 0.45f), Color.Black.copy(alpha = 0.65f)),
-                ),
-            ),
-        )
-    }
 }
 
 @Composable

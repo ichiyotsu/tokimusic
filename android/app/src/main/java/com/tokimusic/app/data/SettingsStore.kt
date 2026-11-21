@@ -6,6 +6,8 @@ interface ApiSettings {
     var cookie: String
     /** Stable anonymous device id (52 uppercase hex chars), generated once. */
     var deviceId: String
+    /** Preferred playback quality: standard / higher / exhigh / lossless (default standard). */
+    val audioQuality: String get() = "standard"
 }
 
 /** Persists the login cookie, the anonymous device id and theme mode. (Swap SharedPreferences for EncryptedSharedPreferences before release.) */
@@ -30,4 +32,16 @@ class SettingsStore(context: Context) : ApiSettings {
         set(v) { prefs.edit().putBoolean("reduce_motion", v).apply() }
     var backdropBlur: Boolean get() = prefs.getBoolean("backdrop_blur", true)
         set(v) { prefs.edit().putBoolean("backdrop_blur", v).apply() }
+    /** Cirro 外观：锁定深色 + 固定色板（用户 2026-11-21 确认，默认开启）。 */
+    var cirroAppearance: Boolean get() = prefs.getBoolean("cirro_appearance", true)
+        set(v) { prefs.edit().putBoolean("cirro_appearance", v).apply() }
+    /** 播放音质偏好：standard / higher / exhigh / lossless。 */
+    override var audioQuality: String get() = prefs.getString("audio_quality", "standard") ?: "standard"
+        set(v) { prefs.edit().putString("audio_quality", v).apply() }
+    /** 歌词逐字高亮开关（与播放器内的麦克风按钮同步）。 */
+    var karaokeHighlight: Boolean get() = prefs.getBoolean("karaoke_highlight", true)
+        set(v) { prefs.edit().putBoolean("karaoke_highlight", v).apply() }
+    /** 歌词翻译显示开关。 */
+    var showTranslation: Boolean get() = prefs.getBoolean("show_translation", true)
+        set(v) { prefs.edit().putBoolean("show_translation", v).apply() }
 }

@@ -1,0 +1,59 @@
+package com.tokimusic.app.ui.theme
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** coverGradientFromPixels 是纯函数：用合成像素数组覆盖暖色/白/黑/灰/空五种封面。 */
+class CoverColorsTest {
+    private fun argb(a: Int, r: Int, g: Int, b: Int): Int =
+        (a shl 24) or (r shl 16) or (g shl 8) or b
+
+    private fun channel(pixel: Int, shift: Int): Int = (pixel shr shift) and 0xFF
+
+    @Test
+    fun warmCoverKeepsHueAndDarkensForWhiteText() {
+        // 暖棕封面（近似截图 1 的主色）：平均色应保持 r>g>b，下端比上端暗一半左右。
+        val pixels = IntArray(64) { argb(0xFF, 0x8A, 0x4A, 0x20) }
+        val (top, bottom) = coverGradientFromPixels(pixels)
+        assertTrue(channel(top, 16) > channel(top, 8))
+        assertTrue(channel(top, 8) > channel(top, 0))
+        // 最亮通道缩放到 0.45 左右（0.45*255≈115），保证白字对比度。
+        assertTrue(channel(top, 16) in 100..130)
+        assertTrue(channel(bottom, 16) < channel(top, 16) / 2 + 8)
+        assertEquals(0xFF, channel(top, 24))
+    }
+
+    @Test
+    fun whiteCoverFallsBackToWarmBrown() {
+        val pixels = IntArray(64) { argb(0xFF, 0xFF, 0xFF, 0xFF) }
+        val (top, bottom) = coverGradientFromPixels(pixels)
+        assertEquals(argb(0xFF, 0x5A, 0x2A, 0x12), top)
+        assertEquals(argb(0xFF, 0x2E, 0x1A, 0x0C), bottom)
+    }
+
+    @Test
+    fun blackAndGreyCoversFallBack() {
+        val black = IntArray(64) { argb(0xFF, 0x05, 0x05, 0x05) }
+        assertEquals(argb(0xFF, 0x5A, 0x2A, 0x12), coverGradientFromPixels(black).first)
+        val grey = IntArray(64) { argb(0xFF, 0x80, 0x80, 0x80) }
+        assertEquals(argb(0xFF, 0x5A, 0x2A, 0x12), coverGradientFromPixels(grey).first)
+    }
+
+    @Test
+    fun emptyPixelsFallBack() {
+        val (top, bottom) = coverGradientFromPixels(IntArray(0))
+        assertEquals(argb(0xFF, 0x5A, 0x2A, 0x12), top)
+        assertEquals(argb(0xFF, 0x2E, 0x1A, 0x0C), bottom)
+    }
+
+    @Test
+    fun vividCoverIsClampedNotBlownOut() {
+        // 纯红封面：最亮通道压到 0.45，不会满格刺眼。
+        val pixels = IntArray(64) { argb(0xFF, 0xFF, 0x00, 0x00) }
+        val (top, bottom) = coverGradientFromPixels(pixels)
+        assertTrue(channel(top, 16) in 100..130)
+        assertEquals(0, channel(top, 8))
+        assertTrue(channel(bottom, 16) < channel(top, 16))
+    }
+}

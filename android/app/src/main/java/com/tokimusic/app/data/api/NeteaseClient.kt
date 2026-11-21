@@ -482,6 +482,30 @@ class NeteaseClient(
             .body.getJSONObject("data").arr("list").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it).getJSONObject("data")) } }
     }.getOrDefault(emptyList())
 
+    override suspend fun artistSublist(): List<Artist> =
+        post("/api/artist/sublist", obj("limit" to 100, "offset" to 0, "total" to true), Crypto.WEAPI)
+            .body.arr("data").let { a ->
+                (0 until a.length()).map {
+                    val o = a.getJSONObject(it)
+                    Artist(o.optLong("id"), o.optString("name"), o.optString("img1v1Url", o.optString("picUrl")))
+                }
+            }
+
+    override suspend fun albumSublist(): List<Album> =
+        post("/api/album/sublist", obj("limit" to 100, "offset" to 0, "total" to true), Crypto.WEAPI)
+            .body.arr("data").let { a ->
+                (0 until a.length()).map {
+                    val o = a.getJSONObject(it)
+                    val ar = o.optJSONArray("artists") ?: JSONArray()
+                    val artistText = (0 until ar.length()).joinToString(" / ") { ar.getJSONObject(it).optString("name") }
+                    Album(o.optLong("id"), o.optString("name"), o.optString("picUrl"), artistText, o.optInt("size"))
+                }
+            }
+
+    override suspend fun toplist(): List<Playlist> =
+        post("/api/toplist", obj(), Crypto.EAPI)
+            .body.arr("list").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
+
     override suspend fun songUrl(id: Long): SongUrlResult {
         // Multi-route fallback: the EAPI v1 endpoint is the one NetEase
         // rate-limits most aggressively — a body code of -460 means the
@@ -516,11 +540,18 @@ class NeteaseClient(
             return url != null
         }
 
-        for (level in listOf("standard", "exhigh")) {
+        // 音质偏好决定先试哪个 level；standard 保持原来的顺序（现有单测依赖它）。
+        val (eapiLevels, weapiLevels) = when (store.audioQuality) {
+            "higher" -> listOf("higher", "exhigh") to listOf("higher", "exhigh", "lossless")
+            "exhigh" -> listOf("exhigh") to listOf("exhigh", "lossless")
+            "lossless" -> listOf("lossless", "exhigh") to listOf("lossless", "exhigh", "higher", "standard")
+            else -> listOf("standard", "exhigh") to listOf("standard", "higher", "exhigh", "lossless")
+        }
+        for (level in eapiLevels) {
             if (attempt(Crypto.EAPI, "/api/song/enhance/player/url/v1",
                     obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"))) return last
         }
-        for (level in listOf("standard", "higher", "exhigh", "lossless")) {
+        for (level in weapiLevels) {
             if (attempt(Crypto.WEAPI, "/api/song/enhance/player/url/v1",
                     obj("ids" to "[$id]", "level" to level, "encodeType" to "flac"))) return last
         }
