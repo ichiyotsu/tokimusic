@@ -1,4 +1,6 @@
 package com.tokimusic.app.ui.player
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +20,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,6 +34,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -39,10 +43,12 @@ import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.ui.theme.CoverColors
+import com.tokimusic.app.ui.theme.InterFamily
 import com.tokimusic.app.ui.theme.chromeBlurActive
 import com.tokimusic.app.ui.theme.tokiGlassFade
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
@@ -72,18 +78,32 @@ import kotlin.math.abs
     coverColors: CoverColors? = null,
     hazeState: HazeState? = null,
     backdropBlur: Boolean = true,
+    // 第三轮第 8 项：切页时首屏行 stagger 入场（只触发一次）。
+    animateEntrance: Boolean = false,
+    // 第三轮第 16 项：歌词字体预设（默认 InterFamily，与主题一致）。
+    fontFamily: FontFamily = InterFamily,
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
     if (lines.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("暂无歌词", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = dimColor)
+            Text("暂无歌词", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = dimColor)
         }
         return
     }
     // 逐字动画用 50ms 轮询；只有当前行读取位置状态，其他行不重组。
     val posState = remember { mutableLongStateOf(positionProvider()) }
     LaunchedEffect(Unit) { while (true) { posState.longValue = positionProvider(); delay(50) } }
+    // 第三轮第 8 项：切页入场窗口只在切入后约 700ms 内打开；窗口期内
+    // 首屏行逐行淡入 + 上移，窗口期后才滚入的行直接以最终态出现，
+    // 滚动时不重复入场。
+    var entranceWindow by remember { mutableStateOf(false) }
+    LaunchedEffect(animateEntrance) {
+        if (!animateEntrance) return@LaunchedEffect
+        entranceWindow = true
+        delay(700)
+        entranceWindow = false
+    }
     val active by remember(lines) { derivedStateOf { YrcParser.activeLineIndex(lines, posState.longValue) } }
     val listState = rememberLazyListState()
     var viewportH by remember { mutableIntStateOf(0) }
@@ -104,7 +124,13 @@ import kotlin.math.abs
             itemsIndexed(lines) { i, line ->
                 val isActive = i == active
                 val distance = if (active < 0) i + 1 else abs(i - active)
-                LyricLineRow(line, isActive, distance, posState, showTranslation, textColor, dimColor)
+                LyricLineRow(
+                    line, isActive, distance, posState, showTranslation, textColor, dimColor,
+                    fontFamily = fontFamily,
+                    entranceWindow = entranceWindow,
+                    // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
+                    entranceDelayMs = minOf(distance, 6) * 40L,
+                )
             }
         }
         if (coverColors != null) {
@@ -145,6 +171,9 @@ private fun LyricLineRow(
     showTranslation: Boolean,
     textColor: Color,
     dimColor: Color,
+    fontFamily: FontFamily = InterFamily,
+    entranceWindow: Boolean = false,
+    entranceDelayMs: Long = 0L,
 ) {
     val pos = if (isActive) posState.value else 0L
     val dim = lineAlpha(distance)
@@ -171,9 +200,21 @@ private fun LyricLineRow(
         3 -> 6f
         else -> 8f
     }
+    // 第三轮第 8 项：切页入场——窗口期内组成的行从透明 + 24px 下移
+    // 逐行淡入；窗口期后才滚入的行直接以最终态出现（不重复入场）。
+    val enterAlpha = remember { Animatable(if (entranceWindow) 0f else 1f) }
+    val enterOffsetY = remember { Animatable(if (entranceWindow) 24f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!entranceWindow) return@LaunchedEffect
+        delay(entranceDelayMs)
+        launch { enterAlpha.animateTo(1f, tween(300)) }
+        launch { enterOffsetY.animateTo(0f, tween(300)) }
+    }
     Box(
         Modifier.fillMaxWidth()
             .graphicsLayer {
+                alpha = enterAlpha.value
+                translationY = enterOffsetY.value
                 renderEffect = if (blurPx > 0f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
             },
     ) {
@@ -183,6 +224,7 @@ private fun LyricLineRow(
                 textAlign = TextAlign.Start,
                 style = if (isActive) MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp) else MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                fontFamily = fontFamily,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
@@ -190,6 +232,7 @@ private fun LyricLineRow(
                 textAlign = TextAlign.Start,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
+                fontFamily = fontFamily,
                 color = if (isActive) dimColor else textColor.copy(alpha = (dim * 0.5f).coerceAtMost(0.4f)),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )

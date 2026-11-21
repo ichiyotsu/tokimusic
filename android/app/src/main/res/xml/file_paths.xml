@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 第三轮第 15 项：更新包下载目录（cacheDir/update/），FileProvider 对外授临时读权限。 -->
+    <cache-path name="update" path="update/" />
+</paths>

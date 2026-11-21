@@ -6,6 +6,8 @@
     <!-- 第二轮第 5 项：实时通知（Live Updates）。POST_PROMOTED_NOTIFICATION 用于请求提升为 Live Update。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATION" />
+    <!-- 第三轮第 15 项：应用内更新——下载 APK 后调起系统安装器。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:name=".TokiMusicApplication" android:label="@string/app_name"
         android:usesCleartextTraffic="true" android:theme="@style/Theme.TokiMusic"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round">
@@ -15,5 +17,9 @@
         <service android:name=".player.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>
+        <!-- 第三轮第 15 项：更新包 FileProvider（cacheDir/update/ 对外授临时读权限）。 -->
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

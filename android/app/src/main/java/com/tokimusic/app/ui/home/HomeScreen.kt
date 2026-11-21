@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -54,6 +58,7 @@ import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.tokiGlassFade
 
 /**
@@ -73,13 +78,38 @@ fun HomeScreen(
     backdropBlur: Boolean,
     onOpenLogin: () -> Unit,
     onOpenPlaylist: (Long) -> Unit,
+    // Round 3 item 12: song-row artist names open the artist page.
+    onOpenArtist: (Long) -> Unit = {},
+    // Round 3 item 20: reports the section whose in-page title has scrolled
+    // under the top bar ("主页" / "推荐歌单" / "推荐新歌"); TokiMusicApp swaps
+    // the floating title chip to match.
+    onSectionTitle: (String) -> Unit = {},
 ) {
     val home by vm.home.collectAsState()
     var entered by remember { mutableStateOf(false) }
     val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
     LaunchedEffect(Unit) { entered = true }
+    // Round 3 item 20: track the two section titles' top edges; the last one
+    // at or above the top bar's bottom edge owns the floating title.
+    val density = LocalDensity.current
+    var playlistsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var newSongsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
+    val topBarBottomPx = with(density) { topPadding.toPx() }
+    val activeSection by remember {
+        derivedStateOf {
+            when {
+                newSongsTitleY <= topBarBottomPx -> "推荐新歌"
+                playlistsTitleY <= topBarBottomPx -> "推荐歌单"
+                else -> "主页"
+            }
+        }
+    }
+    LaunchedEffect(activeSection) { onSectionTitle(activeSection) }
     val hasContent = home.daily.isNotEmpty() || home.radar.isNotEmpty() || home.recent.isNotEmpty() ||
         home.playlists.isNotEmpty() || home.newSongs.isNotEmpty()
+    // 第三轮第 14 项：列表上下边缘 32dp 淡出（内容滑到悬浮标题 / 底栏
+    // 下方时柔和消失，与歌单详情同款；淡出层不处理触摸，不挡滚动）。
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha },
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
@@ -130,7 +160,7 @@ fun HomeScreen(
                             songs = home.daily,
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
-                            onPlay = { vm.play(home.daily, 0) },
+                            onOpen = { onOpenPlaylist(-1L) },
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             modifier = Modifier.weight(1f),
@@ -142,7 +172,7 @@ fun HomeScreen(
                             songs = home.radar,
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
-                            onPlay = { vm.play(home.radar, 0) },
+                            onOpen = { onOpenPlaylist(-2L) },
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             modifier = Modifier.weight(1f),
@@ -184,7 +214,12 @@ fun HomeScreen(
         }
         if (home.playlists.isNotEmpty()) {
             item {
-                Text("推荐歌单", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "推荐歌单",
+                    Modifier.padding(horizontal = 24.dp)
+                        .onGloballyPositioned { playlistsTitleY = it.positionInRoot().y },
+                    style = MaterialTheme.typography.titleLarge,
+                )
                 Spacer(Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 24.dp),
@@ -199,12 +234,28 @@ fun HomeScreen(
         if (home.newSongs.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("推荐新歌", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "推荐新歌",
+                    Modifier.padding(horizontal = 24.dp)
+                        .onGloballyPositioned { newSongsTitleY = it.positionInRoot().y },
+                    style = MaterialTheme.typography.titleLarge,
+                )
             }
             items(home.newSongs) { song ->
-                SongRow(song) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
+                SongRow(song, onOpenArtist = onOpenArtist) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
             }
         }
+    }
+        Box(
+            Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
+                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+            ),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
+                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+            ),
+        )
     }
 }
 
@@ -220,7 +271,7 @@ private fun RecommendCard(
     songs: List<Song>,
     loggedIn: Boolean,
     onLogin: () -> Unit,
-    onPlay: () -> Unit,
+    onOpen: () -> Unit,
     hazeState: dev.chrisbanes.haze.HazeState,
     backdropBlur: Boolean,
     modifier: Modifier = Modifier,
@@ -232,7 +283,7 @@ private fun RecommendCard(
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.8f)
     val blurOn = com.tokimusic.app.ui.theme.chromeBlurActive(backdropBlur)
     Card(
-        onClick = if (loggedIn) onPlay else onLogin,
+        onClick = if (loggedIn) onOpen else onLogin,
         modifier = modifier.fillMaxWidth().aspectRatio(200f / 260f),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),

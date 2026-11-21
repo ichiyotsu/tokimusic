@@ -40,6 +40,11 @@ class TokiUiThemeTest {
     fun themeSourcesDoNotEmbedTheRetiredMatchaPaletteOrShapeTable() {
         val roots = listOf(File("src/main/java"), File("src/main/res"))
         val banned = listOf("4C662B", "CDEDA3", "TokiShapes", "ExpressiveCardShape", "HazeInput.Content", "Modifier.blur", "GoogleSans", "google_sans")
+        // 第三轮第 16 项（用户 2026-11-21）：GoogleSans 仅允许出现在歌词字体
+        // 预设里（LyricFontGoogleSansNotoBold / R.font.google_sans_bold /
+        // 用户可见的预设名 "GoogleSans Bold"），其余位置仍按旧 Matcha
+        // 退役规则禁用——应用其余字体仍是 Inter + 思源黑体。
+        val lyricPresetAllowlist = listOf("LyricFontGoogleSansNotoBold", "R.font.google_sans_bold", "GoogleSans Bold")
         val hits = buildList {
             for (root in roots) {
                 if (!root.isDirectory) continue
@@ -47,7 +52,14 @@ class TokiUiThemeTest {
                     if (file.extension != "kt" && file.extension != "xml") continue
                     val text = file.readText()
                     for (needle in banned) {
-                        if (text.contains(needle)) add("${file.path}: $needle")
+                        if (!text.contains(needle)) continue
+                        val isLyricFontNeedle = needle == "GoogleSans" || needle == "google_sans"
+                        val offending = if (isLyricFontNeedle) {
+                            text.lines().any { line -> line.contains(needle) && lyricPresetAllowlist.none { line.contains(it) } }
+                        } else {
+                            true
+                        }
+                        if (offending) add("${file.path}: $needle")
                     }
                 }
             }

@@ -1,5 +1,6 @@
 package com.tokimusic.app.player
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -13,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -38,9 +40,12 @@ class PlayerController(context: Context) {
     /** Playback failures and unplayable tracks, for the UI to explain. */
     var onPlaybackError: ((String) -> Unit)? = null
     private val unplayable = mutableSetOf<Long>()
+    /** Round 3 item 13: locally accumulated playback time (see PlaybackStatsStore). */
+    val statsStore = PlaybackStatsStore(context)
+    private var playStartElapsedMs: Long? = null
     init { player.addListener(object : Player.Listener {
-        override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p) }
-        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); ensureUrlForCurrent() }
+        override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p); notePlayingChanged(p) }
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); ensureUrlForCurrent() }
         override fun onPlayerError(error: PlaybackException) {
             // An empty-URI item errors while its URL is being fetched lazily —
             // ensureUrlForCurrent owns that case (replace or skip + explain).
@@ -50,6 +55,33 @@ class PlayerController(context: Context) {
             onPlaybackError?.invoke("播放失败，请检查网络后重试")
         }
     }) }
+    /**
+     * Round 3 item 13: accumulate real playback time into the stats store.
+     * Only elapsed time while actually playing counts (pause/seek gaps don't);
+     * the running segment is flushed on pause, on track change, every 60s
+     * while playing (so a killed app loses at most a minute), and on release.
+     */
+    private fun notePlayingChanged(playing: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        playStartElapsedMs?.let { start ->
+            if (now > start) statsStore.addPlayed(now - start)
+        }
+        playStartElapsedMs = if (playing) now else null
+    }
+    init {
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                playStartElapsedMs?.let { start ->
+                    val now = SystemClock.elapsedRealtime()
+                    if (now > start) {
+                        statsStore.addPlayed(now - start)
+                        playStartElapsedMs = now
+                    }
+                }
+            }
+        }
+    }
     private fun ensureUrlForCurrent() {
         val idx = player.currentMediaItemIndex
         if (idx < 0 || idx >= player.mediaItemCount) return
@@ -122,7 +154,7 @@ class PlayerController(context: Context) {
     }
     fun seekTo(ms: Long) { player.seekTo(ms) }
     fun currentPosition(): Long = player.currentPosition.coerceAtLeast(0)
-    fun release() { scope.cancel(); player.release() }
+    fun release() { notePlayingChanged(false); scope.cancel(); player.release() }
 }
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null

@@ -1,5 +1,12 @@
 package com.tokimusic.app.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -24,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +52,8 @@ import dev.chrisbanes.haze.HazeState
  *
  * [strong]（第二轮第 3 项）：标题与底栏同配方——32dp 模糊 + 45% veil。
  * [trailing]：标题行右侧的附加内容（tab 页的头像入口）；歌单详情页不传。
+ * [titleAlpha]/[titleOffsetY]（第三轮第 5 项）：只作用在标题 chip 上（淡入 +
+ * 上移动画），返回 chip 不参与——歌单详情页滑动时返回按钮一直显示。
  */
 @Composable
 fun OverlayTitleHeader(
@@ -54,6 +64,8 @@ fun OverlayTitleHeader(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     strong: Boolean = false,
+    titleAlpha: Float = 1f,
+    titleOffsetY: Float = 0f,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -76,7 +88,8 @@ fun OverlayTitleHeader(
             Modifier
                 .weight(1f, fill = false)
                 .heightIn(min = 56.dp)
-                .clip(titleShape),
+                .clip(titleShape)
+                .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY },
             contentAlignment = Alignment.CenterStart,
         ) {
             TokiScrollChipBackdrop(
@@ -86,17 +99,32 @@ fun OverlayTitleHeader(
                 strong = strong,
                 modifier = Modifier.matchParentSize(),
             )
-            Text(
-                title,
-                modifier = Modifier.padding(horizontal = tokiSpace("lg")),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = content,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Round 3 item 20: the title text crossfades/slides up when the
+            // top-bar title switches (Home sections: 主页 / 推荐歌单 / 推荐新歌).
+            AnimatedContent(
+                targetState = title,
+                transitionSpec = {
+                    (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 4 }) togetherWith
+                        (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 4 })
+                },
+                label = "headerTitle",
+            ) { currentTitle ->
+                Text(
+                    currentTitle,
+                    modifier = Modifier.padding(horizontal = tokiSpace("lg")),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = content,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (trailing != null) {
+            // Round 3 item 3: push the trailing (avatar) to the right edge.
+            // The title Box is weight(1f, fill = false), so without this the
+            // avatar hugs the title chip instead of the right edge.
+            Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(tokiSpace("md")))
             trailing()
         }

@@ -1,8 +1,9 @@
 package com.tokimusic.app.ui.library
 
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,29 +21,24 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -54,8 +50,11 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.CirroCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.theme.CirroBlack
 
-private enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("艺人"), Albums("专辑"), Songs("歌曲") }
+// Round 3 item 2: lifted to TokiMusicApp (with playlistId) so second-level
+// pages get the floating OverlayTitleHeader; was private + internal state.
+enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("艺人"), Albums("专辑"), Songs("歌曲") }
 
 /**
  * Cirro 资料库页：大标题 + 右上头像（点进设置），5 行深灰卡片
@@ -69,6 +68,17 @@ fun LibraryScreen(
     bottomPadding: Dp,
     onOpenSettings: () -> Unit,
     onOpenPlaylist: (Long) -> Unit,
+    // Round 3 item 2: controlled component — the open section lives in
+    // TokiMusicApp so the floating title + back chip can drive it.
+    section: LibrarySection?,
+    onOpenSection: (LibrarySection) -> Unit,
+    onCloseSection: () -> Unit,
+    // Round 3 item 13: "听歌时长" stat opens the listening-stats page.
+    onOpenListeningStats: () -> Unit = {},
+    // Round 3 item 12: artist rows open the artist page, album rows open
+    // the album detail page; song-row artist names are artist entries too.
+    onOpenArtist: (Long) -> Unit = {},
+    onOpenAlbum: (Long) -> Unit = {},
 ) {
     val profile by vm.profile.collectAsState()
     val mine by vm.mine.collectAsState()
@@ -76,16 +86,18 @@ fun LibraryScreen(
     val likedSongs by vm.likedSongs.collectAsState()
     val artists by vm.artists.collectAsState()
     val albums by vm.albums.collectAsState()
-    var open by remember { mutableStateOf<LibrarySection?>(null) }
-    BackHandler(enabled = open != null) { open = null }
-    LaunchedEffect(open) {
-        when (open) {
+    // Loading follows the section; back handling lives in TokiMusicApp (so a
+    // playlist opened from a section still closes the playlist first).
+    LaunchedEffect(section) {
+        when (section) {
             LibrarySection.Liked -> vm.loadLikedSongs()
             LibrarySection.Artists -> vm.loadArtists()
             LibrarySection.Albums -> vm.loadAlbums()
             else -> {}
         }
     }
+    // 第三轮第 14 项：列表上下边缘 32dp 淡出（与主页、歌单详情同款）。
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
@@ -93,32 +105,28 @@ fun LibraryScreen(
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
         // 头像入口在标题行右侧（见 TokiMusicApp）。
-        if (open != null) {
-            item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { open = null }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                    Text(open!!.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                }
-            }
-            when (open) {
-                LibrarySection.Liked -> likedSongsSection(likedSongs) { i -> vm.play(likedSongs, i) }
+        if (section != null) {
+            // Round 3 item 2: no in-page back row — the floating header
+            // (OverlayTitleHeader) carries the back chip + title now.
+            when (section) {
+                LibrarySection.Liked -> likedSongsSection(likedSongs, onOpenArtist) { i -> vm.play(likedSongs, i) }
                 LibrarySection.Playlists -> playlistsSection(myPlaylists, profile?.uid ?: 0, onOpenPlaylist)
-                LibrarySection.Artists -> artistsSection(artists)
-                LibrarySection.Albums -> albumsSection(albums)
-                LibrarySection.Songs -> songsSection(mine.recent) { i -> vm.play(mine.recent, i) }
+                LibrarySection.Artists -> artistsSection(artists, onOpenArtist)
+                LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
+                LibrarySection.Songs -> songsSection(mine.recent, onOpenArtist) { i -> vm.play(mine.recent, i) }
                 null -> {}
             }
             return@LazyColumn
         }
         val loggedIn = profile != null
         // 第二轮第 21 项：收藏歌曲 / 听歌时长 / 歌单三张统计卡移到最上方。
+        // 第三轮第 10 项：去框——裸露大字号数字 + 下方副标题；第 13 项：
+        // 点“听歌时长”打开播放时长二级页。
         if (loggedIn) {
             item {
                 Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     StatCard("收藏歌曲", "${mine.likeCount}", Modifier.weight(1f))
-                    StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f))
+                    StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f), onClick = onOpenListeningStats)
                     StatCard("歌单", "${mine.playlistCount}", Modifier.weight(1f))
                 }
             }
@@ -128,31 +136,31 @@ fun LibraryScreen(
             CirroCardRow(
                 Icons.Filled.Star, "收藏",
                 if (loggedIn) "${mine.likeCount} 首" else "登录后查看",
-            ) { if (loggedIn) open = LibrarySection.Liked else onOpenSettings() }
+            ) { if (loggedIn) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Filled.QueueMusic, "歌单",
                 if (loggedIn) "${mine.playlistCount} 个歌单" else "登录后查看",
-            ) { if (loggedIn) open = LibrarySection.Playlists else onOpenSettings() }
+            ) { if (loggedIn) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Filled.Mic, "艺人",
                 if (loggedIn) "我关注的歌手" else "登录后查看",
-            ) { if (loggedIn) open = LibrarySection.Artists else onOpenSettings() }
+            ) { if (loggedIn) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Filled.Album, "专辑",
                 if (loggedIn) "我收藏的专辑" else "登录后查看",
-            ) { if (loggedIn) open = LibrarySection.Albums else onOpenSettings() }
+            ) { if (loggedIn) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Filled.MusicNote, "歌曲",
                 if (loggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
-            ) { if (loggedIn) open = LibrarySection.Songs else onOpenSettings() }
+            ) { if (loggedIn) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         if (loggedIn) {
             item { SectionTitle("最近添加") }
@@ -179,14 +187,26 @@ fun LibraryScreen(
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i, trailingText = "${r.playCount} 次") { vm.play(mine.record.take(10).map { it.song }, i) }
+                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist) { vm.play(mine.record.take(10).map { it.song }, i) }
             }
         }
+    }
+        Box(
+            Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
+                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+            ),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
+                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+            ),
+        )
     }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
     likedSongs: List<com.tokimusic.app.data.model.Song>,
+    onOpenArtist: (Long) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
     if (likedSongs.isEmpty()) {
@@ -199,7 +219,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
             )
         }
     } else {
-        itemsIndexed(likedSongs) { i, song -> SongRow(song, i) { onPlay(i) } }
+        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { onPlay(i) } }
     }
 }
 
@@ -245,7 +265,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artists: List<Artist>) {
+private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artists: List<Artist>, onOpenArtist: (Long) -> Unit) {
     if (artists.isEmpty()) {
         item {
             Text(
@@ -256,11 +276,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artist
             )
         }
     } else {
-        items(artists) { artist -> ArtistRow(artist) }
+        items(artists) { artist -> ArtistRow(artist) { onOpenArtist(artist.id) } }
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.albumsSection(albums: List<Album>) {
+private fun androidx.compose.foundation.lazy.LazyListScope.albumsSection(albums: List<Album>, onOpenAlbum: (Long) -> Unit) {
     if (albums.isEmpty()) {
         item {
             Text(
@@ -271,22 +291,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.albumsSection(albums:
             )
         }
     } else {
-        items(albums) { album -> AlbumRow(album) }
+        items(albums) { album -> AlbumRow(album) { onOpenAlbum(album.id) } }
     }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     recent: List<com.tokimusic.app.data.model.Song>,
+    onOpenArtist: (Long) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
     // “歌曲”行定义（PLAN 默认）：最近播放全量列表。
-    itemsIndexed(recent) { i, song -> SongRow(song, i) { onPlay(i) } }
+    itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { onPlay(i) } }
 }
 
 @Composable
-private fun ArtistRow(artist: Artist) {
+private fun ArtistRow(artist: Artist, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(artist.picUrl, 48)
@@ -296,9 +317,9 @@ private fun ArtistRow(artist: Artist) {
 }
 
 @Composable
-private fun AlbumRow(album: Album) {
+private fun AlbumRow(album: Album, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
@@ -320,12 +341,15 @@ private fun AlbumRow(album: Album) {
     }
 }
 
+/**
+ * Round 3 item 10: no card frame — a bare big number (headlineLarge Bold)
+ * with the subtitle below. The listening-time stat is tappable (item 13).
+ */
 @Composable
-private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier, shape = MaterialTheme.shapes.extraLarge) {
-        Column(Modifier.padding(24.dp)) {
-            Text(value, style = MaterialTheme.typography.titleLarge)
-            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
+private fun StatCard(label: String, value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val click = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    Column(modifier.then(click)) {
+        Text(value, style = MaterialTheme.typography.headlineLarge)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }

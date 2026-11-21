@@ -3,15 +3,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -44,6 +48,8 @@ import com.tokimusic.app.data.model.Song
     trailing: (@Composable () -> Unit)? = null,
     horizontalPadding: Dp = 24.dp,
     onClick: (() -> Unit)? = null,
+    // 第三轮第 1 项：警示行用红色标题（如退出登录）。
+    headlineColor: Color = Color.Unspecified,
 ) {
     Row(
         Modifier.fillMaxWidth()
@@ -53,20 +59,50 @@ import com.tokimusic.app.data.model.Song
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(headline, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(headline, style = MaterialTheme.typography.titleMedium, color = headlineColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (supporting != null) Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (trailing != null) { Spacer(Modifier.width(12.dp)); trailing() }
     }
 }
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onOpenArtist: ((Long) -> Unit)? = null, onClick: () -> Unit) {
+    // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
+    // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
+    // 是普通文本（播放队列等处）。
+    val subtitle = remember(song) {
+        buildAnnotatedString {
+            song.artists.forEachIndexed { i, artist ->
+                if (i > 0) append(" / ")
+                pushStringAnnotation("artist", artist.id.toString())
+                append(artist.name)
+                pop()
+            }
+            if (song.albumName.isNotBlank()) {
+                if (song.artists.isNotEmpty()) append(" · ")
+                append(song.albumName)
+            }
+        }
+    }
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
         AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOf(song.artistText, song.albumName).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (onOpenArtist != null) {
+                ClickableText(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    onClick = { offset ->
+                        val ann = subtitle.getStringAnnotations("artist", offset, offset).firstOrNull()
+                        if (ann != null) ann.item.toLongOrNull()?.let { onOpenArtist(it) } else onClick()
+                    },
+                )
+            } else {
+                Text(subtitle.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
         // trailingText 优先（听歌排行显示“x 次”）；否则显示歌曲时长。
         if (trailingText != null) Text(trailingText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
