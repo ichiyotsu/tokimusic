@@ -242,7 +242,7 @@ fun HomeScreen(
                 )
             }
             items(home.newSongs) { song ->
-                SongRow(song, onOpenArtist = onOpenArtist) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
+                SongRow(song, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
             }
         }
     }

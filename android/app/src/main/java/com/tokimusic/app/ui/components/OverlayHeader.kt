@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,7 +52,9 @@ import dev.chrisbanes.haze.HazeState
  * scrolling, and the back↔title gap is a fixed 12dp. Text stays onSurface.
  *
  * [strong]（第二轮第 3 项）：标题与底栏同配方——32dp 模糊 + 45% veil。
- * [trailing]：标题行右侧的附加内容（tab 页的头像入口）；歌单详情页不传。
+ * [trailing]：标题行右侧的附加内容（tab 页的头像入口）；结构上贴右边缘——
+ * 外层 Row 用 SpaceBetween 分左右两组，标题组贴左、trailing 组贴右，不再
+ * 用 weight Spacer 把头像顶过去。
  * [titleAlpha]/[titleOffsetY]（第三轮第 5 项）：只作用在标题 chip 上（淡入 +
  * 上移动画），返回 chip 不参与——歌单详情页滑动时返回按钮一直显示。
  */
@@ -78,55 +81,61 @@ fun OverlayTitleHeader(
             .statusBarsPadding()
             .heightIn(min = 64.dp)
             .padding(horizontal = tokiSpace("xl")),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (onBack != null) {
-            TokiScrollBackChip(backdropBlur, hazeState, onBack, strong = strong)
-            Spacer(Modifier.width(tokiSpace("md")))
-        }
-        Box(
-            Modifier
-                .weight(1f, fill = false)
-                .heightIn(min = 56.dp)
-                .clip(titleShape)
-                .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY },
-            contentAlignment = Alignment.CenterStart,
+        // 标题组贴左：返回 chip 与标题 chip 固定 12dp 间距；标题 chip 只取
+        // 文字所需宽度（weight fill=false），长标题在组内截断。
+        Row(
+            Modifier.weight(1f, fill = false),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            TokiScrollChipBackdrop(
-                shape = titleShape,
-                backdropBlur = backdropBlur,
-                hazeState = hazeState,
-                strong = strong,
-                modifier = Modifier.matchParentSize(),
-            )
-            // Round 3 item 20: the title text crossfades/slides up when the
-            // top-bar title switches (Home sections: 主页 / 推荐歌单 / 推荐新歌).
-            AnimatedContent(
-                targetState = title,
-                transitionSpec = {
-                    (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 4 }) togetherWith
-                        (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 4 })
-                },
-                label = "headerTitle",
-            ) { currentTitle ->
-                Text(
-                    currentTitle,
-                    modifier = Modifier.padding(horizontal = tokiSpace("lg")),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = content,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            if (onBack != null) {
+                TokiScrollBackChip(backdropBlur, hazeState, onBack, strong = strong)
+                Spacer(Modifier.width(tokiSpace("md")))
+            }
+            Box(
+                Modifier
+                    .weight(1f, fill = false)
+                    .heightIn(min = 56.dp)
+                    .clip(titleShape)
+                    .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                TokiScrollChipBackdrop(
+                    shape = titleShape,
+                    backdropBlur = backdropBlur,
+                    hazeState = hazeState,
+                    strong = strong,
+                    modifier = Modifier.matchParentSize(),
                 )
+                // Round 3 item 20: the title text crossfades/slides up when the
+                // top-bar title switches (Home sections: 主页 / 推荐歌单 / 推荐新歌).
+                AnimatedContent(
+                    targetState = title,
+                    transitionSpec = {
+                        (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 4 }) togetherWith
+                            (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 4 })
+                    },
+                    label = "headerTitle",
+                ) { currentTitle ->
+                    Text(
+                        currentTitle,
+                        modifier = Modifier.padding(horizontal = tokiSpace("lg")),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = content,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         if (trailing != null) {
-            // Round 3 item 3: push the trailing (avatar) to the right edge.
-            // The title Box is weight(1f, fill = false), so without this the
-            // avatar hugs the title chip instead of the right edge.
-            Spacer(Modifier.weight(1f))
-            Spacer(Modifier.width(tokiSpace("md")))
-            trailing()
+            // 头像组贴右：与标题组之间至少留 12dp，其余空间由 SpaceBetween 分配。
+            Box(Modifier.padding(start = tokiSpace("md"))) {
+                trailing()
+            }
         }
     }
 }

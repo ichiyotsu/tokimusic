@@ -1,6 +1,7 @@
 package com.tokimusic.app.ui.stats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -33,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -55,7 +58,7 @@ private enum class Granularity(val label: String) { Day("日"), Month("月"), Ye
  * Default granularity is Month; prev/next browses past periods only.
  */
 @Composable
-fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) {
+fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenTreemap: () -> Unit) {
     val mine by vm.mine.collectAsState()
     val store = vm.player.statsStore
     var granularity by remember { mutableStateOf(Granularity.Month) }
@@ -120,18 +123,28 @@ fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) {
             }
         }
         item {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Text(formatLongDuration(totalMs), style = MaterialTheme.typography.headlineLarge)
-                Text(
-                    "tokimusic 时长 · 本地累计",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "仅统计本机自安装后的播放时长；卸载或清除数据后清零。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // 第 5 项：总时长可点，点进树状图页。
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onOpenTreemap() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(formatLongDuration(totalMs), style = MaterialTheme.typography.headlineLarge)
+                    Text(
+                        "tokimusic 时长 · 本地累计",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "仅统计本机自安装后的播放时长；卸载或清除数据后清零。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(Icons.Filled.ChevronRight, contentDescription = "查看分布")
             }
         }
         if (breakdown.isNotEmpty()) {
@@ -187,7 +200,7 @@ fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) {
     }
 }
 
-private fun formatLongDuration(ms: Long): String {
+internal fun formatLongDuration(ms: Long): String {
     val minutes = ms / 60_000
     val hours = minutes / 60
     return if (hours > 0) "$hours 小时 ${minutes % 60} 分" else "$minutes 分钟"

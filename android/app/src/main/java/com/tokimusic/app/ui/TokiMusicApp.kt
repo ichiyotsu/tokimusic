@@ -62,11 +62,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tokimusic.app.R
+import com.tokimusic.app.data.model.PlaylistGroup
+import com.tokimusic.app.data.model.groupPlaylists
 import com.tokimusic.app.ui.albums.AlbumDetailScreen
 import com.tokimusic.app.ui.artist.ArtistScreen
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.FloatingNavBar
 import com.tokimusic.app.ui.components.OverlayTitleHeader
+import com.tokimusic.app.ui.components.SongActionsSheet
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.TokiSideActionButton
 import com.tokimusic.app.ui.components.navEntries
@@ -75,6 +78,7 @@ import com.tokimusic.app.ui.home.HomeScreen
 import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.library.LibrarySection
 import com.tokimusic.app.ui.stats.ListeningStatsScreen
+import com.tokimusic.app.ui.stats.ListeningTreemapScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
@@ -159,7 +163,7 @@ fun TokiMusicApp() {
         // playlistId). Stacking: opening an artist from a playlist keeps
         // the playlist underneath (back returns to it); opening an album
         // from an artist keeps the artist underneath. The pageKey/onBack
-        // priority is album > artist > playlist > search > stats > section.
+        // priority is album > artist > playlist > search > treemap > stats > section.
         var artistId by remember { mutableStateOf<Long?>(null) }
         var artistTitle by remember { mutableStateOf("歌手") }
         var albumId by remember { mutableStateOf<Long?>(null) }
@@ -169,6 +173,8 @@ fun TokiMusicApp() {
         var librarySection by remember { mutableStateOf<LibrarySection?>(null) }
         // Round 3 item 13: listening-stats second-level page.
         var statsOpen by remember { mutableStateOf(false) }
+        // 第 5 项：听歌时长树状图，stats 页里的二级页（返回先回时长页）。
+        var treemapOpen by remember { mutableStateOf(false) }
         // Round 3 item 20: Home's floating title follows the scrolled section.
         var homeSectionTitle by remember { mutableStateOf("主页") }
         var showPlayer by remember { mutableStateOf(false) }
@@ -230,6 +236,7 @@ fun TokiMusicApp() {
             artistId != null -> artistTitle
             playlistId != null -> playlistTitle
             searchOpen -> "搜索"
+            treemapOpen -> "时长分布"
             statsOpen -> "听歌时长"
             librarySection != null -> librarySection!!.title
             dest == Dest.Home -> homeSectionTitle
@@ -249,6 +256,7 @@ fun TokiMusicApp() {
             artistId != null -> ({ artistId = null })
             playlistId != null -> ({ playlistId = null })
             searchOpen -> ({ searchOpen = false })
+            treemapOpen -> ({ treemapOpen = false })
             statsOpen -> ({ statsOpen = false })
             librarySection != null -> ({ librarySection = null })
             else -> null
@@ -258,7 +266,8 @@ fun TokiMusicApp() {
         BackHandler(enabled = !showPlayer && albumId == null && artistId != null) { artistId = null }
         BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId != null) { playlistId = null }
         BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && searchOpen) { searchOpen = false }
-        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && !searchOpen && statsOpen) { statsOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && !searchOpen && treemapOpen) { treemapOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && !searchOpen && !treemapOpen && statsOpen) { statsOpen = false; treemapOpen = false }
         BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && !searchOpen && !statsOpen && librarySection != null) { librarySection = null }
 
         val contentGap = tokiSpace("lg")
@@ -277,6 +286,7 @@ fun TokiMusicApp() {
             artistId != null -> "artist:$artistId"
             playlistId != null -> "playlist:$playlistId"
             searchOpen -> "search"
+            treemapOpen -> "treemap"
             statsOpen -> "stats"
             else -> dest
         }
@@ -305,6 +315,7 @@ fun TokiMusicApp() {
                                         albumId = null
                                         librarySection = null
                                         statsOpen = false
+                                        treemapOpen = false
                                         searchOpen = false
                                         showPlayer = false
                                     },
@@ -433,7 +444,8 @@ fun TokiMusicApp() {
                                             onHeaderVisible = { detailHeaderVisible = it },
                                             onOpenArtist = { artistId = it },
                                         )
-                                        key == "stats" -> ListeningStatsScreen(vm, topPadding, bottomPadding)
+                                        key == "treemap" -> ListeningTreemapScreen(vm, topPadding, bottomPadding)
+                                        key == "stats" -> ListeningStatsScreen(vm, topPadding, bottomPadding, onOpenTreemap = { treemapOpen = true })
                                         key == "search" -> SearchScreen(
                                             vm, topPadding, bottomPadding,
                                             onOpenPlaylist = { playlistId = it; playlistTitle = ""; searchOpen = false },
@@ -490,6 +502,7 @@ fun TokiMusicApp() {
                                     albumId = null
                                     librarySection = null
                                     statsOpen = false
+                                    treemapOpen = false
                                     searchOpen = false
                                     showPlayer = false
                                 },
@@ -505,6 +518,24 @@ fun TokiMusicApp() {
         // 底栏之上；chrome 在弹窗下保持可见。搜索自第三轮第 11 项起是
         // 独立第二级页面，不再走弹窗。
         if (showSettings) SettingsSheet(vm, theme, updateTheme, onClose = { showSettings = false })
+        // 第 6 项：长按歌曲的底部弹窗；“添加”只列我创建的歌单。
+        val songActions by vm.songActions.collectAsState()
+        val likedIds by vm.likedIds.collectAsState()
+        val myPlaylists by vm.myPlaylists.collectAsState()
+        val myProfile by vm.profile.collectAsState()
+        if (songActions != null) {
+            val ctx = songActions!!
+            val createdPlaylists = groupPlaylists(myPlaylists, myProfile?.uid ?: 0L)[PlaylistGroup.Created] ?: emptyList()
+            SongActionsSheet(
+                context = ctx,
+                liked = ctx.song.id in likedIds,
+                myPlaylists = createdPlaylists,
+                onDismiss = { vm.closeSongActions() },
+                onToggleLike = { vm.toggleLike(ctx.song.id) },
+                onAddToPlaylist = { pl -> vm.addSongToPlaylist(ctx.song, pl); vm.closeSongActions() },
+                onRemoveFromPlaylist = { ctx.playlistId?.let { vm.removeSongFromPlaylist(ctx.song, it) }; vm.closeSongActions() },
+            )
+        }
         // 第三轮第 15 项：启动自动检查发现的新版提醒（与设置页手动检查共用 UpdatePrompt）。
         if (pendingUpdate != null) UpdatePrompt(pendingUpdate!!) { pendingUpdate = null }
     }

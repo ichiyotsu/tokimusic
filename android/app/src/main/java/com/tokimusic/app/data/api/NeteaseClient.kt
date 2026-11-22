@@ -476,6 +476,36 @@ class NeteaseClient(
         if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "喜欢失败（code $code）")
     }
 
+    // 第 6 项：加歌 / 删歌。上游 4.32.0 playlist_track_add / playlist_track_delete：
+    // POST /api/playlist/track/add|delete（weapi），body {id: pid,
+    // tracks: "[{\"type\":3,\"id\":\"<id>\"}]"}（id 是字符串，上游把 ids split
+    // 后的字符串原样放进 tracks）。成功 code 200，否则抛错。
+    override suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long) {
+        val code = post(
+            "/api/playlist/track/add",
+            obj("id" to playlistId, "tracks" to "[{\"type\":3,\"id\":\"$trackId\"}]"),
+            Crypto.WEAPI,
+        ).body.optInt("code")
+        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "添加到歌单失败（code $code）")
+    }
+
+    override suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long) {
+        val code = post(
+            "/api/playlist/track/delete",
+            obj("id" to playlistId, "tracks" to "[{\"type\":3,\"id\":\"$trackId\"}]"),
+            Crypto.WEAPI,
+        ).body.optInt("code")
+        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "从歌单移除失败（code $code）")
+    }
+
+    // 第 7 项：音乐等级。上游 4.32.0 user_level：POST /api/user/level
+    //（weapi，空 body），返回 {"code":200,"data":{"level":N,...}}。
+    override suspend fun userLevel(): Int {
+        val body = post("/api/user/level", obj(), Crypto.WEAPI).body
+        val inData = body.optJSONObject("data")?.optInt("level", -1) ?: -1
+        return if (inData >= 0) inData else body.optInt("level")
+    }
+
     override suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> {
         val o = post("/api/v1/play/record", obj("uid" to uid, "type" to if (weekly) 1 else 0), Crypto.WEAPI).body
         val a = o.arr(if (weekly) "weekData" else "allData")

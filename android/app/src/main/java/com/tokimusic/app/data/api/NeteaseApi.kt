@@ -23,7 +23,10 @@ interface NeteaseApi {
     suspend fun userDetail(uid: Long): UserProfile    // /user/detail
     suspend fun likeList(uid: Long): List<Long>       // /likelist
     suspend fun like(id: Long, like: Boolean)          // /like — add/remove from "我喜欢的音乐"
+    suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long) // /playlist/track/add (weapi)
+    suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long) // /playlist/track/delete (weapi)
     suspend fun userRecord(uid: Long, weekly: Boolean): List<RecordItem> // /user/record?type=
+    suspend fun userLevel(): Int                   // /api/user/level (weapi) — data.level
     suspend fun recentSongs(): List<Song>             // /history/recent/songs
     suspend fun artistSublist(): List<Artist>         // /artist/sublist （我关注的歌手）
     suspend fun artistDetail(id: Long): Artist        // /artist/head/info/get （第三轮第 12 项，weapi；上游模块未指定 crypto，实测 weapi 可用）

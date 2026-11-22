@@ -161,7 +161,7 @@ fun AlbumDetailScreen(
                                 }
                             }
                         }
-                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { vm.play(tracks, i) } }
+                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i) } }
                     }
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(

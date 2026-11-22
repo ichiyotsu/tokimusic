@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
@@ -23,6 +24,13 @@ import kotlinx.coroutines.withContext
 /** 播放器背景：封面取色的暖渐变（上浅下深）。 */
 data class CoverColors(val top: Color, val bottom: Color) {
     fun toBrush(): Brush = Brush.verticalGradient(listOf(top, bottom))
+
+    /**
+     * 渐变在某一高度比例处的实际颜色（纯函数，可单测）：0 → top，1 → bottom。
+     * 歌词区底部淡出层的不透明端必须取这个值——淡出层只到页面约 60% 高处，
+     * 直接用 bottom 会比身后的背景深一截，露出一道黑条（0.1.7 真机反馈）。
+     */
+    fun colorAt(fraction: Float): Color = lerp(top, bottom, fraction.coerceIn(0f, 1f))
 
     /**
      * 封面自适应文字色（第二轮第 7/10/12 项共用）：按渐变上端色亮度决定

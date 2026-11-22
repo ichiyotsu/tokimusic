@@ -27,12 +27,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
@@ -65,6 +67,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,7 +81,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,7 +93,6 @@ import com.tokimusic.app.player.PlayerState
 import com.tokimusic.app.player.rememberCastActive
 import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
-import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiSheetContainer
 import dev.chrisbanes.haze.HazeState
@@ -99,6 +104,7 @@ import com.tokimusic.app.ui.theme.CirroPlayKey
 import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.LocalCirroAppearance
+import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.lyricFontFamily
 import kotlinx.coroutines.delay
 
@@ -207,6 +213,14 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         animationSpec = scheme.defaultSpatialSpec(),
         label = "playKeyCorner",
     )
+    // 歌词区底部淡出端色（0.1.7 真机反馈的黑条）：面板渐变从面板顶画到底，
+    // 淡出层却只到歌词区底部（约 60% 高），直接用 coverColors.bottom 会比
+    // 身后背景深一截。量出面板高与歌词区高，取该位置的真实渐变色。
+    // 布局量到之前先按 0.6 估算，首帧就接近正确值。
+    val density = LocalDensity.current
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    var lyricsBottomFraction by remember { mutableFloatStateOf(0.6f) }
+    val bottomFadeColor = coverColors.colorAt(lyricsBottomFraction)
     // 第 11 项：点空白区域返回。根布局接点击；封面/歌词区与控制区各放
     // 一个无操作点击屏蔽，点它们不返回（按钮/滑块/歌词滚动照常）。
     val blankBack = remember { MutableInteractionSource() }
@@ -215,9 +229,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         Modifier.fillMaxSize()
             .clickable(interactionSource = blankBack, indication = null) { onBack() },
     ) {
-        Box(Modifier.fillMaxSize().background(coverColors.toBrush()))
+        Box(Modifier.fillMaxSize().background(coverColors.toBrush()).onSizeChanged { panelHeightPx = it.height })
         Column(Modifier.fillMaxSize().padding(top = 8.dp).navigationBarsPadding()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(
+                Modifier.weight(1f).fillMaxWidth().onSizeChanged {
+                    if (panelHeightPx > 0 && it.height > 0) {
+                        lyricsBottomFraction =
+                            ((with(density) { 8.dp.toPx() } + it.height) / panelHeightPx).coerceIn(0f, 1f)
+                    }
+                },
+            ) {
                 AnimatedContent(
                     targetState = showLyrics,
                     transitionSpec = {
@@ -253,6 +274,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 animateEntrance = true,
                                 // 第三轮第 16 项：歌词字体预设（设置 → 歌词）。
                                 fontFamily = lyricFontFamily(vm.store.lyricFontPreset),
+                                // 底部淡出端色取歌词区底部位置的真实背景色（黑条修复）。
+                                bottomFadeColor = bottomFadeColor,
                             )
                         }
                     } else {
@@ -379,7 +402,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
             }
         }
     }
-    if (showQueue) QueueSheet(state, onJump = { vm.player.jumpTo(it) }, onDismiss = { showQueue = false })
+    if (showQueue) QueueSheet(state, onJump = { vm.player.jumpTo(it) }, onDismiss = { showQueue = false }, backdropBlur = backdropBlur, onLongPressSong = { vm.openSongActions(it) })
     if (showMore) MoreSheet(
         song = song,
         liked = liked,
@@ -445,23 +468,50 @@ private fun PlainArtButton(icon: ImageVector, label: String, tint: Color = Color
 
 /**
  * 播放队列弹窗（第二轮第 19 项，TokiUI 设计）：TokiSheetContainer 配方
- * （顶部圆角 32dp、surfaceContainerLow、标题 + 36dp 关闭钮），
- * SectionTitle 分段——正在播放 / 接下来，当前曲用 primaryContainer
- * 35% 高亮。点行跳转并关闭弹窗。
+ * （顶部圆角 32dp、surfaceContainerLow、标题 + 36dp 关闭钮）。
+ * 第 9 项：删掉“正在播放”“接下来”两处分段文本；当前曲只保留大圆角
+ * 高亮（28dp 圆角 primaryContainer 35%）；标题与关闭钮用外面悬浮模糊
+ * 标题同款配方（磨砂 chip）。点行跳转并关闭弹窗。
  */
 @Composable
-private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () -> Unit) {
+private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () -> Unit, backdropBlur: Boolean, onLongPressSong: (Song) -> Unit = {}) {
     TokiSheetContainer(onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.7f)) {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "播放队列",
-                    Modifier.weight(1f).padding(start = 8.dp),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                androidx.compose.material3.IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = "关闭")
+            // 第 9 项：标题与关闭钮用外面悬浮模糊标题同款配方——标题进
+            // 56dp 磨砂 chip，关闭进 36dp 圆形磨砂 chip；位置与功能不变
+            // （标题左、关闭右）。弹窗是独立窗口、没有 hazeState，走配方
+            // 自带的半透明底色（模糊关时是实色 + 主色描边）。
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.weight(1f, fill = false).heightIn(min = 56.dp).clip(RoundedCornerShape(percent = 50)),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    TokiScrollChipBackdrop(
+                        shape = RoundedCornerShape(percent = 50),
+                        backdropBlur = backdropBlur,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Text(
+                        "播放队列",
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Box(
+                    Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape).clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TokiScrollChipBackdrop(
+                        shape = CircleShape,
+                        backdropBlur = backdropBlur,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(24.dp))
                 }
             }
             // 第三轮第 14 项：队列弹窗内容区上下边缘 24dp 淡出（淡出色取
@@ -470,23 +520,23 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
             Box(Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize()) {
                 if (state.queue.isNotEmpty() && state.index in state.queue.indices) {
-                    item { SectionTitle("正在播放") }
                     item {
+                        // 第 9 项：当前曲只保留大圆角高亮（28dp 圆角）。
                         Box(
                             Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(28.dp))
                                 .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
                         ) {
-                            SongRow(state.queue[state.index]) { onJump(state.index); onDismiss() }
+                            SongRow(state.queue[state.index], onLongPress = onLongPressSong) { onJump(state.index); onDismiss() }
                         }
                     }
                     if (state.index + 1 < state.queue.size) {
-                        item { SectionTitle("接下来") }
                         itemsIndexed(state.queue) { i, song ->
-                            if (i > state.index) SongRow(song) { onJump(i); onDismiss() }
+                            if (i > state.index) SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() }
                         }
                     }
                 } else {
-                    itemsIndexed(state.queue) { i, song -> SongRow(song) { onJump(i); onDismiss() } }
+                    itemsIndexed(state.queue) { i, song -> SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() } }
                 }
             }
             Box(

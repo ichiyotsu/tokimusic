@@ -75,6 +75,26 @@ class CoverColorsTest {
     }
 
     @Test
+    fun colorAtInterpolatesBetweenTopAndBottom() {
+        // 淡出端色回归：歌词区底部约 60% 高处，端色应是 lerp(top, bottom, 0.6)，
+        // 不能直接用 bottom（比真实背景深一截，就是 0.1.7 的黑条）。
+        val colors = CoverColors(
+            androidx.compose.ui.graphics.Color(0xFF5A2A12),
+            androidx.compose.ui.graphics.Color(0xFF2E1A0C),
+        )
+        assertEquals(colors.top, colors.colorAt(0f))
+        assertEquals(colors.bottom, colors.colorAt(1f))
+        val mid = colors.colorAt(0.6f)
+        assertTrue(mid.red > colors.bottom.red)
+        assertTrue(mid.red < colors.top.red)
+        assertTrue(mid.green > colors.bottom.green)
+        assertTrue(mid.green < colors.top.green)
+        // 越界按 0/1 夹取。
+        assertEquals(colors.top, colors.colorAt(-0.5f))
+        assertEquals(colors.bottom, colors.colorAt(1.5f))
+    }
+
+    @Test
     fun totalDurationKeepsMinutesPastOneHour() {
         // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))

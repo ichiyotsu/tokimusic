@@ -163,6 +163,64 @@ class NeteaseClientTest {
         assertEquals(1, data.getInt("type"))
     }
 
+    // 第 6 项：加歌 / 删歌。端点与 body 形状按上游 4.32.0
+    // playlist_track_add / playlist_track_delete 核实：weapi，
+    // /api/playlist/track/add|delete，tracks 是 "[{\"type\":3,\"id\":\"…\"}]"。
+    // weapi 的随机密钥无法在测试里解密，按既有模式只断言 path。
+    @Test
+    fun addTrackToPlaylistUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"count":1}"""))
+        client.addTrackToPlaylist(12345L, 67890L)
+        val req = server.takeRequest()
+        assertEquals("/weapi/playlist/track/add", req.path)
+    }
+
+    @Test
+    fun addTrackToPlaylistThrowsOnNon200() = runBlocking {
+        server.enqueue(json("""{"code":400,"message":"failed"}"""))
+        try {
+            client.addTrackToPlaylist(12345L, 67890L)
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(ApiErrorKind.Unknown, e.kind)
+        }
+    }
+
+    @Test
+    fun removeTrackFromPlaylistUsesWeapi() = runBlocking {
+        server.enqueue(json("""{"code":200,"count":1}"""))
+        client.removeTrackFromPlaylist(12345L, 67890L)
+        val req = server.takeRequest()
+        assertEquals("/weapi/playlist/track/delete", req.path)
+    }
+
+    @Test
+    fun removeTrackFromPlaylistThrowsOnNon200() = runBlocking {
+        server.enqueue(json("""{"code":400,"message":"failed"}"""))
+        try {
+            client.removeTrackFromPlaylist(12345L, 67890L)
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(ApiErrorKind.Unknown, e.kind)
+        }
+    }
+
+    // 第 7 项：音乐等级。上游 4.32.0 user_level：weapi /api/user/level，
+    // 空 body，返回 {"code":200,"data":{"level":N,...}}。
+    @Test
+    fun userLevelReadsDataLevel() = runBlocking {
+        server.enqueue(json("""{"code":200,"data":{"level":7,"progress":0.5,"nextPlayCount":100}}"""))
+        assertEquals(7, client.userLevel())
+        val req = server.takeRequest()
+        assertEquals("/weapi/user/level", req.path)
+    }
+
+    @Test
+    fun userLevelFallsBackToTopLevel() = runBlocking {
+        server.enqueue(json("""{"code":200,"level":9}"""))
+        assertEquals(9, client.userLevel())
+    }
+
     @Test
     fun artistSublistUsesWeapi() = runBlocking {
         server.enqueue(json("""{"code":200,"data":[{"id":2,"name":"周杰伦","img1v1Url":"https://example.com/jay.jpg"},{"id":3,"name":"林俊杰","img1v1Url":""}]}"""))
