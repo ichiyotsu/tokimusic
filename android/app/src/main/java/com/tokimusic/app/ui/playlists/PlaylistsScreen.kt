@@ -57,7 +57,10 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     var detail by remember { mutableStateOf<Pair<Playlist, List<Song>>?>(null) }
     var loadError by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
-    LaunchedEffect(playlistId, reloadKey) {
+    // 第 6 项：加歌 / 删歌成功后 AppViewModel  bump playlistVersion，这里重新拉取。
+    val playlistVersion by vm.playlistVersion.collectAsState()
+    val profile by vm.profile.collectAsState()
+    LaunchedEffect(playlistId, reloadKey, playlistVersion) {
         loadError = false
         // 第三轮第 4 项：虚拟歌单（每日推荐 -1 / 私人雷达 -2）不调用任何
         // 歌单详情接口，直接用主页已加载的歌曲拼出歌单。
@@ -76,6 +79,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
         }
     }
     val (pl, tracks) = detail ?: (Playlist(playlistId, "加载中…") to emptyList())
+    // 第 6 项：自己的歌单 = creator 是当前登录用户；虚拟歌单（creatorId 0）
+    // 和“我喜欢的音乐”（取消喜欢走 /like，不走删歌接口）不算。
+    val isOwnPlaylist = pl.creatorId != 0L && pl.creatorId == profile?.uid && !pl.name.contains("喜欢的音乐")
     LaunchedEffect(pl.name) { onTitle(pl.name) }
     val coverColors = rememberCoverColors(playlistId, pl.coverUrl)
     val listState = rememberLazyListState()
@@ -179,7 +185,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             }
                         }
                     }
-                    itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { vm.play(tracks, i) } }
+                    itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i) } }
                 }
                 Box(
                     Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(

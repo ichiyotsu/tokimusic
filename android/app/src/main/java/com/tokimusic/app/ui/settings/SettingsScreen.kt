@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
@@ -31,7 +31,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -48,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -64,6 +64,7 @@ import com.tokimusic.app.ui.theme.CirroLogoutRed
 import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
 import com.tokimusic.app.ui.theme.LyricFontInterPingFangBold
 import com.tokimusic.app.ui.theme.ThemePreferences
+import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.TokiUiHolder
 import com.tokimusic.app.update.LatestRelease
 import com.tokimusic.app.update.UpdateCheckResult
@@ -80,8 +81,10 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
  * 音频 / 歌词 4 行 + 红色退出登录。子页在弹窗内切换。
  *
  * 第三轮第 1 项（用户定 A）：保留底部弹窗，只按 TokiUI 重做内容——
- * 入口行无图标、无底卡（plain 行 + chevron），退出登录是 SettingsRow
- * 形态的红色警示行；关闭钮保持 36dp。
+ * 入口行无图标，退出登录是 SettingsRow 形态的红色警示行；关闭钮保持 36dp。
+ * 第 8 项：标题行按外面悬浮模糊标题配方做成磨砂 chip（标题 chip +
+ * 圆形关闭 chip，子页里关闭 icon 也是 X、点 X 回主列表）；通用 /
+ * 个性化 / 音频 / 歌词 / 退出登录五个区域各进 28dp surface 底卡。
  *
  * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
  * 因此永久禁用的主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
@@ -96,20 +99,46 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     var showLogin by remember { mutableStateOf(false) }
     TokiSheetContainer(onDismiss = onClose) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (sub == null) "账户与设置" else sub!!.title,
-                    Modifier.weight(1f).padding(start = 8.dp),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                IconButton(
-                    onClick = { if (sub != null) sub = null else onClose() },
-                    modifier = Modifier.size(36.dp),
+            // 第 8 项：标题与返回用外面悬浮模糊标题同款配方——标题进磨砂
+            // chip（headlineMedium Bold），返回键进圆形磨砂 chip；弹窗是
+            // 独立窗口、没有 hazeState，走配方自带的半透明底色（模糊关时
+            // 是实色 + 主色描边）。返回键的图标一律改成关闭（X），位置
+            // （标题行右侧、36dp）不变；子页里点 X 回主列表，主列表点 X 关弹窗。
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.weight(1f, fill = false).heightIn(min = 56.dp).clip(RoundedCornerShape(percent = 50)),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
+                    TokiScrollChipBackdrop(
+                        shape = RoundedCornerShape(percent = 50),
+                        backdropBlur = theme.backdropBlur,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Text(
+                        if (sub == null) "账户与设置" else sub!!.title,
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Box(
+                    Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
+                        .clickable { if (sub != null) sub = null else onClose() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TokiScrollChipBackdrop(
+                        shape = CircleShape,
+                        backdropBlur = theme.backdropBlur,
+                        modifier = Modifier.matchParentSize(),
+                    )
                     Icon(
-                        if (sub == null) Icons.Filled.Close else Icons.Filled.ArrowBack,
+                        Icons.Filled.Close,
                         contentDescription = if (sub == null) "关闭" else "返回",
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -204,32 +233,42 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     item { SubRow("歌词") { onOpenSub(SettingsSub.Lyrics) } }
     if (profile != null) item {
         Spacer(Modifier.height(8.dp))
-        // 第三轮第 1 项：退出登录是 SettingsRow 形态的红色警示行。
-        SettingsRow(
-            "退出登录",
-            onClick = { vm.logout() },
-            horizontalPadding = 4.dp,
-            headlineColor = CirroLogoutRed,
-        )
+        // 第 8 项：退出登录也进 28dp 底卡（红色警示行本身不变）。
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        ) {
+            SettingsRow(
+                "退出登录",
+                onClick = { vm.logout() },
+                horizontalPadding = 24.dp,
+                headlineColor = CirroLogoutRed,
+            )
+        }
     }
     if (showLogin) item { LoginDialog(vm) { onShowLogin(false) } }
 }
 
 /**
- * 设置入口行（第三轮第 1 项，TokiUI 形态）：无图标、无底卡的 plain 行，
- * 标题 + 右侧 chevron，64dp 高；关闭钮保持 36dp（见 SettingsSheet）。
+ * 设置入口行（第 8 项，TokiNote 我的页 function card 做法）：28dp 圆角
+ * surface 容器底卡，标题 + 右侧 chevron，64dp 高。
  */
 @Composable
 private fun SubRow(title: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clickable(onClick = onClick)
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -243,8 +282,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
         )
     }
     item {
-        // 第二轮第 5 项：实时通知开关（默认开）。MediaStyle 通知升不成
-        // Live Update，开启后另发一条进度通知并请求提升。
+        // 实时通知开关（默认开）：控制系统媒体通知的展示。播放器现走 MediaSession
+        // 接口适配——播放时系统在通知栏 / 锁屏 / 快捷设置显示标准媒体播放器；
+        // 不再另发 Progress 通知冒充 Live Update（Android 16 上 MediaStyle
+        // 本来就升不成 Live Update，状态栏芯片随之没有）。
         var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("实时通知", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -254,7 +295,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             )
         }
         Text(
-            "播放时在状态栏显示实时进度；会多发一条进度通知，媒体通知不受影响。需要通知权限。",
+            "播放时在通知栏、锁屏和快捷设置中显示系统媒体播放器，可直接控制播放；关闭后不显示通知，后台播放可能被系统停止。需要通知权限。",
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

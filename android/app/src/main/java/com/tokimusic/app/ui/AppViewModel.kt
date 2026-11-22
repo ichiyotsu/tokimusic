@@ -12,7 +12,7 @@ import com.tokimusic.app.data.api.apiErrorText
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
-import com.tokimusic.app.player.LiveUpdateNotifier
+import com.tokimusic.app.ui.components.SongActionsContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,7 +28,7 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
  * recent) show a login prompt until the user signs in.
  */
 data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false)
-data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0)
+data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val container = app as TokiMusicApplication
@@ -46,6 +46,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
+    // 第 6 项：长按歌曲的底部弹窗。context 带当前歌单（没有就是 null）；
+    // 删歌只在自己的歌单里出现，歌单详情页靠 playlistVersion 刷新。
+    private val _songActions = MutableStateFlow<SongActionsContext?>(null); val songActions: StateFlow<SongActionsContext?> = _songActions
+    fun openSongActions(song: Song, playlistId: Long? = null, isOwnPlaylist: Boolean = false) {
+        _songActions.value = SongActionsContext(song, playlistId, isOwnPlaylist)
+    }
+    fun closeSongActions() { _songActions.value = null }
+    private val _playlistVersion = MutableStateFlow(0); val playlistVersion: StateFlow<Int> = _playlistVersion
     // 资料库（Cirro Library）：懒加载，首次打开对应行时才拉取。
     private val _likedSongs = MutableStateFlow<List<Song>>(emptyList()); val likedSongs: StateFlow<List<Song>> = _likedSongs
     private var likedSongsLoaded = false
@@ -58,13 +66,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: Job? = null
     private var qrJob: Job? = null
 
-    // 第二轮第 5 项：实时通知（Live Updates）随播放状态发 / 消。
-    private val liveUpdateNotifier = LiveUpdateNotifier(app.applicationContext, player, store)
     // 第二轮第 6 项 B：启动时按设置应用空间音频开关。
     init {
         player.onPlaybackError = { _userMessage.value = it }
         player.setSpatialAudio(store.spatialAudioEnabled)
-        liveUpdateNotifier.start()
         refreshSession()
     }
 
@@ -87,7 +92,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val record = api.userRecord(p.uid, weekly = false)
                     // Listening time is estimated: sum(duration * playCount) from /user/record — labelled as such in UI.
                     val minutes = record.sumOf { it.song.durationMs * it.playCount } / 60_000
-                    _mine.value = MineUiState(detail, likes.size, pls.size, record, api.recentSongs(), minutes)
+                    // 第 7 项：音乐等级（/api/user/level）；取不到时为 null，
+                    // 不让它拖垮整批资料库加载。
+                    val level = runCatching { api.userLevel() }.getOrNull()
+                    _mine.value = MineUiState(detail, likes.size, pls.size, record, api.recentSongs(), minutes, level)
                 }
             }
         } catch (e: ApiException) {
@@ -174,6 +182,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             likedSongsLoaded = false // 下次打开喜爱歌曲时重新拉取详情
         }.onFailure { e ->
             _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "喜欢失败，请重试"
+        }
+    }
+    // 第 6 项：加歌 / 删歌。成功后歌单详情页靠 playlistVersion 重新拉取。
+    fun addSongToPlaylist(song: Song, playlist: Playlist) = viewModelScope.launch {
+        runCatching { api.addTrackToPlaylist(playlist.id, song.id) }.onSuccess {
+            _playlistVersion.value++
+            _userMessage.value = "已添加到「${playlist.name}」"
+        }.onFailure { e ->
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "添加到歌单失败，请重试"
+        }
+    }
+    fun removeSongFromPlaylist(song: Song, playlistId: Long) = viewModelScope.launch {
+        runCatching { api.removeTrackFromPlaylist(playlistId, song.id) }.onSuccess {
+            _playlistVersion.value++
+            _userMessage.value = "已从歌单移除"
+        }.onFailure { e ->
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "移除失败，请重试"
         }
     }
     fun loadLyrics(songId: Long) = viewModelScope.launch {

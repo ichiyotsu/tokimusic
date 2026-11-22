@@ -75,7 +75,7 @@ fun SearchScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlay
             } else if (query.isNotBlank()) {
                 if (home.searchResults.isNotEmpty()) {
                     item { Text("歌曲", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
-                    itemsIndexed(home.searchResults) { i, song -> SongRow(song, onOpenArtist = onOpenArtist) { vm.play(home.searchResults, i) } }
+                    itemsIndexed(home.searchResults) { i, song -> SongRow(song, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(home.searchResults, i) } }
                 }
                 if (home.searchPlaylists.isNotEmpty()) {
                     item { Text("歌单", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }

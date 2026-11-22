@@ -3,9 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- 第二轮第 5 项：实时通知（Live Updates）。POST_PROMOTED_NOTIFICATION 用于请求提升为 Live Update。 -->
+    <!-- 媒体通知：播放器走 MediaSession 接口，系统发标准媒体通知。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATION" />
     <!-- 第三轮第 15 项：应用内更新——下载 APK 后调起系统安装器。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:name=".TokiMusicApplication" android:label="@string/app_name"

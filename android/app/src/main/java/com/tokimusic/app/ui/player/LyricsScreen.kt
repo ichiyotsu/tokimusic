@@ -82,6 +82,12 @@ import kotlin.math.abs
     animateEntrance: Boolean = false,
     // 第三轮第 16 项：歌词字体预设（默认 InterFamily，与主题一致）。
     fontFamily: FontFamily = InterFamily,
+    /**
+     * 底部淡出层的不透明端色。默认取 coverColors.bottom；调用方应传入歌词区
+     * 底部位置的真实背景色（coverColors.colorAt(f)），否则淡出端比身后背景
+     * 深，会露出一道黑条（0.1.7 真机反馈）。
+     */
+    bottomFadeColor: Color? = null,
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
@@ -142,7 +148,7 @@ import kotlin.math.abs
             )
             Box(
                 Modifier.fillMaxWidth().height(64.dp).align(Alignment.BottomCenter).background(
-                    Brush.verticalGradient(listOf(Color.Transparent, coverColors.bottom)),
+                    Brush.verticalGradient(listOf(Color.Transparent, bottomFadeColor ?: coverColors.bottom)),
                 ),
             )
             // Apple 歌词式模糊：上下各一段渐进磨砂（与底栏同配方），行滚过

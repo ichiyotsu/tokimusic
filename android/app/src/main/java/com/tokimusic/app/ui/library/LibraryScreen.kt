@@ -109,11 +109,11 @@ fun LibraryScreen(
             // Round 3 item 2: no in-page back row — the floating header
             // (OverlayTitleHeader) carries the back chip + title now.
             when (section) {
-                LibrarySection.Liked -> likedSongsSection(likedSongs, onOpenArtist) { i -> vm.play(likedSongs, i) }
+                LibrarySection.Liked -> likedSongsSection(likedSongs, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(likedSongs, i) }
                 LibrarySection.Playlists -> playlistsSection(myPlaylists, profile?.uid ?: 0, onOpenPlaylist)
                 LibrarySection.Artists -> artistsSection(artists, onOpenArtist)
                 LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
-                LibrarySection.Songs -> songsSection(mine.recent, onOpenArtist) { i -> vm.play(mine.recent, i) }
+                LibrarySection.Songs -> songsSection(mine.recent, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i) }
                 null -> {}
             }
             return@LazyColumn
@@ -127,7 +127,9 @@ fun LibraryScreen(
                 Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     StatCard("收藏歌曲", "${mine.likeCount}", Modifier.weight(1f))
                     StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f), onClick = onOpenListeningStats)
-                    StatCard("歌单", "${mine.playlistCount}", Modifier.weight(1f))
+                    // 第 7 项：资料库顶部“歌单”卡换成音乐等级（/api/user/level
+                    // 的真实等级）；未登录 / 未取到时显示 —。
+                    StatCard("音乐等级", mine.level?.let { "Lv.$it" } ?: "—", Modifier.weight(1f))
                 }
             }
         }
@@ -187,7 +189,7 @@ fun LibraryScreen(
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist) { vm.play(mine.record.take(10).map { it.song }, i) }
+                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(mine.record.take(10).map { it.song }, i) }
             }
         }
     }
@@ -207,6 +209,7 @@ fun LibraryScreen(
 private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
     likedSongs: List<com.tokimusic.app.data.model.Song>,
     onOpenArtist: (Long) -> Unit,
+    onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
     if (likedSongs.isEmpty()) {
@@ -219,7 +222,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
             )
         }
     } else {
-        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { onPlay(i) } }
+        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong) { onPlay(i) } }
     }
 }
 
@@ -298,10 +301,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.albumsSection(albums:
 private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     recent: List<com.tokimusic.app.data.model.Song>,
     onOpenArtist: (Long) -> Unit,
+    onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
     // “歌曲”行定义（PLAN 默认）：最近播放全量列表。
-    itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist) { onPlay(i) } }
+    itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong) { onPlay(i) } }
 }
 
 @Composable

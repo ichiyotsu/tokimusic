@@ -1,6 +1,8 @@
 package com.tokimusic.app.ui.components
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
@@ -65,7 +67,8 @@ import com.tokimusic.app.data.model.Song
         if (trailing != null) { Spacer(Modifier.width(12.dp)); trailing() }
     }
 }
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onOpenArtist: ((Long) -> Unit)? = null, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -83,7 +86,13 @@ import com.tokimusic.app.data.model.Song
             }
         }
     }
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 第 6 项：长按打开歌曲操作弹窗；没传 onLongPress 的地方保持普通点击。
+    val rowModifier = if (onLongPress != null) {
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongPress(song) })
+    } else {
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+    }
+    Row(rowModifier.padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
         AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(12.dp))
