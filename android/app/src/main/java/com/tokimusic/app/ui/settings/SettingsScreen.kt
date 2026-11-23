@@ -64,7 +64,7 @@ import com.tokimusic.app.CrashLog
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
-import com.tokimusic.app.ui.MusicSource
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.daysSince

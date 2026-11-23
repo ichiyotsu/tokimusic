@@ -208,7 +208,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val castActive = rememberCastActive()
     val context = LocalContext.current
     LaunchedEffect(state.index) {
-        song?.let { vm.loadLyrics(it.id) }
+        song?.let { vm.loadLyrics(it) }
         // 切歌时沉浸式复位（showLyrics 不复位——第 21 项用户确认“切歌不用复位”）。
         immersiveLyrics = false
     }

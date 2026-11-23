@@ -47,7 +47,7 @@ class QqClientTest {
         server.start()
         settings = FakeQqSettings()
         val base = server.url("/").toString().trimEnd('/')
-        client = QqClient(settings, QqHosts(base, base, base, base))
+        client = QqClient(settings, QqHosts(base, base, base, base, base))
     }
 
     @After
@@ -208,5 +208,145 @@ class QqClientTest {
         client.clearSession()
         assertEquals("", settings.qqMusicId)
         assertEquals("", settings.qqMusicKey)
+    }
+
+    // ---- QQ playback (sixth round, QQ playback) ----
+
+    @Test
+    fun qqFileTiersForQualityMapping() {
+        assertEquals("M500", qqFileTiersForQuality("standard").first().first)
+        assertEquals("M800", qqFileTiersForQuality("higher").first().first)
+        assertEquals("M800", qqFileTiersForQuality("exhigh").first().first)
+        assertEquals("F000", qqFileTiersForQuality("lossless").first().first)
+        assertEquals(".flac", qqFileTiersForQuality("lossless").first().second)
+        assertEquals(3, qqFileTiersForQuality("lossless").size)
+    }
+
+    private fun loggedIn() {
+        settings.qqMusicId = "123456"
+        settings.qqMusicKey = "KEY123"
+    }
+
+    /** Fake GetVkey response: result + purl + sip, exactly the shape the Q0 spike saw. */
+    private fun vkeyResponse(result: Int, purl: String, sip: List<String> = listOf("https://cdn.example.com/")): String {
+        val sipJson = sip.joinToString(",", "[", "]") { "\"$it\"" }
+        return """{"code":0,"req_0":{"code":0,"data":{"uin":"123456","sip":$sipJson,"midurlinfo":[{"songmid":"0039MnYb0qxYhV","filename":"M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3","purl":"$purl","vkey":"VK1","result":$result}]}}}"""
+    }
+
+    private fun musicuDispatcher(handler: (JSONObject) -> MockResponse): Dispatcher = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+            return handler(JSONObject(request.body.readUtf8()))
+        }
+    }
+
+    @Test
+    fun songUrlReturnsFullUrlOnSuccess() = runBlocking {
+        loggedIn()
+        val seenParams = mutableListOf<JSONObject>()
+        server.dispatcher = musicuDispatcher { body ->
+            seenParams.add(body.getJSONObject("req_0").getJSONObject("param"))
+            json(vkeyResponse(0, "/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1&guid=G"))
+        }
+        val result = client.songUrl("0039MnYb0qxYhV", "standard")
+        assertEquals(
+            QqSongUrlResult.Url("https://cdn.example.com/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1&guid=G"),
+            result,
+        )
+        assertEquals(1, server.requestCount)
+        val param = seenParams.single()
+        // L-1124 get_song_urls param shape: uin = str_musicid, filename =
+        // {prefix}{mid}{mid}{ext}, guid, songmid, songtype [0], ctx 0.
+        assertEquals("123456", param.getString("uin"))
+        assertEquals("M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3", param.getJSONArray("filename").getString(0))
+        assertEquals("0039MnYb0qxYhV", param.getJSONArray("songmid").getString(0))
+        assertEquals(0, param.getJSONArray("songtype").getInt(0))
+        assertEquals(0, param.getInt("ctx"))
+    }
+
+    @Test
+    fun songUrlReturnsNoPermissionOn104003() = runBlocking {
+        loggedIn()
+        server.dispatcher = musicuDispatcher { json(vkeyResponse(104003, "")) }
+        val result = client.songUrl("0039MnYb0qxYhV", "standard")
+        assertEquals(QqSongUrlResult.NoPermission, result)
+        // standard tries both tiers (M500, M800) before giving up.
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun songUrlFallsBackToLowerTier() = runBlocking {
+        loggedIn()
+        val filenames = mutableListOf<String>()
+        server.dispatcher = musicuDispatcher { body ->
+            val filename = body.getJSONObject("req_0").getJSONObject("param").getJSONArray("filename").getString(0)
+            filenames.add(filename)
+            if (filename.startsWith("F000")) json(vkeyResponse(104003, ""))
+            else json(vkeyResponse(0, "/M8000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK2"))
+        }
+        val result = client.songUrl("0039MnYb0qxYhV", "lossless")
+        assertEquals(
+            QqSongUrlResult.Url("https://cdn.example.com/M8000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK2"),
+            result,
+        )
+        assertEquals(listOf("F0000039MnYb0qxYhV0039MnYb0qxYhV.flac", "M8000039MnYb0qxYhV0039MnYb0qxYhV.mp3"), filenames)
+    }
+
+    @Test
+    fun songUrlReturnsUnavailableOnEmptyPurl() = runBlocking {
+        loggedIn()
+        server.dispatcher = musicuDispatcher { json(vkeyResponse(0, "")) }
+        val result = client.songUrl("0039MnYb0qxYhV", "standard")
+        assertEquals(QqSongUrlResult.Unavailable(0), result)
+    }
+
+    @Test
+    fun songUrlReturnsNotLoggedInWithoutCredential() = runBlocking {
+        val result = client.songUrl("0039MnYb0qxYhV", "standard")
+        assertEquals(QqSongUrlResult.NotLoggedIn, result)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun songUrlUsesCdnDispatchWhenSipEmpty() = runBlocking {
+        loggedIn()
+        server.dispatcher = musicuDispatcher { body ->
+            when (body.getJSONObject("req_0").getString("module")) {
+                "music.vkey.GetVkey" -> json(vkeyResponse(0, "/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1", sip = emptyList()))
+                "music.audioCdnDispatch.cdnDispatch" -> json(
+                    """{"code":0,"req_0":{"code":0,"data":{"sip":["https://dispatch.example.com/"]}}}""",
+                )
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        val result = client.songUrl("0039MnYb0qxYhV", "standard")
+        assertEquals(
+            QqSongUrlResult.Url("https://dispatch.example.com/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1"),
+            result,
+        )
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun lyricDecodesBase64Lrc() = runBlocking {
+        val lrc = "[00:00.00]晴天 - 周杰伦\n[00:02.25]词：周杰伦\n"
+        val b64 = java.util.Base64.getEncoder().encodeToString(lrc.toByteArray(Charsets.UTF_8))
+        server.enqueue(json("""{"retcode":0,"code":0,"subcode":0,"lyric":"$b64","trans":""}"""))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertEquals(lrc, payload.lrc)
+        assertNull(payload.yrc)
+        val req = server.takeRequest()
+        assertTrue(req.path!!.startsWith("/lyric/fcgi-bin/fcg_query_lyric_new.fcg?"))
+        assertTrue(req.path!!.contains("songmid=0039MnYb0qxYhV"))
+        assertTrue(req.path!!.contains("format=json"))
+        assertTrue(req.path!!.contains("nobase64=0"))
+    }
+
+    @Test
+    fun lyricReturnsEmptyPayloadWhenNoLyric() = runBlocking {
+        server.enqueue(json("""{"retcode":-1,"code":0,"subcode":0,"lyric":"","trans":""}"""))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertNull(payload.lrc)
+        assertNull(payload.yrc)
     }
 }

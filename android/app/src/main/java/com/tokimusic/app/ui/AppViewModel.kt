@@ -10,6 +10,7 @@ import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.data.api.QqClient
 import com.tokimusic.app.data.api.QqProfile
 import com.tokimusic.app.data.api.QqQrCheck
+import com.tokimusic.app.data.api.QqSongUrlResult
 import com.tokimusic.app.data.api.QrCheck
 import com.tokimusic.app.data.api.apiErrorText
 import com.tokimusic.app.data.lyric.YrcParser
@@ -35,8 +36,7 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
 data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false)
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
-/** Music source (sixth round, item 19/20): the two login sources plus the local player. */
-enum class MusicSource { NETEASE, QQ }
+/** Music source (sixth round, item 19/20): the two login sources plus the local player. Moved to the model layer (see Models.kt) so QQ playback routing can live outside the UI. */
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val container = app as TokiMusicApplication
@@ -224,24 +224,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val first = songs.getOrNull(index) ?: return@launch
         // Only the song being started gets its URL up front; the rest of the
         // queue loads lazily through the player's urlLoader as it plays.
+        // Sixth round, QQ playback: the URL route follows each song's
+        // source — a mixed queue resolves per song (QQ via QqClient,
+        // NetEase via the existing multi-route client).
+        val url = firstSongUrl(first) ?: return@launch
+        player.playQueue(songs, index, mapOf(first.id to url), sourceName) { id ->
+            val song = player.state.value.queue.firstOrNull { it.id == id } ?: return@playQueue null
+            songUrlQuiet(song)
+        }
+        loadLyrics(first)
+    }
+
+    /**
+     * First-song URL with user-facing errors. QQ without a credential
+     * never hits the network — it explains "请先登录 QQ 音乐" instead
+     * of failing silently or blaming copyright (104003 is "no
+     * permission", not "no such song").
+     */
+    private suspend fun firstSongUrl(song: Song): String? {
+        if (song.source == MusicSource.QQ) {
+            if (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank()) {
+                _userMessage.value = "请先登录 QQ 音乐"; return null
+            }
+            return try {
+                when (val r = qqClient.songUrl(song.sourceId, store.audioQuality)) {
+                    is QqSongUrlResult.Url -> r.url
+                    QqSongUrlResult.NotLoggedIn -> { _userMessage.value = "请先登录 QQ 音乐"; null }
+                    QqSongUrlResult.NoPermission -> { _userMessage.value = "QQ 音乐暂无这首歌的播放权限（可能需要登录或 VIP）"; null }
+                    is QqSongUrlResult.Unavailable -> { _userMessage.value = "这首歌暂无播放地址（可能无版权或需 VIP）"; null }
+                }
+            } catch (e: ApiException) {
+                _userMessage.value = apiErrorText(e); null
+            } catch (e: Exception) {
+                _userMessage.value = "无法获取播放地址，请重试"; null
+            }
+        }
         val result = try {
-            api.songUrl(first.id)
+            api.songUrl(song.id)
         } catch (e: ApiException) {
-            _userMessage.value = apiErrorText(e); return@launch
+            _userMessage.value = apiErrorText(e); return null
         } catch (e: Exception) {
-            _userMessage.value = "无法获取播放地址，请重试"; return@launch
+            _userMessage.value = "无法获取播放地址，请重试"; return null
         }
         val url = result.url
         if (url.isNullOrBlank()) {
             _userMessage.value = if (result.isTrial) "这首歌仅提供试听，暂无完整播放地址" else "这首歌暂无播放地址（可能无版权或需 VIP）"
-            return@launch
+            return null
         }
-        player.playQueue(songs, index, mapOf(first.id to url), sourceName) { id -> runCatching { api.songUrl(id).url }.getOrNull() }
-        loadLyrics(first.id)
+        return url
     }
+
+    /** Lazy per-track URL, silent: the player already explains a skipped track. */
+    private suspend fun songUrlQuiet(song: Song): String? = when (song.source) {
+        MusicSource.QQ -> (runCatching { qqClient.songUrl(song.sourceId, store.audioQuality) }.getOrNull() as? QqSongUrlResult.Url)?.url
+        MusicSource.NETEASE -> runCatching { api.songUrl(song.id).url }.getOrNull()
+    }
+
     fun playNext(song: Song) = viewModelScope.launch {
         if (player.state.value.queue.isEmpty()) { play(listOf(song), 0); return@launch }
-        player.playNext(song, runCatching { api.songUrl(song.id).url }.getOrNull())
+        if (song.source == MusicSource.QQ && (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank())) {
+            _userMessage.value = "请先登录 QQ 音乐"; return@launch
+        }
+        player.playNext(song, songUrlQuiet(song))
     }
     fun toggleLike(songId: Long) = viewModelScope.launch {
         val liked = songId in _likedIds.value
@@ -270,8 +314,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "移除失败，请重试"
         }
     }
-    fun loadLyrics(songId: Long) = viewModelScope.launch {
-        _lyrics.value = runCatching { val p = api.lyric(songId); YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc) }.getOrDefault(emptyList())
+    fun loadLyrics(song: Song) = viewModelScope.launch {
+        _lyrics.value = runCatching {
+            val p = when (song.source) {
+                // Sixth round, QQ playback: QQ lyrics are LRC line level
+                // (web GET plaintext); they feed the same line-level sweep
+                // the item-30 fallback uses for YRC-less songs.
+                MusicSource.QQ -> qqClient.lyric(song.sourceId)
+                MusicSource.NETEASE -> api.lyric(song.id)
+            }
+            YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
+        }.getOrDefault(emptyList())
     }
     fun startQrLogin() {
         qrJob?.cancel()

@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.Proxy
 import java.net.URLEncoder
@@ -20,6 +21,8 @@ data class QqHosts(
     val graphPtlogin: String = "https://ssl.ptlogin2.graph.qq.com",
     val graph: String = "https://graph.qq.com",
     val musicu: String = "https://u.y.qq.com",
+    /** Plaintext-LRC lyric endpoint (c.y.qq.com, no login needed). */
+    val lyric: String = "https://c.y.qq.com",
 )
 
 /** What the QQ client needs from settings (kept narrow so tests can fake it). */
@@ -58,6 +61,29 @@ sealed interface QqQrCheck {
     data object Refused : QqQrCheck
     /** 0: done — [uin] and [sigx] feed the check_sig exchange. */
     data class Done(val uin: String, val sigx: String) : QqQrCheck
+}
+
+/** QQ playback URL result — never a fabricated URL: every non-Url case means "do not play". */
+sealed interface QqSongUrlResult {
+    data class Url(val url: String) : QqSongUrlResult
+    /** No QQ credential stored — the user has not logged in. */
+    data object NotLoggedIn : QqSongUrlResult
+    /** Server result 104003 on every tier: not logged in server-side, or level too low (VIP). */
+    data object NoPermission : QqSongUrlResult
+    /** Any other failure to produce a URL (empty purl, other result codes). */
+    data class Unavailable(val result: Int) : QqSongUrlResult
+}
+
+/**
+ * File-type ladder per audio-quality preference (L-1124 song.py
+ * SongFileType: F000 FLAC, M800 320k, M500 128k). First entry is tried
+ * first; lower tiers are fallbacks when the tier has no playable copy
+ * (e.g. FLAC is VIP-only → 104003 → try M800).
+ */
+internal fun qqFileTiersForQuality(quality: String): List<Pair<String, String>> = when (quality) {
+    "lossless" -> listOf("F000" to ".flac", "M800" to ".mp3", "M500" to ".mp3")
+    "higher", "exhigh" -> listOf("M800" to ".mp3", "M500" to ".mp3")
+    else -> listOf("M500" to ".mp3", "M800" to ".mp3")
 }
 
 /** QQ hash33 (L-1124 utils/common.py): h = (h << 5) + h + ord(c), masked to 31 bits at the end. */
@@ -112,6 +138,8 @@ class QqClient(
         private const val CT = 11
         private const val CV = 20090008
         private const val APP_VER = 20090008
+        /** Stream fallback domain when neither the GetVkey sip nor GetCdnDispatch returns a CDN (L-1124 song.py _SONG_URL_FALLBACK_DOMAIN). */
+        private const val FALLBACK_CDN = "https://isure.stream.qqmusic.qq.com/"
         private val JSON = "application/json; charset=utf-8".toMediaType()
 
         /** Server-rendered QR PNG bytes → the same data-URI shape the NetEase login dialog already decodes. */
@@ -313,6 +341,123 @@ class QqClient(
             ?: firstString(data.optJSONObject("userInfo"), "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
         return QqProfile(nickname, avatar?.takeIf { it.isNotBlank() }, musicId)
     }
+
+    // ---- playback (sixth round, QQ playback) ----
+
+    /** In-memory CDN list from GetCdnDispatch (one call per client lifetime). */
+    private var cachedSip: List<String>? = null
+
+    /**
+     * QQ playback URL (music.vkey.GetVkey / UrlGetVkey, ANDROID route —
+     * the Q0 spike's only route that can return real audio; the WEB
+     * GetVkeyServer route returns a 100-byte stub, never use it).
+     * Requires login: anonymous calls come back 104003 with an empty
+     * purl (spike-verified), so without a credential this returns
+     * [QqSongUrlResult.NotLoggedIn] without touching the network.
+     * Tiers fall back per [qqFileTiersForQuality]; the final URL is
+     * `cdn + purl` (L-1124 docs/tutorial/download.md), cdn from the
+     * GetVkey response's sip, else GetCdnDispatch, else the stream
+     * fallback domain. HTTP failures throw [ApiException] (the caller
+     * shows "无法获取播放地址，请重试"); a missing URL never throws.
+     * Whether a logged-in call actually returns a real purl is NOT
+     * verified — it needs a real person to scan the QR code on a device.
+     */
+    suspend fun songUrl(songmid: String, quality: String = "standard"): QqSongUrlResult {
+        val credential = QqCredential(store.qqMusicId, store.qqMusicKey)
+        if (credential.musicId.isBlank() || credential.musicKey.isBlank()) {
+            return QqSongUrlResult.NotLoggedIn
+        }
+        var sawNoPermission = false
+        var lastResult = -1
+        for ((prefix, ext) in qqFileTiersForQuality(quality)) {
+            val filename = "$prefix$songmid$songmid$ext"
+            val resp = cgi(
+                module = "music.vkey.GetVkey",
+                method = "UrlGetVkey",
+                param = JSONObject()
+                    .put("uin", credential.strMusicId.ifBlank { credential.musicId })
+                    .put("filename", JSONArray().put(filename))
+                    .put("guid", store.qqDeviceId)
+                    .put("songmid", JSONArray().put(songmid))
+                    .put("songtype", JSONArray().put(0))
+                    .put("ctx", 0),
+                credential = credential,
+            )
+            if (resp.optInt("code", -1) != 0) {
+                lastResult = resp.optInt("code", -1)
+                continue
+            }
+            val data = resp.optJSONObject("data") ?: continue
+            val info = data.optJSONArray("midurlinfo")?.optJSONObject(0)
+            val result = info?.optInt("result", -1) ?: -1
+            val purl = info?.optString("purl", "").orEmpty()
+            if (result == 0 && purl.isNotBlank()) {
+                val sip = data.optJSONArray("sip")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+                }.orEmpty()
+                val cdn = sip.firstOrNull() ?: cdnDispatch().firstOrNull() ?: FALLBACK_CDN
+                return QqSongUrlResult.Url(joinUrl(cdn, purl))
+            }
+            if (result == 104003) sawNoPermission = true
+            lastResult = result
+        }
+        return if (sawNoPermission) QqSongUrlResult.NoPermission else QqSongUrlResult.Unavailable(lastResult)
+    }
+
+    /**
+     * QQ lyrics, line level only: the web GET endpoint returns base64
+     * plaintext LRC, no decryption needed (Q0 spike verified: 晴天
+     * retcode 0). QRC word-level lyrics need the custom Triple-DES port
+     * — not this round; LRC lines feed the same line-level sweep the
+     * item-30 fallback uses for YRC-less songs. Works without login
+     * (loginUin=0). Returns an empty payload when the server has no
+     * lyrics for the song.
+     */
+    suspend fun lyric(songmid: String): LyricPayload = withContext(Dispatchers.IO) {
+        val params = listOf(
+            "songmid" to songmid, "format" to "json", "nobase64" to "0",
+            "g_tk" to "5381", "loginUin" to "0", "hostUin" to "0",
+            "platform" to "yqq.json", "needNewCode" to "0",
+        ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
+        val req = Request.Builder()
+            .url("${hosts.lyric}/lyric/fcgi-bin/fcg_query_lyric_new.fcg?$params")
+            .header("User-Agent", "Mozilla/5.0")
+            .header("Referer", "https://y.qq.com/")
+            .build()
+        val root = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = "QQ 歌词获取失败")
+            JSONObject(resp.body?.string() ?: "")
+        }
+        if (root.optInt("retcode", -1) != 0) return@withContext LyricPayload()
+        val lrc = runCatching {
+            String(Base64.getDecoder().decode(root.optString("lyric", "")), Charsets.UTF_8)
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        LyricPayload(lrc = lrc)
+    }
+
+    /** GetCdnDispatch (L-1124 song.py): CDN roots for joining with purl. */
+    private suspend fun cdnDispatch(): List<String> {
+        cachedSip?.let { return it }
+        val list = runCatching {
+            val resp = cgi(
+                module = "music.audioCdnDispatch.cdnDispatch",
+                method = "GetCdnDispatch",
+                param = JSONObject()
+                    .put("guid", store.qqDeviceId)
+                    .put("uid", "0")
+                    .put("use_new_domain", 1)
+                    .put("use_ipv6", 1),
+            )
+            val sip = resp.optJSONObject("data")?.optJSONArray("sip")
+                ?: return@runCatching emptyList<String>()
+            (0 until sip.length()).mapNotNull { sip.optString(it).takeIf { s -> s.isNotBlank() } }
+        }.getOrDefault(emptyList())
+        cachedSip = list
+        return list
+    }
+
+    private fun joinUrl(domain: String, purl: String): String =
+        domain.trimEnd('/') + "/" + purl.trimStart('/')
 
     /** Clears only the QQ credential (logout clears one source at a time). */
     fun clearSession() {
