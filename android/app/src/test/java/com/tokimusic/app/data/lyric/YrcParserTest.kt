@@ -59,6 +59,22 @@ class YrcParserTest {
         val line = LyricLine(1000, 4000, listOf(LyricWord(1000, 4000, "abcd")))
         assertEquals(0.5f, YrcParser.lineProgress(line, 3000), 0.001f)
     }
+    // 第六轮第 30 项（B 方案）：无逐字时间的 LRC 行线性扫过（行首 0、行中
+    // 0.5、行尾 1，行外钳制）；带真实时长的词仍走原来的词时间轴。
+    @Test fun lineProgressLrcLineSweepsLinearly() {
+        val line = LyricLine(1000, 4000, listOf(LyricWord(1000, 0, "abcd")))
+        assertEquals(0f, YrcParser.lineProgress(line, 500), 0.001f)
+        assertEquals(0f, YrcParser.lineProgress(line, 1000), 0.001f)
+        assertEquals(0.5f, YrcParser.lineProgress(line, 3000), 0.001f)
+        assertEquals(1f, YrcParser.lineProgress(line, 5000), 0.001f)
+        assertEquals(1f, YrcParser.lineProgress(line, 9999), 0.001f)
+    }
+    @Test fun lineProgressLrcLineFromParse() {
+        // parseLrc 造的行就是零时长词 + 行长 = 下一行间隔。
+        val lines = YrcParser.parseLrc("[00:01.00]hello\n[00:05.00]world")
+        assertEquals(0.5f, YrcParser.lineProgress(lines[0], 3000), 0.001f)
+        assertEquals(0f, YrcParser.lineProgress(lines[0], 1000), 0.001f)
+    }
     @Test fun lineProgressZeroDurationWordFlipsBinary() {
         val line = LyricLine(1000, 2000, listOf(LyricWord(1000, 0, "ab"), LyricWord(2000, 1000, "cd")))
         assertEquals(0.5f, YrcParser.lineProgress(line, 1000), 0.001f)

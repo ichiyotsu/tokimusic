@@ -163,6 +163,21 @@ class NeteaseClientTest {
         assertEquals(1, data.getInt("type"))
     }
 
+    @Test
+    fun searchArtistsUsesType100() = runBlocking {
+        server.enqueue(json("""{"code":200,"result":{"artists":[{"id":4721,"name":"周杰伦","img1v1Url":"https://example.com/pic.jpg","briefDesc":"","musicSize":100,"albumSize":20}]}}"""))
+        val artists = client.searchArtists("周杰伦")
+        assertEquals(1, artists.size)
+        assertEquals(4721L, artists[0].id)
+        assertEquals("周杰伦", artists[0].name)
+        assertEquals("https://example.com/pic.jpg", artists[0].picUrl)
+        val req = server.takeRequest()
+        assertEquals("/eapi/cloudsearch/pc", req.path)
+        val (uri, data) = eapiPayload(req)
+        assertEquals("/api/cloudsearch/pc", uri)
+        assertEquals(100, data.getInt("type"))
+    }
+
     // 第 6 项：加歌 / 删歌。端点与 body 形状按上游 4.32.0
     // playlist_track_add / playlist_track_delete 核实：weapi，
     // /api/playlist/track/add|delete，tracks 是 "[{\"type\":3,\"id\":\"…\"}]"。

@@ -9,19 +9,26 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 
@@ -69,7 +76,7 @@ import com.tokimusic.app.data.model.Song
     }
 }
 @OptIn(ExperimentalFoundationApi::class)
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -93,7 +100,7 @@ import com.tokimusic.app.data.model.Song
     } else {
         Modifier.fillMaxWidth().clickable(onClick = onClick)
     }
-    Row(rowModifier.padding(horizontal = 24.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(rowModifier.padding(horizontal = horizontalPadding, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
         AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(12.dp))
@@ -121,12 +128,124 @@ import com.tokimusic.app.data.model.Song
         if (trailingAction != null) { Spacer(Modifier.width(12.dp)); trailingAction() }
     }
 }
-@Composable fun PlaylistCard(playlist: Playlist, onClick: () -> Unit) {
+@Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, onClick: () -> Unit) {
     Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
-        AsyncImage(playlist.coverUrl, playlist.name, Modifier.size(140.dp).clip(MaterialTheme.shapes.extraLarge), contentScale = ContentScale.Crop)
+        Box(Modifier.size(140.dp)) {
+            AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(MaterialTheme.shapes.extraLarge), contentScale = ContentScale.Crop)
+            // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
+            // （半透明底 + 纯色音符，红 = 网易云、绿 = QQ，与源下拉同色）。
+            if (showSourceBadge) {
+                SourceBadge(playlist.source, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Text(playlist.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * 源徽标（第六轮第二批第 21 项）：纯色音符 + 半透明源色底（红 = 网易云、
+ * 绿 = QQ），与源下拉的 logo 同色。只在双源都启用时显示——单源无歧义。
+ */
+@Composable
+fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
+    val tint = when (source) {
+        MusicSource.NETEASE -> com.tokimusic.app.ui.theme.NeteaseRed
+        MusicSource.QQ -> com.tokimusic.app.ui.theme.QqGreen
+        MusicSource.LOCAL -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier.size(size.dp).clip(CircleShape).background(tint.copy(alpha = 0.85f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = when (source) {
+                MusicSource.NETEASE -> "网易云音乐"
+                MusicSource.QQ -> "QQ音乐"
+                MusicSource.LOCAL -> "本地"
+            },
+            tint = Color.White,
+            modifier = Modifier.size((size * 0.6).dp),
+        )
+    }
+}
+
+/** 40dp 圆形小播放钮（搜索行与推荐新歌行共用：时长保留，钮另加在最右）。 */
+@Composable
+fun SmallRoundPlayButton(onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.PlayArrow,
+            contentDescription = "播放",
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+/**
+ * 胶囊 pill 组（第六轮第二批第 11 项，TokiUI 语义 token 搭法，不用 M3
+ * 原生分段按钮）：外层 28dp 圆角容器（surfaceContainer 底），内放等宽
+ * pill；选中 pill 为 primaryContainer 底 + onPrimaryContainer 色字
+ * （titleMedium Bold），未选中 onSurfaceVariant 色字；选中底块随选择
+ * 滑动（位置 + 宽度动画）。
+ */
+@Composable
+fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var containerWidthPx by remember { mutableStateOf(0) }
+    val pillCount = options.size.coerceAtLeast(1)
+    val innerPadding = 4.dp
+    val pillWidthPx = if (containerWidthPx > 0) (containerWidthPx - with(density) { innerPadding.toPx() } * 2) / pillCount else 0f
+    val indicatorOffset by androidx.compose.animation.core.animateDpAsState(
+        targetValue = with(density) { (pillWidthPx * selectedIndex.coerceIn(0, pillCount - 1)).toDp() },
+        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "pillOffset",
+    )
+    val indicatorWidth by androidx.compose.animation.core.animateDpAsState(
+        targetValue = with(density) { pillWidthPx.toDp() },
+        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "pillWidth",
+    )
+    Box(
+        modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(innerPadding)
+            .onSizeChanged { containerWidthPx = it.width },
+    ) {
+        if (pillWidthPx > 0f) {
+            Box(
+                Modifier
+                    .offset(x = indicatorOffset)
+                    .size(width = indicatorWidth, height = 36.dp)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            )
+        }
+        Row(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, label ->
+                val selected = index == selectedIndex
+                Box(
+                    Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(percent = 50))
+                        .clickable { onSelect(index) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 @Composable fun Avatar(url: String, size: Int = 40) {

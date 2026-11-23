@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -44,11 +45,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiSheetContainer
+import com.tokimusic.app.ui.theme.NeteaseRed
+import com.tokimusic.app.ui.theme.QqGreen
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import kotlinx.coroutines.delay
 
@@ -67,6 +73,12 @@ fun SearchSheet(
     onOpenPlaylist: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
 ) {
+    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+    val qqEnabled by vm.qqEnabled.collectAsState()
+    val searchSource by vm.searchSource.collectAsState()
+    val bothEnabled = neteaseEnabled && qqEnabled
+    // The query lives here so the source buttons can re-run it with the new source.
+    var query by remember { mutableStateOf("") }
     TokiSheetContainer(onDismiss = onClose) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             // 标题行与设置弹窗同款配方：磨砂标题 chip + 36dp 圆形关闭 chip。
@@ -91,6 +103,24 @@ fun SearchSheet(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                // Sixth round, batch 2, item 24: two 40dp round source icons
+                // between the title chip and the close chip (both sources on
+                // only); tapping one switches the search source and re-runs
+                // the current query with the new source.
+                if (bothEnabled) {
+                    Row(
+                        Modifier.padding(start = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SearchSourceButton(MusicSource.NETEASE, searchSource == MusicSource.NETEASE) {
+                            vm.search(query, MusicSource.NETEASE)
+                        }
+                        SearchSourceButton(MusicSource.QQ, searchSource == MusicSource.QQ) {
+                            vm.search(query, MusicSource.QQ)
+                        }
+                    }
+                }
                 Box(
                     Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
                         .clickable { onClose() },
@@ -108,15 +138,33 @@ fun SearchSheet(
                     )
                 }
             }
-            SearchContent(vm, onOpenPlaylist, onOpenArtist, Modifier.weight(1f))
+            SearchContent(vm, query, { query = it }, onClose, onOpenPlaylist, onOpenArtist, Modifier.weight(1f))
         }
     }
 }
 
+/** 40dp round source icon (item 24): selected = solid source colour + white note, unselected = container + greyed note. */
 @Composable
-private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOpenArtist: (Long) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Unit) {
+    val tint = if (source == MusicSource.NETEASE) NeteaseRed else QqGreen
+    Box(
+        Modifier.size(40.dp).clip(CircleShape)
+            .background(if (selected) tint else MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = if (source == MusicSource.NETEASE) "用网易云搜索" else "用 QQ 搜索",
+            tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit, onOpenPlaylist: (Long) -> Unit, onOpenArtist: (Long) -> Unit, modifier: Modifier = Modifier) {
     val home by vm.home.collectAsState()
-    var query by remember { mutableStateOf("") }
     // Debounced: one request per pause in typing, not one per keystroke.
     LaunchedEffect(query) { delay(400); vm.search(query) }
     // 第 16 项用户确认：打开弹窗自动弹键盘（等弹窗滑入动画落定再聚焦）。
@@ -131,12 +179,15 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
     Column(modifier.fillMaxWidth()) {
         OutlinedTextField(
             query,
-            { query = it },
+            onQueryChange,
             Modifier.fillMaxWidth().focusRequester(focusRequester),
-            placeholder = { Text("搜索歌曲、歌手、歌单") },
+            // Sixth round, batch 2, item 24 / §2.6.3: both sources off →
+            // local mode, the search box is disabled with a hint.
+            placeholder = { Text(if (home.localMode) "本地模式下搜索不可用" else "搜索歌曲、歌手、歌单") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             singleLine = true,
             shape = RoundedCornerShape(percent = 50),
+            enabled = !home.localMode,
         )
         // 第三轮第 14 项：结果列表上下边缘 32dp 淡出（淡出色取弹窗底色）。
         Box(Modifier.weight(1f)) {
@@ -170,6 +221,36 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
                             ) { vm.play(home.searchResults, i, "搜索结果") }
                         }
                     }
+                    // Sixth round, batch 2, item 18: artist section, between
+                    // songs and playlists (order 歌曲 / 歌手 / 歌单).
+                    if (home.searchArtists.isNotEmpty()) {
+                        item { Text("歌手", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
+                        items(home.searchArtists) { artist ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { onClose(); onOpenArtist(artist.id) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Avatar(artist.picUrl, size = 48)
+                                Text(artist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    if (home.searchQqArtists.isNotEmpty()) {
+                        item { Text("歌手", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
+                        items(home.searchQqArtists) { artist ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { vm.showMessage("QQ 歌手详情暂不支持") }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Avatar(artist.picUrl, size = 48)
+                                Text(artist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
                     if (home.searchPlaylists.isNotEmpty()) {
                         item { Text("歌单", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
                         item {
@@ -182,7 +263,7 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
                             }
                         }
                     }
-                    if (home.searchResults.isEmpty() && home.searchPlaylists.isEmpty()) {
+                    if (home.searchResults.isEmpty() && home.searchArtists.isEmpty() && home.searchQqArtists.isEmpty() && home.searchPlaylists.isEmpty()) {
                         item { Text("没有找到相关结果", Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }

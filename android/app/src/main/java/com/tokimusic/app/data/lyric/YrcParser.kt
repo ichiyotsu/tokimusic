@@ -63,8 +63,16 @@ object YrcParser {
      * words hold the boundary still and long words sweep slowly; a
      * durationMs<=0 word flips binary (same as wordProgress). Line start
      * is 0, line end (all words sung) is 1.
+     *
+     * 第六轮第 30 项（B 方案，已确认）：没有一个词带真实时长时（LRC 行），
+     * 用行级线性扫过——(pos - 行首) / 行长，而不是到行首瞬间翻满。
+     * 前提未验证：VM 无法确认已登录真机上晴天/降温有无逐字，见真机清单。
      */
     fun lineProgress(line: LyricLine, positionMs: Long): Float {
+        if (line.words.isNotEmpty() && line.words.all { it.durationMs <= 0L }) {
+            if (line.durationMs <= 0L) return if (positionMs >= line.startMs) 1f else 0f
+            return ((positionMs - line.startMs).toFloat() / line.durationMs).coerceIn(0f, 1f)
+        }
         val totalChars = line.words.sumOf { it.text.length }
         if (totalChars <= 0) return 0f
         val sungChars = line.words.sumOf { wordProgress(it, positionMs).toDouble() * it.text.length }

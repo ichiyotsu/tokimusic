@@ -1,5 +1,11 @@
 package com.tokimusic.app.data.api
 
+import com.tokimusic.app.data.model.Artist
+import com.tokimusic.app.data.model.MusicSource
+import com.tokimusic.app.data.model.Playlist
+import com.tokimusic.app.data.model.QqPlaylistIds
+import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.data.model.qqSongId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -433,6 +439,227 @@ class QqClient(
             String(Base64.getDecoder().decode(root.optString("lyric", "")), Charsets.UTF_8)
         }.getOrNull()?.takeIf { it.isNotBlank() }
         LyricPayload(lrc = lrc)
+    }
+
+    // ---- read APIs (sixth round, batch 2: dual-source display) ----
+    //
+    // Shapes are taken from the L-1124 reference source, not from memory:
+    // search body keys are item_song / singer / item_songlist (NOT
+    // body.song.list — the Q0 summary's shorthand was wrong);
+    // recommend playlists live at data.List[*].Playlist.basic;
+    // toplist detail songs at req_0.songInfoList, info at req_0.data.
+    // Every parser reads defensively (several candidate keys) because
+    // the server adds fields without warning; an unparseable row is
+    // skipped, never fabricated.
+
+    /** QQ search type codes (L-1124 search.py SearchType). */
+    enum class QqSearchType(val code: Int) { SONG(0), SINGER(1), PLAYLIST(3) }
+
+    /** Minimal QQ artist result (search only — QQ artist detail is out of scope this round). */
+    data class QqArtist(val mid: String, val name: String, val picUrl: String)
+
+    /** Album cover (300px) from an album mid. */
+    fun qqAlbumCoverUrl(albumMid: String): String =
+        if (albumMid.isBlank()) "" else "https://y.qq.com/music/photo_new/T002R300x300M000${albumMid}_1.jpg"
+
+    /** Singer avatar (300px) from a singer mid. */
+    fun qqSingerCoverUrl(singerMid: String): String =
+        if (singerMid.isBlank()) "" else "https://y.qq.com/music/photo_new/T001R300x300M000${singerMid}_1.jpg"
+
+    /** One QQ Song object (base Song model: songname/songmid, singer[], album, interval in seconds). */
+    internal fun parseQqSong(obj: JSONObject): Song? {
+        val mid = obj.optString("songmid", "").ifBlank { obj.optString("mid", "") }
+        if (mid.isBlank()) return null
+        val name = firstString(obj, "songname", "name", "title").orEmpty()
+        val artists = obj.optJSONArray("singer")?.let { arr ->
+            (0 until arr.length()).mapNotNull { i ->
+                val s = arr.optJSONObject(i) ?: return@mapNotNull null
+                val n = s.optString("name", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                Artist(s.optLong("id", 0), n)
+            }
+        }.orEmpty()
+        val albumObj = obj.optJSONObject("album")
+        val albumMid = albumObj?.optString("mid", "").orEmpty()
+        return Song(
+            id = qqSongId(mid),
+            name = name,
+            artists = artists,
+            albumName = albumObj?.optString("name", "").orEmpty(),
+            picUrl = qqAlbumCoverUrl(albumMid),
+            durationMs = obj.optInt("interval", 0) * 1000L,
+            source = MusicSource.QQ,
+            sourceId = mid,
+        )
+    }
+
+    /** One QQ playlist object (dissname/dissid; cover at cover.default_url for recommendations). */
+    internal fun parseQqPlaylist(obj: JSONObject): Playlist? {
+        val dissid = obj.optLong("dissid", obj.optLong("id", 0))
+        if (dissid == 0L) return null
+        val name = firstString(obj, "dissname", "title", "name").orEmpty()
+        val cover = firstString(obj.optJSONObject("cover"), "default_url")
+            ?: firstString(obj, "picurl", "cover", "imgurl", "logo")
+            ?: ""
+        val creator = obj.optJSONObject("creator")?.optString("nick", "").orEmpty()
+        return Playlist(
+            id = QqPlaylistIds.dissPlaylistId(dissid),
+            name = name,
+            coverUrl = cover,
+            trackCount = obj.optLong("song_cnt", obj.optLong("songnum", 0)).toInt(),
+            creatorName = creator,
+            source = MusicSource.QQ,
+            sourceId = dissid.toString(),
+        )
+    }
+
+    /** searchid (L-1124 search.py getSearchID): "QQMusicSearch" + epoch seconds + random int. */
+    private fun newSearchId(): String =
+        "QQMusicSearch${System.currentTimeMillis() / 1000}${Random.nextInt(0, Int.MAX_VALUE)}"
+
+    private suspend fun searchBody(keyword: String, type: QqSearchType, limit: Int, page: Int = 1): JSONObject? {
+        val resp = cgi(
+            module = "music.search.SearchCgiService",
+            method = "DoSearchForQQMusicMobile",
+            param = JSONObject()
+                .put("searchid", newSearchId())
+                .put("query", keyword)
+                .put("search_type", type.code)
+                .put("num_per_page", limit)
+                .put("page_num", page)
+                .put("highlight", 1)
+                .put("grp", 1),
+        )
+        return resp.optJSONObject("data")?.optJSONObject("body")
+    }
+
+    /** QQ song search (no login needed). */
+    suspend fun searchSongs(keyword: String, limit: Int = 20): List<Song> {
+        val body = searchBody(keyword, QqSearchType.SONG, limit) ?: return emptyList()
+        val arr = body.optJSONArray("item_song")
+            ?: body.optJSONObject("song")?.optJSONArray("list")
+            ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parseQqSong(arr.optJSONObject(it) ?: return@mapNotNull null) }
+    }
+
+    /** QQ artist search (no login needed). */
+    suspend fun searchArtists(keyword: String, limit: Int = 10): List<QqArtist> {
+        val body = searchBody(keyword, QqSearchType.SINGER, limit) ?: return emptyList()
+        val arr = body.optJSONArray("singer") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val mid = o.optString("mid", "").ifBlank { o.optString("singerMid", "") }
+            val name = o.optString("name", "").ifBlank { o.optString("singerName", "") }
+            if (mid.isBlank() && name.isBlank()) null
+            else QqArtist(mid, name, o.optString("singerPic", "").ifBlank { qqSingerCoverUrl(mid) })
+        }
+    }
+
+    /** QQ playlist search (no login needed). */
+    suspend fun searchPlaylists(keyword: String, limit: Int = 10): List<Playlist> {
+        val body = searchBody(keyword, QqSearchType.PLAYLIST, limit) ?: return emptyList()
+        val arr = body.optJSONArray("item_songlist")
+            ?: body.optJSONObject("songlist")?.optJSONArray("list")
+            ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parseQqPlaylist(arr.optJSONObject(it) ?: return@mapNotNull null) }
+    }
+
+    /** All QQ toplist categories, flattened in server order (no login needed). */
+    suspend fun toplist(): List<Playlist> {
+        val resp = cgi(module = "music.musicToplist.Toplist", method = "GetAll", param = null)
+        val data = resp.optJSONObject("data") ?: return emptyList()
+        val groups = data.optJSONArray("group") ?: return emptyList()
+        val out = mutableListOf<Playlist>()
+        for (i in 0 until groups.length()) {
+            val list = groups.optJSONObject(i)?.optJSONArray("toplist") ?: continue
+            for (j in 0 until list.length()) {
+                val t = list.optJSONObject(j) ?: continue
+                val topId = t.optLong("topId", 0)
+                if (topId == 0L) continue
+                out += Playlist(
+                    id = QqPlaylistIds.toplistId(topId),
+                    name = t.optString("title", ""),
+                    coverUrl = t.optString("frontPicUrl", ""),
+                    trackCount = t.optInt("totalNum", 0),
+                    source = MusicSource.QQ,
+                    sourceId = topId.toString(),
+                )
+            }
+        }
+        return out
+    }
+
+    /** One QQ toplist's title + songs (no login needed). */
+    suspend fun toplistDetail(topId: Long, num: Int = 100): Pair<String, List<Song>> {
+        val resp = cgi(
+            module = "music.musicToplist.Toplist",
+            method = "GetDetail",
+            param = JSONObject().put("topId", topId).put("offset", 0).put("num", num).put("withTags", true),
+        )
+        val data = resp.optJSONObject("data")
+        val arr = resp.optJSONArray("songInfoList")
+            ?: data?.optJSONArray("songInfoList")
+            ?: data?.optJSONArray("songlist")
+        val songs = arr?.let { a ->
+            (0 until a.length()).mapNotNull { parseQqSong(a.optJSONObject(it) ?: return@mapNotNull null) }
+        }.orEmpty()
+        return (data?.optString("title", "").orEmpty()) to songs
+    }
+
+    /** Recommended QQ playlists (no login needed). */
+    suspend fun recommendPlaylists(from: Int = 0, size: Int = 25): List<Playlist> {
+        val resp = cgi(
+            module = "music.playlist.PlaylistSquare",
+            method = "GetRecommendFeed",
+            param = JSONObject().put("From", from).put("Size", size),
+        )
+        val data = resp.optJSONObject("data") ?: return emptyList()
+        val arr = data.optJSONArray("List") ?: data.optJSONArray("songlists") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val item = arr.optJSONObject(i) ?: return@mapNotNull null
+            val basic = item.optJSONObject("Playlist")?.optJSONObject("basic") ?: item
+            parseQqPlaylist(basic)
+        }
+    }
+
+    /** Recommended QQ new songs, type 5 = 最新 (no login needed). */
+    suspend fun recommendNewSongs(type: Int = 5): List<Song> {
+        val resp = cgi(
+            module = "newsong.NewSongServer",
+            method = "get_new_song_info",
+            param = JSONObject().put("type", type),
+        )
+        val data = resp.optJSONObject("data") ?: return emptyList()
+        val arr = data.optJSONArray("songlist") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parseQqSong(arr.optJSONObject(it) ?: return@mapNotNull null) }
+    }
+
+    /** One QQ playlist's info + songs (no login needed; first page only). */
+    suspend fun playlistDetail(dissid: Long, num: Int = 100): Pair<Playlist, List<Song>> {
+        val resp = cgi(
+            module = "music.srfDissInfo.DissInfo",
+            method = "CgiGetDiss",
+            param = JSONObject()
+                .put("disstid", dissid).put("dirid", 0).put("tag", true)
+                .put("song_begin", 0).put("song_num", num).put("userinfo", true)
+                .put("orderlist", true).put("onlysonglist", false),
+        )
+        val data = resp.optJSONObject("data")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 歌单详情为空")
+        val info = data.optJSONObject("dirinfo") ?: data
+        val playlist = Playlist(
+            id = QqPlaylistIds.dissPlaylistId(dissid),
+            name = firstString(info, "dissname", "title", "name").orEmpty(),
+            coverUrl = firstString(info, "picurl", "cover", "imgurl", "logo").orEmpty(),
+            trackCount = data.optLong("total_song_num", 0).toInt(),
+            creatorName = info.optJSONObject("creator")?.optString("nick", "").orEmpty(),
+            source = MusicSource.QQ,
+            sourceId = dissid.toString(),
+        )
+        val arr = data.optJSONArray("songlist")
+        val songs = arr?.let { a ->
+            (0 until a.length()).mapNotNull { parseQqSong(a.optJSONObject(it) ?: return@mapNotNull null) }
+        }.orEmpty()
+        return playlist to songs
     }
 
     /** GetCdnDispatch (L-1124 song.py): CDN roots for joining with purl. */

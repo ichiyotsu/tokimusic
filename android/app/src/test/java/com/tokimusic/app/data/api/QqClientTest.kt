@@ -349,4 +349,170 @@ class QqClientTest {
         assertNull(payload.lrc)
         assertNull(payload.yrc)
     }
+
+    // ---- read APIs (sixth round, batch 2: dual-source display) ----
+
+    private fun qqSongJson(mid: String = "0039MnYb0qxYhV", name: String = "晴天"): String =
+        """{"songmid":"$mid","songname":"$name","singer":[{"id":4721,"name":"周杰伦"}],"album":{"mid":"002eFUFm2XYZ7z","name":"叶惠美"},"interval":269}"""
+
+    /** Routes musicu.fcg calls by module/method to canned responses; records the last req_0. */
+    private fun readDispatcher(responses: Map<String, String>, seen: MutableList<JSONObject> = mutableListOf()): Dispatcher =
+        object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+                val req0 = JSONObject(request.body.readUtf8()).getJSONObject("req_0")
+                seen += req0
+                val key = req0.getString("module") + "/" + req0.getString("method")
+                val body = responses[key] ?: return MockResponse().setResponseCode(404)
+                return json(body)
+            }
+        }
+
+    private fun cgiOk(dataJson: String): String = """{"code":0,"req_0":{"code":0,"data":$dataJson}}"""
+
+    @Test
+    fun searchSongsParsesItemSongAndSendsType0() = runBlocking {
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.search.SearchCgiService/DoSearchForQQMusicMobile" to
+                    cgiOk("""{"body":{"item_song":[${qqSongJson()}]}}"""),
+            ),
+            seen,
+        )
+        val songs = client.searchSongs("晴天")
+        assertEquals(1, songs.size)
+        val song = songs[0]
+        assertEquals("晴天", song.name)
+        assertEquals("周杰伦", song.artistText)
+        assertEquals("叶惠美", song.albumName)
+        assertEquals(269_000L, song.durationMs)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, song.source)
+        assertEquals("0039MnYb0qxYhV", song.sourceId)
+        assertTrue(song.picUrl.contains("002eFUFm2XYZ7z"))
+        val req0 = seen.single()
+        assertEquals("music.search.SearchCgiService", req0.getString("module"))
+        assertEquals("DoSearchForQQMusicMobile", req0.getString("method"))
+        val param = req0.getJSONObject("param")
+        assertEquals("晴天", param.getString("query"))
+        assertEquals(0, param.getInt("search_type"))
+        assertTrue(param.getString("searchid").startsWith("QQMusicSearch"))
+    }
+
+    @Test
+    fun searchArtistsParsesSingerList() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.search.SearchCgiService/DoSearchForQQMusicMobile" to
+                    cgiOk("""{"body":{"singer":[{"mid":"0025NhlN2yWrP4","name":"周杰伦","singerPic":"https://example.com/singer.jpg"}]}}"""),
+            ),
+        )
+        val artists = client.searchArtists("周杰伦")
+        assertEquals(1, artists.size)
+        assertEquals("0025NhlN2yWrP4", artists[0].mid)
+        assertEquals("周杰伦", artists[0].name)
+        assertEquals("https://example.com/singer.jpg", artists[0].picUrl)
+    }
+
+    @Test
+    fun searchPlaylistsParsesItemSonglistWithSyntheticId() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.search.SearchCgiService/DoSearchForQQMusicMobile" to
+                    cgiOk("""{"body":{"item_songlist":[{"dissid":7039749142,"dissname":"华语流行","imgurl":"https://example.com/cover.jpg","song_cnt":50}]}}"""),
+            ),
+        )
+        val playlists = client.searchPlaylists("华语")
+        assertEquals(1, playlists.size)
+        val pl = playlists[0]
+        assertEquals("华语流行", pl.name)
+        assertEquals("https://example.com/cover.jpg", pl.coverUrl)
+        assertEquals(50, pl.trackCount)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, pl.source)
+        assertEquals("7039749142", pl.sourceId)
+        assertEquals(com.tokimusic.app.data.model.QqPlaylistIds.dissPlaylistId(7039749142L), pl.id)
+        assertTrue(pl.id < 0)
+    }
+
+    @Test
+    fun toplistFlattensGroups() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicToplist.Toplist/GetAll" to cgiOk(
+                    """{"group":[{"groupId":1,"groupName":"巅峰榜","toplist":[{"topId":4,"title":"巅峰榜·流行指数","frontPicUrl":"https://example.com/top.jpg","totalNum":100}]},{"groupId":2,"groupName":"地区榜","toplist":[{"topId":26,"title":"巅峰榜·热歌","frontPicUrl":"https://example.com/top2.jpg","totalNum":50}]}]}""",
+                ),
+            ),
+        )
+        val lists = client.toplist()
+        assertEquals(2, lists.size)
+        assertEquals("巅峰榜·流行指数", lists[0].name)
+        assertEquals(com.tokimusic.app.data.model.QqPlaylistIds.toplistId(4L), lists[0].id)
+        assertEquals("巅峰榜·热歌", lists[1].name)
+        assertEquals(com.tokimusic.app.data.model.QqPlaylistIds.toplistId(26L), lists[1].id)
+    }
+
+    @Test
+    fun toplistDetailReadsSongInfoList() = runBlocking {
+        val body = """{"code":0,"req_0":{"code":0,"data":{"topId":4,"title":"巅峰榜·流行指数"},"songInfoList":[${qqSongJson()}]}}"""
+        server.dispatcher = readDispatcher(
+            mapOf("music.musicToplist.Toplist/GetDetail" to body),
+        )
+        val (title, songs) = client.toplistDetail(4L)
+        assertEquals("巅峰榜·流行指数", title)
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+    }
+
+    @Test
+    fun recommendPlaylistsReadsListPlaylistBasic() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.playlist.PlaylistSquare/GetRecommendFeed" to cgiOk(
+                    """{"List":[{"Playlist":{"basic":{"dissid":7039749142,"dissname":"华语流行","cover":{"default_url":"https://example.com/cover.jpg"},"song_cnt":50,"creator":{"nick":"QQ音乐"}}}}]}""",
+                ),
+            ),
+        )
+        val playlists = client.recommendPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("华语流行", playlists[0].name)
+        assertEquals("https://example.com/cover.jpg", playlists[0].coverUrl)
+        assertEquals("QQ音乐", playlists[0].creatorName)
+        assertEquals(50, playlists[0].trackCount)
+    }
+
+    @Test
+    fun recommendNewSongsReadsSonglist() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "newsong.NewSongServer/get_new_song_info" to cgiOk("""{"songlist":[${qqSongJson()}] }"""),
+            ),
+        )
+        val songs = client.recommendNewSongs()
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, songs[0].source)
+    }
+
+    @Test
+    fun playlistDetailReadsDirinfoAndSonglist() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.srfDissInfo.DissInfo/CgiGetDiss" to cgiOk(
+                    """{"dirinfo":{"dissname":"华语流行","creator":{"nick":"QQ音乐"}},"songlist":[${qqSongJson()}] ,"songlist_size":1,"total_song_num":100,"hasmore":1}""",
+                ),
+            ),
+        )
+        val (playlist, songs) = client.playlistDetail(7039749142L)
+        assertEquals("华语流行", playlist.name)
+        assertEquals("QQ音乐", playlist.creatorName)
+        assertEquals(100, playlist.trackCount)
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+    }
+
+    @Test
+    fun parseQqSongSkipsRowsWithoutMid() {
+        assertNull(client.parseQqSong(JSONObject("""{"songname":"无 mid"}""")))
+        assertTrue(client.parseQqSong(JSONObject(qqSongJson())) != null)
+    }
 }

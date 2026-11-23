@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -78,6 +79,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,6 +98,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.player.PlayerState
 import com.tokimusic.app.player.queueRowState
@@ -108,6 +111,7 @@ import com.tokimusic.app.ui.components.TokiSheetContainer
 import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
+import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.CirroMiniPlayer
 import com.tokimusic.app.ui.theme.CirroPlayKey
@@ -148,17 +152,26 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                     Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     Text(song.artistText, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // 第六轮第 32 项：迷你播放器的播放 / 下一曲钮也按压回弹（计划里
+                // 写的“星标/更多”在 MiniPlayer 里不存在——这里只有播放与下一曲
+                // 两个圆钮；星标/更多在播放器标题行，走 CircleArtButton）。
                 TokiLongPressLabel(playLabel) {
+                    val playInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50)).clickable { vm.player.toggle() },
+                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50))
+                            .clickable(interactionSource = playInteraction, indication = null) { vm.player.toggle() }
+                            .pressRebound(playInteraction),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = playLabel)
                     }
                 }
                 TokiLongPressLabel("下一首") {
+                    val nextInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50)).clickable { vm.player.next() },
+                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50))
+                            .clickable(interactionSource = nextInteraction, indication = null) { vm.player.next() }
+                            .pressRebound(nextInteraction),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.SkipNext, contentDescription = "下一首")
@@ -192,18 +205,20 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}) {
     val state by vm.player.state.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
     val likedIds by vm.likedIds.collectAsState()
     val song = state.current
     var pos by remember { mutableLongStateOf(0L) }
-    var showLyrics by remember { mutableStateOf(false) }
-    var showQueue by remember { mutableStateOf(false) }
-    var showMore by remember { mutableStateOf(false) }
+    // 第六轮第 29 项：歌词视图 / 队列 / 更多 / 沉浸态可保存——从通知栏媒体
+    // 卡片点进或进程重建后，回到播放器页时视图状态保留。
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    var showMore by rememberSaveable { mutableStateOf(false) }
     // 第五轮第 17 项：沉浸式歌词——隐藏整个控制区、仅留歌词（双击进，
     // 见第 22 项）。仅在歌词视图有意义，切回封面或切歌时复位。
-    var immersiveLyrics by remember { mutableStateOf(false) }
+    var immersiveLyrics by rememberSaveable { mutableStateOf(false) }
     // 投放选中态：第 18 项，订阅 MediaRouter 回调（当前路由非默认时为真）。
     val castActive = rememberCastActive()
     val context = LocalContext.current
@@ -258,6 +273,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     // 一个无操作点击屏蔽，点它们不返回（按钮/滑块/歌词滚动照常）。
     val blankBack = remember { MutableInteractionSource() }
     val shield = remember { MutableInteractionSource() }
+    // 第六轮第 36 项：播放器页歌手名可点进歌手页；QQ 歌的歌手 id 是 QQ 侧
+    // 的数字 id（与网易云 id 不是同一空间），点它不进网易云歌手页，给提示
+    //（与搜索页 QQ 歌手结果同款处理）。
+    val openPlayerArtist: (Long) -> Unit = { artistId ->
+        if (song.source == MusicSource.QQ) {
+            Toast.makeText(context, "QQ 歌手详情暂不支持", Toast.LENGTH_SHORT).show()
+        } else {
+            onOpenArtist(artistId)
+        }
+    }
     // 第五轮第 20(a) 项：封面↔歌词共享元素过渡——大封面与迷你封面共用
     // 同一 sharedElement key，切换时封面飞入左下迷你封面、回封面对称放大。
     SharedTransitionLayout(Modifier.fillMaxSize()) {
@@ -268,7 +293,25 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         Box(Modifier.fillMaxSize().background(coverColors.toBrush()).onSizeChanged { panelHeightPx = it.height })
         Column(Modifier.fillMaxSize().padding(top = 8.dp).navigationBarsPadding()) {
             Box(
-                Modifier.weight(1f).fillMaxWidth().onSizeChanged {
+                Modifier.weight(1f).fillMaxWidth()
+                    // 第六轮第 35 项：左右滑动切换封面视图 ↔ 歌词视图（在点封面进
+                    // 歌词、单击回封面的基础上再加一个手势入口）。只认横滑（与歌词
+                    // 列表的竖滑不同轴，不冲突）；点按仍走点击。滑动只做切换触发，
+                    // 不跟手——松手后按方向切视图，走现有的 AnimatedContent 过渡；
+                    // 播放器面板本身没有下滑关闭手势，无方向冲突。
+                    .pointerInput(showLyrics) {
+                        var totalX = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalX = 0f },
+                            onHorizontalDrag = { _, dragAmount -> totalX += dragAmount },
+                            onDragEnd = {
+                                val threshold = with(density) { 60.dp.toPx() }
+                                if (totalX < -threshold && !showLyrics) showLyrics = true
+                                else if (totalX > threshold && showLyrics) showLyrics = false
+                            },
+                        )
+                    }
+                    .onSizeChanged {
                     if (panelHeightPx > 0 && it.height > 0) {
                         lyricsBottomFraction =
                             ((with(density) { 8.dp.toPx() } + it.height) / panelHeightPx).coerceIn(0f, 1f)
@@ -401,12 +444,30 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                             contentScale = ContentScale.Crop,
                         )
                         Spacer(Modifier.width(12.dp))
-                        SongTitleBlock(song, Modifier.weight(1f), textColor = onCover, dimColor = onCoverDim)
+                        // 第六轮第 14 项：标题块也是共享元素（与封面视图的大标题
+                        // 同 key），视图切换时标题不跳变（与封面飞行同一次过渡）。
+                        SongTitleBlock(
+                            song,
+                            Modifier.weight(1f).sharedElement(
+                                rememberSharedContentState("title-${song.id}"),
+                                animatedVisibilityScope = immersiveScope,
+                            ),
+                            textColor = onCover, dimColor = onCoverDim,
+                            onOpenArtist = openPlayerArtist,
+                        )
                         TitleActions(liked, { vm.toggleLike(song.id) }, buttonTint = onCover, buttonBg = buttonBg) { showMore = true }
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SongTitleBlock(song, Modifier.weight(1f), textColor = onCover, dimColor = onCoverDim)
+                        SongTitleBlock(
+                            song,
+                            Modifier.weight(1f).sharedElement(
+                                rememberSharedContentState("title-${song.id}"),
+                                animatedVisibilityScope = immersiveScope,
+                            ),
+                            textColor = onCover, dimColor = onCoverDim,
+                            onOpenArtist = openPlayerArtist,
+                        )
                         TitleActions(liked, { vm.toggleLike(song.id) }, buttonTint = onCover, buttonBg = buttonBg) { showMore = true }
                     }
                 }
@@ -458,7 +519,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 .clip(RoundedCornerShape(playCorner))
                                 .background(if (cirro) CirroPlayKey else Color.White)
                                 .clickable(interactionSource = interaction, indication = ripple()) { vm.player.toggle() }
-                                .pressScale(interaction),
+                                .pressRebound(interaction),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
@@ -474,9 +535,22 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         CircleArtButton(Icons.Filled.SkipNext, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.next() }
                     }
                 }
-                // 第五轮第 19 项：底部三钮收进标题栏更多钮的 MoreSheet，底部
-                // 全空（歌词 / 投放 / 播放队列三个入口见 MoreSheet）；第 8 项
-                // 的歌词钮恒实心结论保留（MoreSheet 里继续用实心引号）。
+                // 第六轮第 28 项：恢复歌词 + 队列两个底钮（投放留在 More）——
+                // 在播放控制行下方，SpaceBetween、16dp 横向、6dp 纵向；
+                // 歌词钮恒实心引号，长按提示随视图切“歌词/返回封面”；队列钮
+                // 实心，点开队列；都用控制区配色（buttonBg/onCover）；沉浸
+                // 时随控制区一起淡出。
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TokiLongPressLabel(if (showLyrics) "返回封面" else "歌词") {
+                        CircleArtButton(Icons.Filled.FormatQuote, onCover, bgColor = buttonBg) { showLyrics = !showLyrics }
+                    }
+                    TokiLongPressLabel("播放队列") {
+                        CircleArtButton(Icons.Filled.QueueMusic, onCover, bgColor = buttonBg) { showQueue = true }
+                    }
+                }
             }
             }
         }
@@ -486,7 +560,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     if (showMore) MoreSheet(
         song = song,
         liked = liked,
-        showLyrics = showLyrics,
         castActive = castActive,
         onToggleLike = { vm.toggleLike(song.id); showMore = false },
         onPlayNext = {
@@ -494,9 +567,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
             Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
             showMore = false
         },
-        // 第五轮第 19 项：先关弹窗再执行（与喜欢 / 下一首播放的模式一致，
-        // 避免 QueueSheet / 投放窗与 MoreSheet 叠加）。
-        onToggleLyrics = { showMore = false; showLyrics = !showLyrics },
         onCast = {
             showMore = false
             // 第 18 项：打开安卓原生投放窗；选路后音频立即切换。
@@ -506,7 +576,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                 if (!showCastChooser(activity)) Toast.makeText(context, "投放窗打开失败，请重试", Toast.LENGTH_SHORT).show()
             } else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
         },
-        onOpenQueue = { showMore = false; showQueue = true },
         onDismiss = { showMore = false },
     )
 }
@@ -517,7 +586,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
 // MoreSheet / QueueSheet 的标题行不动）。
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f)) {
+private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f), onOpenArtist: ((Long) -> Unit)? = null) {
     Column(modifier) {
         Text(
             song.name,
@@ -528,13 +597,23 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
             overflow = TextOverflow.Clip,
             modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 60.dp),
         )
+        // 第六轮第 36 项：歌手行可点进歌手页（多歌手时进第一个；点按进页、
+        // 轮播滚动不触发——basicMarquee 只是视觉滚动，不接手势）。不传
+        // onOpenArtist 时是普通文本。
+        val artistModifier = if (onOpenArtist != null && song.artists.isNotEmpty()) {
+            Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                song.artists.firstOrNull()?.let { onOpenArtist(it.id) }
+            }
+        } else {
+            Modifier
+        }
         Text(
             song.artistText,
             style = MaterialTheme.typography.titleMedium,
             color = dimColor,
             maxLines = 1,
             overflow = TextOverflow.Clip,
-            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 30.dp),
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 30.dp).then(artistModifier),
         )
     }
 }
@@ -559,7 +638,9 @@ private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compo
             .clip(RoundedCornerShape(percent = 50))
             .background(bgColor)
             .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
-            .pressScale(interaction),
+            // 第六轮第 32 项：按压回弹（上一首/下一首、标题行喜欢/更多、恢复的
+            // 歌词/队列底钮都走这个共用钮；进度条拇指不动）。
+            .pressRebound(interaction),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
@@ -668,14 +749,11 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
 private fun MoreSheet(
     song: Song,
     liked: Boolean,
-    showLyrics: Boolean,
     castActive: Boolean,
     onToggleLike: () -> Unit,
     onPlayNext: () -> Unit,
-    // 第五轮第 19 项：歌词 / 投放 / 播放队列三个入口（调用方先关弹窗再执行）。
-    onToggleLyrics: () -> Unit,
+    // 第 18 项：打开安卓原生投放窗（调用方先关弹窗再执行）。
     onCast: () -> Unit,
-    onOpenQueue: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     // 第六轮第 25 项：与设置弹窗同款 skipPartiallyExpanded = true，内容
@@ -699,13 +777,10 @@ private fun MoreSheet(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            // 第五轮第 19 项：底部三钮收进这里（排在喜欢 / 下一首播放之前）。
-            // 歌词入口文案随视图切换：歌词视图下是“返回封面”（与原按钮长按
-            // 提示一致），图标恒实心（第 8 项结论）；投放图标沿用投放中实心 /
-            // 未投放空心的状态含义；队列是“打开”动作，用实心。
-            MoreAction(Icons.Filled.FormatQuote, if (showLyrics) "返回封面" else "歌词", onToggleLyrics)
+            // 第六轮第 28 项：歌词 / 队列已恢复到底部按钮行，这里去重，只留
+            // 投放 / 喜欢 / 下一首播放；投放图标沿用投放中实心 / 未投放空心
+            // 的状态含义。
             MoreAction(if (castActive) Icons.Filled.Cast else Icons.Outlined.Cast, "投放", onCast)
-            MoreAction(Icons.Filled.QueueMusic, "播放队列", onOpenQueue)
             MoreAction(if (liked) Icons.Filled.Star else Icons.Filled.StarBorder, if (liked) "取消喜欢" else "喜欢", onToggleLike)
             MoreAction(Icons.Filled.PlaylistAdd, "下一首播放", onPlayNext)
             if (song.durationMs > 0) {

@@ -1,6 +1,7 @@
 package com.tokimusic.app.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -21,6 +22,27 @@ fun Modifier.pressScale(interaction: MutableInteractionSource, pressedScale: Flo
         targetValue = if (pressed) pressedScale else 1f,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "pressScale",
+    )
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+        clip = true
+    }
+}
+
+/**
+ * 第六轮第 32 项：按压回弹——按下快缩到 0.88–0.90，松手欠阻尼弹簧回弹、
+ * 轻微过冲约 1.03（spring 阻尼 0.45、刚度 500，约 300–400ms）。只加新
+ * 修饰符，不改共用的 [pressScale]。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun Modifier.pressRebound(interaction: MutableInteractionSource, pressedScale: Float = 0.89f): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = if (pressed) MaterialTheme.motionScheme.fastSpatialSpec() else spring(dampingRatio = 0.45f, stiffness = 500f),
+        label = "pressRebound",
     )
     return this.graphicsLayer {
         scaleX = scale

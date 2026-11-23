@@ -16,6 +16,7 @@ interface NeteaseApi {
     suspend fun newSongs(): List<Song>                // /personalized/newsong
     suspend fun dailySongs(): List<Song>              // /recommend/songs (logged in)
     suspend fun search(keywords: String, type: Int = 1, limit: Int = 30): List<Song> // /cloudsearch
+    suspend fun searchArtists(keywords: String): List<Artist> // /cloudsearch type=100 （第六轮第二批，搜索加歌手区）
     suspend fun searchPlaylists(keywords: String): List<Playlist>
     suspend fun userPlaylists(uid: Long): List<Playlist>        // /user/playlist
     suspend fun playlistDetail(id: Long): Pair<Playlist, List<Song>> // /playlist/detail
