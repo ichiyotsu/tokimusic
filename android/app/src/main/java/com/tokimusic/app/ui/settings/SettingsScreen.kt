@@ -29,9 +29,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -60,7 +62,7 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.SettingsRow
-import com.tokimusic.app.ui.components.TokiSheetContainer
+import com.tokimusic.app.ui.components.daysSince
 import com.tokimusic.app.ui.theme.CirroLogoutRed
 import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
 import com.tokimusic.app.ui.theme.LyricFontInterPingFangBold
@@ -77,9 +79,10 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
 
 /**
  * 账户与设置弹窗（第二轮第 4 项）：参考 TokiNote〈我的〉页
- * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——顶部圆角
- * 32dp、surfaceContainerLow、标题 + 36dp 关闭钮；头像卡片 + 通用 / 个性化 /
- * 音频 / 歌词 4 行 + 红色退出登录。子页在弹窗内切换。
+ * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——标题 +
+ * 36dp 关闭钮；头像卡片 + 通用 / 个性化 / 音频 / 歌词 4 行 + 红色退出登录。
+ * 子页在弹窗内切换。外壳自第五轮第 19-4 项起是 MoreSheet 同款原生
+ * ModalBottomSheet（默认顶圆角 28dp），见 SettingsSheet 上的注释。
  *
  * 第三轮第 1 项（用户定 A）：保留底部弹窗，只按 TokiUI 重做内容——
  * 入口行无图标，退出登录是 SettingsRow 形态的红色警示行；关闭钮保持 36dp。
@@ -90,7 +93,14 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
  * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
  * 因此永久禁用的主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
  * 玻璃模糊两个开关）。cirroAppearance 字段本身保留，恒为 true。
+ *
+ * 第五轮第 19-4 项（用户确认“把设置改成这种”）：外壳改成 MoreSheet 同款
+ * 原生 ModalBottomSheet（不用 TokiSheetContainer）——默认 28dp 顶圆角、
+ * 横向 24dp / 底部 24dp 内边距；内容（磨砂标题行、头像卡、五区底卡）不动。
+ * 注意：原生弹窗默认允许半展开，内容高时首次打开只露一半，上滑才全开；
+ * 若真机觉得不便，退路是加 skipPartiallyExpanded = true 回到原来的全开。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit, onClose: () -> Unit) {
     var sub by remember { mutableStateOf<SettingsSub?>(null) }
@@ -98,8 +108,8 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     val authState by vm.authState.collectAsState()
     val health by vm.health.collectAsState()
     var showLogin by remember { mutableStateOf(false) }
-    TokiSheetContainer(onDismiss = onClose) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
+    ModalBottomSheet(onDismissRequest = onClose) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             // 第 8 项：标题与返回用外面悬浮模糊标题同款配方——标题进磨砂
             // chip（headlineMedium Bold），返回键进圆形磨砂 chip；弹窗是
             // 独立窗口、没有 hazeState，走配方自带的半透明底色（模糊关时
@@ -201,6 +211,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                         profile?.let { "UID ${it.uid}" } ?: "点击下方按钮扫码登录网易云",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (profile != null) {
+                        // 第五轮第 24 项：UID 下方两行加入天数，与 UID 行同样式
+                        //（bodySmall、onSurfaceVariant，用户确认）；TokiMusic 从
+                        // 首次登录时间起算（vm.store.firstLoginMs），网易云取
+                        // createDays，取不到显示 —（用户确认）。
+                        Text(
+                            "已加入TokiMusic ${daysSince(vm.store.firstLoginMs, System.currentTimeMillis())} 天",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            if (profile.createDays >= 0) "已加入NeteaseMusic ${profile.createDays} 天" else "已加入NeteaseMusic — 天",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
             if (profile == null) {
@@ -474,6 +500,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             Switch(
                 checked = vm.store.showTranslation,
                 onCheckedChange = { vm.store.showTranslation = it },
+            )
+        }
+    }
+    // 第五轮第 26 项：罗马音显示（默认关；日语歌有服务端 romalrc 才显示，
+    // 无数据不显示），与“翻译显示”同款 64dp 开关行。
+    item {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("罗马音显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = vm.store.showRomaji,
+                onCheckedChange = { vm.store.showRomaji = it },
             )
         }
     }

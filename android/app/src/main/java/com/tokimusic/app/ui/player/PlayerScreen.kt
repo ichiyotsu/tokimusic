@@ -2,18 +2,24 @@ package com.tokimusic.app.ui.player
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -50,8 +56,6 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.outlined.Cast
-import androidx.compose.material.icons.outlined.FormatQuote
-import androidx.compose.material.icons.outlined.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -82,6 +86,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -184,7 +189,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
  * 第三轮第 8 项：封面↔歌词切换按方向区分（进歌词：封面缩小淡出、歌词
  * 淡入上移；回封面反向），歌词行切页时 stagger 入场（只触发一次）。
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors) {
     val state by vm.player.state.collectAsState()
@@ -195,10 +200,19 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     var showLyrics by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    // 第五轮第 17 项：沉浸式歌词——隐藏整个控制区、仅留歌词（双击进，
+    // 见第 22 项）。仅在歌词视图有意义，切回封面或切歌时复位。
+    var immersiveLyrics by remember { mutableStateOf(false) }
     // 投放选中态：第 18 项，订阅 MediaRouter 回调（当前路由非默认时为真）。
     val castActive = rememberCastActive()
     val context = LocalContext.current
-    LaunchedEffect(state.index) { song?.let { vm.loadLyrics(it.id) } }
+    LaunchedEffect(state.index) {
+        song?.let { vm.loadLyrics(it.id) }
+        // 切歌时沉浸式复位（showLyrics 不复位——第 21 项用户确认“切歌不用复位”）。
+        immersiveLyrics = false
+    }
+    // 切回封面视图时沉浸式同步复位。
+    LaunchedEffect(showLyrics) { if (!showLyrics) immersiveLyrics = false }
     LaunchedEffect(state.isPlaying, state.index) { while (true) { pos = vm.player.currentPosition(); delay(200) } }
     if (song == null) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
@@ -221,6 +235,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         animationSpec = scheme.defaultSpatialSpec(),
         label = "playKeyCorner",
     )
+    // 第五轮第 20(a) 项：封面圆角随视图切换插值（大封面 20dp ↔ 迷你 12dp，
+    // 与共享元素飞行同 300ms）。
+    val coverCorner by animateDpAsState(
+        targetValue = if (showLyrics) 12.dp else 20.dp,
+        animationSpec = tween(300),
+        label = "coverCorner",
+    )
+    // 第五轮第 21 项：封面点按的独立按压源（与控制区 shield 分开，避免
+    // 按播放键时封面也跟着缩放）。
+    val coverPress = remember { MutableInteractionSource() }
     // 歌词区底部淡出端色（0.1.7 真机反馈的黑条）：面板渐变从面板顶画到底，
     // 淡出层却只到歌词区底部（约 60% 高），直接用 coverColors.bottom 会比
     // 身后背景深一截。量出面板高与歌词区高，取该位置的真实渐变色。
@@ -233,6 +257,9 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     // 一个无操作点击屏蔽，点它们不返回（按钮/滑块/歌词滚动照常）。
     val blankBack = remember { MutableInteractionSource() }
     val shield = remember { MutableInteractionSource() }
+    // 第五轮第 20(a) 项：封面↔歌词共享元素过渡——大封面与迷你封面共用
+    // 同一 sharedElement key，切换时封面飞入左下迷你封面、回封面对称放大。
+    SharedTransitionLayout(Modifier.fillMaxSize()) {
     Box(
         Modifier.fillMaxSize()
             .clickable(interactionSource = blankBack, indication = null) { onBack() },
@@ -254,30 +281,56 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         // 歌词淡入上移；回封面时反向。淡入淡出/缩放走
                         // motionScheme 的 expressive spec，位移 300ms
                         //（与第 5 项标题动画同量级）。
+                        // 第五轮第 20(a) 项：去掉 scaleOut / scaleIn（会与共享
+                        // 元素的缩放打架）；封面的位移 / 缩放全部交给共享元素，
+                        // 只留淡入淡出 + 歌词上移。
                         if (targetState) {
                             (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(tween(300)) { it / 12 }) togetherWith
-                                (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), 0.96f))
+                                fadeOut(scheme.defaultEffectsSpec())
                         } else {
-                            (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), 0.96f)) togetherWith
+                            fadeIn(scheme.defaultEffectsSpec()) togetherWith
                                 (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(tween(300)) { it / 12 })
                         }
                     },
                     label = "coverLyrics",
                     modifier = Modifier.fillMaxSize(),
                 ) { lyricsMode ->
+                    // 共享元素过渡的作用域（大封面用它；迷你封面用沉浸式
+                    // AnimatedVisibility 的 scope，见控制区）。
+                    val contentScope = this
                     if (lyricsMode) {
+                        // 第五轮第 22 项：歌词区空白手势——单击回封面视图、
+                        // 双击进/出沉浸式；沉浸式下单击逐级退回普通歌词视图
+                        // （再单击才回封面）。行点击与“回到当前行”按钮是子级，
+                        // 优先消费点击；滚动手势不被 detectTapGestures 消费。
+                        // 固有代价：onTap 要等约 300ms 双击超时确认不是双击
+                        // 才触发，单击回封面体感约慢半秒；若真机觉得拖沓，
+                        // 退路是取消双击、改回单击进沉浸（第 17 项原方案）。
                         Box(
                             Modifier.fillMaxSize()
-                                .clickable(interactionSource = shield, indication = null) {},
+                                .pointerInput(immersiveLyrics) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            if (immersiveLyrics) immersiveLyrics = false
+                                            else showLyrics = false
+                                        },
+                                        onDoubleTap = { immersiveLyrics = !immersiveLyrics },
+                                    )
+                                },
                         ) {
                             LyricsView(
                                 lyrics,
                                 positionProvider = { vm.player.currentPosition() },
                                 Modifier.fillMaxSize().padding(horizontal = 24.dp),
                                 showTranslation = vm.store.showTranslation,
+                                // 第五轮第 26 项：罗马音显示（设置 → 歌词，默认关）。
+                                showRomaji = vm.store.showRomaji,
                                 coverColors = coverColors,
                                 hazeState = hazeState,
                                 backdropBlur = backdropBlur,
+                                // 第五轮第 17 项：沉浸式下歌词区撑满，“回到当前行”
+                                // 按钮一并弹到最底（LyricsView 内按 immersive 调整）。
+                                immersive = immersiveLyrics,
                                 // 第三轮第 8 项：切页时行 stagger 入场。
                                 animateEntrance = true,
                                 // 第三轮第 16 项：歌词字体预设（设置 → 歌词）。
@@ -290,31 +343,62 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                             )
                         }
                     } else {
+                        // 第五轮第 21 项：点封面进歌词视图（轻微缩放反馈、无水波纹）；
+                        // 第 20(a) 项：大封面是共享元素的起点。
                         Box(
                             Modifier.fillMaxSize().padding(horizontal = 24.dp)
-                                .clickable(interactionSource = shield, indication = null) {},
+                                .clickable(interactionSource = coverPress, indication = null) { showLyrics = true },
                             contentAlignment = Alignment.Center,
                         ) {
                             AsyncImage(
                                 song.picUrl,
                                 song.name,
                                 Modifier.fillMaxWidth().aspectRatio(1f)
-                                    .shadow(24.dp, RoundedCornerShape(20.dp), clip = false)
-                                    .clip(RoundedCornerShape(20.dp)),
+                                    .shadow(24.dp, RoundedCornerShape(coverCorner), clip = false)
+                                    .clip(RoundedCornerShape(coverCorner))
+                                    .sharedElement(
+                                        rememberSharedContentState("cover-${song.id}"),
+                                        animatedVisibilityScope = contentScope,
+                                    )
+                                    .pressScale(coverPress),
                                 contentScale = ContentScale.Crop,
                             )
                         }
                     }
                 }
             }
+            // 第五轮第 17 项：沉浸式歌词——整个控制区（标题行 + 进度条 +
+            // 播放控制 + 底部三钮）淡出并纵向收起，歌词区 weight(1f)
+            // 自动撑满全屏；再点空白恢复。fade + 纵向收放同走
+            // motionScheme（只 fade 会在动画结束时尺寸突变跳一下）。
+            AnimatedVisibility(
+                visible = !immersiveLyrics,
+                enter = fadeIn(scheme.defaultEffectsSpec()) + expandVertically(scheme.defaultSpatialSpec()),
+                exit = fadeOut(scheme.defaultEffectsSpec()) + shrinkVertically(scheme.defaultSpatialSpec()),
+                modifier = Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 8.dp),
+            ) {
+            // 共享元素过渡的作用域（迷你封面用它；大封面用 AnimatedContent
+            // 的 scope，见歌词区）。
+            val immersiveScope = this
             Column(
-                Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 8.dp)
-                    .clickable(interactionSource = shield, indication = null) {},
+                Modifier.clickable(interactionSource = shield, indication = null) {},
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (showLyrics) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                        // 第五轮第 20(a) 项：迷你封面是共享元素的落点（现有位置，
+                        // 不新增元素）；第 21 项：点它回封面视图。
+                        AsyncImage(
+                            song.picUrl,
+                            song.name,
+                            Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                                .sharedElement(
+                                    rememberSharedContentState("cover-${song.id}"),
+                                    animatedVisibilityScope = immersiveScope,
+                                )
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showLyrics = false },
+                            contentScale = ContentScale.Crop,
+                        )
                         Spacer(Modifier.width(12.dp))
                         SongTitleBlock(song, Modifier.weight(1f), textColor = onCover, dimColor = onCoverDim)
                         TitleActions(liked, { vm.toggleLike(song.id) }, buttonTint = onCover, buttonBg = buttonBg) { showMore = true }
@@ -389,53 +473,68 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                         CircleArtButton(Icons.Filled.SkipNext, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.next() }
                     }
                 }
-                // 第 14 项：底部三钮各备空心/实心两套图标，选中态用实心。
-                // 第五轮第 8 项：歌词钮恒为实心——封面/歌词视图之分页面本身
-                // 已表达，图标再用空心/实心区分是重复的；投放/队列钮不动。
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TokiLongPressLabel(if (showLyrics) "返回封面" else "歌词") {
-                        PlainArtButton(Icons.Filled.FormatQuote, "歌词", tint = onCover) { showLyrics = !showLyrics }
-                    }
-                    TokiLongPressLabel("投放") {
-                        PlainArtButton(if (castActive) Icons.Filled.Cast else Icons.Outlined.Cast, "投放", tint = onCover) {
-                            // 第 18 项：打开安卓原生投放窗；选路后音频立即切换。
-                            // 第五轮第 4 项：打不开时 Toast 提示，不再闪退。
-                            val activity = context as? androidx.fragment.app.FragmentActivity
-                            if (activity != null) {
-                                if (!showCastChooser(activity)) Toast.makeText(context, "投放窗打开失败，请重试", Toast.LENGTH_SHORT).show()
-                            } else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    TokiLongPressLabel("播放队列") {
-                        PlainArtButton(if (showQueue) Icons.Filled.QueueMusic else Icons.Outlined.QueueMusic, "播放队列", tint = onCover) { showQueue = true }
-                    }
-                }
+                // 第五轮第 19 项：底部三钮收进标题栏更多钮的 MoreSheet，底部
+                // 全空（歌词 / 投放 / 播放队列三个入口见 MoreSheet）；第 8 项
+                // 的歌词钮恒实心结论保留（MoreSheet 里继续用实心引号）。
+            }
             }
         }
+    }
     }
     if (showQueue) QueueSheet(state, onJump = { vm.player.jumpTo(it) }, onDismiss = { showQueue = false }, backdropBlur = backdropBlur, onLongPressSong = { vm.openSongActions(it) })
     if (showMore) MoreSheet(
         song = song,
         liked = liked,
+        showLyrics = showLyrics,
+        castActive = castActive,
         onToggleLike = { vm.toggleLike(song.id); showMore = false },
         onPlayNext = {
             vm.playNext(song)
             Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
             showMore = false
         },
+        // 第五轮第 19 项：先关弹窗再执行（与喜欢 / 下一首播放的模式一致，
+        // 避免 QueueSheet / 投放窗与 MoreSheet 叠加）。
+        onToggleLyrics = { showMore = false; showLyrics = !showLyrics },
+        onCast = {
+            showMore = false
+            // 第 18 项：打开安卓原生投放窗；选路后音频立即切换。
+            // 第五轮第 4 项：打不开时 Toast 提示，不再闪退。
+            val activity = context as? androidx.fragment.app.FragmentActivity
+            if (activity != null) {
+                if (!showCastChooser(activity)) Toast.makeText(context, "投放窗打开失败，请重试", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
+        },
+        onOpenQueue = { showMore = false; showQueue = true },
         onDismiss = { showMore = false },
     )
 }
 
+// 第五轮第 20(b) 项：歌名 / 歌手过长自动轮播——歌名快（60.dp/s）、
+// 歌手慢（30.dp/s，用户确认），初次延迟 1s、每轮间隔 3s；短文本不溢出
+// 时自动静止；只改 SongTitleBlock（封面视图与歌词迷你条同时生效；
+// MoreSheet / QueueSheet 的标题行不动）。
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f)) {
     Column(modifier) {
-        Text(song.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(song.artistText, style = MaterialTheme.typography.titleMedium, color = dimColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            song.name,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 60.dp),
+        )
+        Text(
+            song.artistText,
+            style = MaterialTheme.typography.titleMedium,
+            color = dimColor,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 30.dp),
+        )
     }
 }
 
@@ -463,21 +562,6 @@ private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compo
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
-    }
-}
-
-/** Plain icon button used over the artwork background (no circle). */
-@Composable
-private fun PlainArtButton(icon: ImageVector, label: String, tint: Color = Color.White.copy(alpha = 0.85f), onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        Modifier.size(48.dp)
-            .clip(RoundedCornerShape(percent = 50))
-            .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
-            .pressScale(interaction),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(28.dp))
     }
 }
 
@@ -580,7 +664,19 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MoreSheet(song: Song, liked: Boolean, onToggleLike: () -> Unit, onPlayNext: () -> Unit, onDismiss: () -> Unit) {
+private fun MoreSheet(
+    song: Song,
+    liked: Boolean,
+    showLyrics: Boolean,
+    castActive: Boolean,
+    onToggleLike: () -> Unit,
+    onPlayNext: () -> Unit,
+    // 第五轮第 19 项：歌词 / 投放 / 播放队列三个入口（调用方先关弹窗再执行）。
+    onToggleLyrics: () -> Unit,
+    onCast: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -597,6 +693,13 @@ private fun MoreSheet(song: Song, liked: Boolean, onToggleLike: () -> Unit, onPl
                 }
             }
             Spacer(Modifier.height(12.dp))
+            // 第五轮第 19 项：底部三钮收进这里（排在喜欢 / 下一首播放之前）。
+            // 歌词入口文案随视图切换：歌词视图下是“返回封面”（与原按钮长按
+            // 提示一致），图标恒实心（第 8 项结论）；投放图标沿用投放中实心 /
+            // 未投放空心的状态含义；队列是“打开”动作，用实心。
+            MoreAction(Icons.Filled.FormatQuote, if (showLyrics) "返回封面" else "歌词", onToggleLyrics)
+            MoreAction(if (castActive) Icons.Filled.Cast else Icons.Outlined.Cast, "投放", onCast)
+            MoreAction(Icons.Filled.QueueMusic, "播放队列", onOpenQueue)
             MoreAction(if (liked) Icons.Filled.Star else Icons.Filled.StarBorder, if (liked) "取消喜欢" else "喜欢", onToggleLike)
             MoreAction(Icons.Filled.PlaylistAdd, "下一首播放", onPlayNext)
             if (song.durationMs > 0) {

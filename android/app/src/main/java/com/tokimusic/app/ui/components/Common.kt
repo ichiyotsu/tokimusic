@@ -68,7 +68,7 @@ import com.tokimusic.app.data.model.Song
     }
 }
 @OptIn(ExperimentalFoundationApi::class)
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -114,8 +114,10 @@ import com.tokimusic.app.data.model.Song
             }
         }
         // trailingText 优先（听歌排行显示“x 次”）；否则显示歌曲时长。
+        // 第五轮第 10 项：可选尾部操作位（搜索行的小圆播放钮），其余调用点默认无。
         if (trailingText != null) Text(trailingText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         else if (song.durationMs > 0) Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (trailingAction != null) { Spacer(Modifier.width(12.dp)); trailingAction() }
     }
 }
 @Composable fun PlaylistCard(playlist: Playlist, onClick: () -> Unit) {
@@ -132,6 +134,21 @@ import com.tokimusic.app.data.model.Song
 fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60) }
 /** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
 fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(s % 60)}秒" }
+
+/**
+ * 第五轮第 23 项：时长紧凑显示——整小时只显示 "1537h"，有零头时带一位小数
+ * （如 "1537.5h"）。纯整数运算（零头四舍五入到 0.1h，59 分钟 → "1h"），
+ * 不用 String.format，免 locale 的小数点问题。
+ */
+fun formatHours(totalMinutes: Long): String {
+    val hours = totalMinutes / 60
+    val tenths = ((totalMinutes % 60) * 10 + 30) / 60
+    val (h, t) = if (tenths == 10L) Pair(hours + 1, 0L) else Pair(hours, tenths)
+    return if (t == 0L) "${h}h" else "$h.${t}h"
+}
+
+/** 两个毫秒时间戳之间隔了多少个整天（向下取整；当天为 0 天；时钟回拨时不为负）。第五轮第 24 项。 */
+fun daysSince(firstMs: Long, nowMs: Long): Long = ((nowMs - firstMs) / 86_400_000L).coerceAtLeast(0L)
 fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }
 
 /**

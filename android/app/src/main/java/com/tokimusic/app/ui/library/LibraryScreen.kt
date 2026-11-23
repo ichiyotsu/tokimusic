@@ -50,6 +50,7 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.CirroCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.theme.CirroBlack
 
 // Round 3 item 2: lifted to TokiMusicApp (with playlistId) so second-level
@@ -125,11 +126,12 @@ fun LibraryScreen(
         if (loggedIn) {
             item {
                 Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    StatCard("收藏歌曲", "${mine.likeCount}", Modifier.weight(1f))
-                    StatCard("听歌时长", "${mine.estimatedListeningMinutes / 60} 小时", Modifier.weight(1f), onClick = onOpenListeningStats)
                     // 第 7 项：资料库顶部“歌单”卡换成音乐等级（/api/user/level
                     // 的真实等级）；未登录 / 未取到时显示 —。
                     StatCard("音乐等级", mine.level?.let { "Lv.$it" } ?: "—", Modifier.weight(1f))
+                    // 第五轮第 23 项：删掉左边的“收藏歌曲”卡；听歌时长放
+                    // 等级右边，单位 h、可带一位小数（如 1537.5h）；点卡仍进时长页。
+                    StatCard("听歌时长", formatHours(mine.estimatedListeningMinutes), Modifier.weight(1f), onClick = onOpenListeningStats)
                 }
             }
         }

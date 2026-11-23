@@ -460,7 +460,9 @@ class NeteaseClient(
     override suspend fun userDetail(uid: Long): UserProfile {
         val o = post("/api/v1/user/detail/$uid", obj(), Crypto.WEAPI).body
         val p = o.getJSONObject("profile")
-        return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"))
+        // 第五轮第 24 项：注册天数取响应顶层的 createDays（服务端已算好）；
+        // profile.createTime 与顶层 createTime 对该账号均为 -1，不能用。
+        return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"), o.optInt("createDays", -1))
     }
 
     override suspend fun likeList(uid: Long): List<Long> =
@@ -539,6 +541,30 @@ class NeteaseClient(
     override suspend fun artistTopSongs(id: Long): List<Song> =
         post("/api/artist/top/song", obj("id" to id), Crypto.WEAPI)
             .body.arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+
+    // 第五轮第 13 项：歌手全部歌曲。/api/v1/artist/songs（上游 artist_songs
+    // 模块未指定 crypto，默认 eapi；2026-11-23 上游直连实测 eapi 返回
+    // code 200，total 589、more=true）。分页拉全量（limit 100），再用
+    // filterAndSortArtistSongs 去 live + 原唱/单曲优先排序（见 ArtistSongs.kt）。
+    override suspend fun artistSongs(id: Long): List<Song> {
+        val all = mutableListOf<Song>()
+        var offset = 0
+        var pages = 0
+        while (pages < 50) {
+            pages++
+            val body = post(
+                "/api/v1/artist/songs",
+                obj("id" to id, "private_cloud" to "true", "work_type" to 1, "order" to "hot", "offset" to offset, "limit" to 100),
+                Crypto.EAPI,
+            ).body
+            val page = body.arr("songs").let { a -> (0 until a.length()).map { parseSong(a.getJSONObject(it)) } }
+            if (page.isEmpty()) break
+            all += page
+            offset += page.size
+            if (!body.optBoolean("more", false)) break
+        }
+        return filterAndSortArtistSongs(all, id)
+    }
 
     override suspend fun artistAlbums(id: Long): List<Album> =
         post("/api/artist/albums/$id", obj("limit" to 30, "offset" to 0, "total" to true), Crypto.WEAPI)
@@ -634,13 +660,13 @@ class NeteaseClient(
                 Crypto.EAPI,
             ).body
         }.getOrNull()
-        val payload = first?.let { o -> LyricPayload(o.optJSONObject("yrc")?.optString("lyric"), o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric")) }
+        val payload = first?.let { o -> LyricPayload(o.optJSONObject("yrc")?.optString("lyric"), o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric"), o.optJSONObject("romalrc")?.optString("lyric")) }
         if (payload != null && (!payload.yrc.isNullOrBlank() || !payload.lrc.isNullOrBlank())) return payload
         val o = post(
             "/api/song/lyric",
             obj("id" to id, "tv" to -1, "lv" to -1, "rv" to -1, "kv" to -1, "_nmclfl" to 1),
             Crypto.EAPI,
         ).body
-        return LyricPayload(null, o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric"))
+        return LyricPayload(null, o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric"), o.optJSONObject("romalrc")?.optString("lyric"))
     }
 }

@@ -1,11 +1,13 @@
 package com.tokimusic.app.ui.player
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,12 +39,9 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
@@ -80,6 +79,9 @@ import kotlin.math.abs
     positionProvider: () -> Long,
     modifier: Modifier = Modifier,
     showTranslation: Boolean = true,
+    // 第五轮第 26 项：罗马音显示（默认关；有 romalrc 的行才显示罗马音行，
+    // 无数据不显示；罗马音行不参与逐字高亮，只跟当前行的亮暗走）。
+    showRomaji: Boolean = false,
     coverColors: CoverColors? = null,
     hazeState: HazeState? = null,
     backdropBlur: Boolean = true,
@@ -95,6 +97,9 @@ import kotlin.math.abs
     bottomFadeColor: Color? = null,
     // 第五轮第 6 项：点歌词行跳到该行开头（行级跳转）。
     onSeek: (Long) -> Unit = {},
+    // 第五轮第 17 项：沉浸式——控制区已隐藏，歌词区撑满全屏；
+    // “回到当前行”按钮一并弹到最底（底部边距 80dp → 16dp，做动画）。
+    immersive: Boolean = false,
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
@@ -149,7 +154,7 @@ import kotlin.math.abs
                 val isActive = i == active
                 val distance = if (active < 0) i + 1 else abs(i - active)
                 LyricLineRow(
-                    line, isActive, distance, posState, showTranslation, textColor, dimColor,
+                    line, isActive, distance, posState, showTranslation, showRomaji, textColor, dimColor,
                     fontFamily = fontFamily,
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
@@ -185,9 +190,15 @@ import kotlin.math.abs
         }
         // 第五轮第 7 项：手动翻看后暂停跟随，右下角出“回到当前行”小按钮；
         // 点它恢复跟随（userBrowsing=false 后上面的 LaunchedEffect 自会滚回去）。
+        // 第五轮第 17 项：沉浸式下按钮弹到最底（16dp，跟歌词区一起撑满全屏）。
         if (userBrowsing && active >= 0) {
+            val backToCurrentBottom by animateDpAsState(
+                targetValue = if (immersive) 16.dp else 80.dp,
+                animationSpec = tween(300),
+                label = "backToCurrentBottom",
+            )
             Box(
-                Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 80.dp)
+                Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = backToCurrentBottom)
                     .clip(RoundedCornerShape(percent = 50))
                     .background(textColor.copy(alpha = 0.14f))
                     .clickable { userBrowsing = false },
@@ -216,6 +227,7 @@ private fun LyricLineRow(
     distance: Int,
     posState: State<Long>,
     showTranslation: Boolean,
+    showRomaji: Boolean,
     textColor: Color,
     dimColor: Color,
     fontFamily: FontFamily = InterFamily,
@@ -225,21 +237,6 @@ private fun LyricLineRow(
 ) {
     val pos = if (isActive) posState.value else 0L
     val dim = lineAlpha(distance)
-    val annotated = remember(line, isActive, pos, textColor, dim) {
-        buildAnnotatedString {
-            for (word in line.words) {
-                when {
-                    isActive -> {
-                        val progress = YrcParser.wordProgress(word, pos)
-                        val sungChars = (word.text.length * progress).toInt().coerceIn(0, word.text.length)
-                        if (sungChars > 0) withStyle(SpanStyle(color = textColor)) { append(word.text.substring(0, sungChars)) }
-                        if (sungChars < word.text.length) withStyle(SpanStyle(color = textColor.copy(alpha = 0.45f))) { append(word.text.substring(sungChars)) }
-                    }
-                    else -> withStyle(SpanStyle(color = textColor.copy(alpha = dim))) { append(word.text) }
-                }
-            }
-        }
-    }
     // 非当前行按距离轻微模糊，越远越糊；当前行始终清晰（第 17 项）。
     val blurPx = when (distance) {
         0 -> 0f
@@ -270,13 +267,59 @@ private fun LyricLineRow(
             },
     ) {
         androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
-            Text(
-                annotated,
+            if (isActive) {
+                // 第五轮第 18 项：当前行双层逐字高亮——底层整行 45% 透明 +
+                // 顶层实色，顶层用横向渐变 Brush 做连续扫过的遮罩（实色到
+                // 边界，末端 2dp 渐变到透明），边界随词时间轴像素级流动，
+                // 不再按字符取整硬切。选 Brush 而非 clip 裁切 + DstIn：
+                // DstIn 会把底层 45% 的文字也在边界处吃掉，留一道透底的
+                // 缝；Brush 只改顶层自身的填充，两层排版天然一致。非当
+                // 前行仍是单层 dim 色（第 18 项只重做当前行）。
+                val activeStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp)
+                BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                    val density = LocalDensity.current
+                    val widthPx = with(density) { maxWidth.toPx() }
+                    val progress = YrcParser.lineProgress(line, pos)
+                    val sungBrush = if (widthPx <= 0f) {
+                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                    } else {
+                        val fadePx = with(density) { 2.dp.toPx() }
+                        val w = (widthPx * progress).coerceIn(0f, widthPx)
+                        val fadeStart = ((w - fadePx).coerceAtLeast(0f) / widthPx).coerceIn(0f, 1f)
+                        val fadeEnd = (w / widthPx).coerceIn(0f, 1f)
+                        Brush.horizontalGradient(
+                            0f to textColor,
+                            fadeStart to textColor,
+                            fadeEnd to textColor.copy(alpha = 0f),
+                            1f to textColor.copy(alpha = 0f),
+                        )
+                    }
+                    Text(line.text, textAlign = TextAlign.Start, style = activeStyle, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = textColor.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth())
+                    Text(line.text, textAlign = TextAlign.Start, style = activeStyle.copy(brush = sungBrush), fontWeight = FontWeight.Bold, fontFamily = fontFamily, modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                Text(
+                    line.text,
+                    textAlign = TextAlign.Start,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = fontFamily,
+                    color = textColor.copy(alpha = dim),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                )
+            }
+            // 第五轮第 26 项：罗马音行夹在原文与翻译之间（原文 → 罗马音 →
+            // 翻译），与翻译行同款式（bodyLarge 粗体、同色同透明度、同
+            // 10dp 下边距），不参与逐字高亮；开了罗马音后三行叠加，行高
+            // 随内容长——滚动锚点按行号算，不依赖固定行高，无需另改。
+            if (showRomaji && !line.romaji.isNullOrBlank()) Text(
+                line.romaji!!,
                 textAlign = TextAlign.Start,
-                style = if (isActive) MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp) else MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                color = if (isActive) dimColor else textColor.copy(alpha = (dim * 0.5f).coerceAtMost(0.4f)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
                 line.translation!!,

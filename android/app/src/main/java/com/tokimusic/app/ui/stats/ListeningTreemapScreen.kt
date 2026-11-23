@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.theme.CirroBlack
 import java.time.LocalDate
 import java.time.YearMonth
@@ -231,14 +231,13 @@ fun ListeningTreemapScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) 
                 }
             }
             if (entries.isNotEmpty()) {
+                // 第五轮第 23 项：与时长页同步——明细行走 SettingsRow（与
+                // ListeningStatsScreen 同款），时长用 h 格式（formatLongDuration）。
                 items(entries.sortedByDescending { it.millis }) { entry ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(entry.label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        Text(formatLongDuration(entry.millis), style = MaterialTheme.typography.bodyMedium)
-                    }
+                    SettingsRow(
+                        headline = entry.label,
+                        trailing = { Text(formatLongDuration(entry.millis), style = MaterialTheme.typography.bodyMedium) },
+                    )
                 }
             }
             item { Spacer(Modifier.height(8.dp)) }

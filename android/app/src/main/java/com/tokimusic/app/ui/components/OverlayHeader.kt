@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -57,6 +59,10 @@ import dev.chrisbanes.haze.HazeState
  * 用 weight Spacer 把头像顶过去。
  * [titleAlpha]/[titleOffsetY]（第三轮第 5 项）：只作用在标题 chip 上（淡入 +
  * 上移动画），返回 chip 不参与——歌单详情页滑动时返回按钮一直显示。
+ * [titleSolidColor]（第五轮第 25 项）：非空时标题 chip 在磨砂之下先铺一层
+ * 不透明底色——详情页滚动后，封面渐变的上端色会透过半透明磨砂让顶栏
+ * 看起来还留着封面；不透明底按页面底色（CirroBlack）盖住它。chip 本身
+ * 仍随 titleAlpha 淡入淡出，所以进页时（alpha 0）看不到这层底色。
  */
 @Composable
 fun OverlayTitleHeader(
@@ -70,6 +76,7 @@ fun OverlayTitleHeader(
     titleAlpha: Float = 1f,
     titleOffsetY: Float = 0f,
     trailing: (@Composable () -> Unit)? = null,
+    titleSolidColor: Color? = null,
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
@@ -99,6 +106,7 @@ fun OverlayTitleHeader(
                     .weight(1f, fill = false)
                     .heightIn(min = 56.dp)
                     .clip(titleShape)
+                    .let { if (titleSolidColor != null) it.background(titleSolidColor, titleShape) else it }
                     .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY },
                 contentAlignment = Alignment.CenterStart,
             ) {

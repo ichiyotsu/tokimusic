@@ -9,8 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,14 +44,19 @@ fun DiscoverScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPl
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题。
+        // 第五轮第 14 项：排行榜 2 行、推荐歌单 3 行横向网格（卡片 140dp 不变，
+        // 横向滚动保留）。单卡高约 200dp（140 封面 + 8 + 两行文字）。
         if (toplist.isNotEmpty()) {
             item {
                 Text("排行榜", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             }
             item {
-                LazyRow(
+                LazyHorizontalGrid(
+                    rows = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxWidth().height(200.dp * 2 + 16.dp),
                     contentPadding = PaddingValues(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(toplist) { playlist ->
                         PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
@@ -63,9 +69,12 @@ fun DiscoverScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPl
                 Text("推荐歌单", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             }
             item {
-                LazyRow(
+                LazyHorizontalGrid(
+                    rows = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxWidth().height(200.dp * 3 + 16.dp * 2),
                     contentPadding = PaddingValues(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(home.playlists) { playlist ->
                         PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
