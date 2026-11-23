@@ -41,8 +41,9 @@ import com.tokimusic.app.data.model.Song
  * 上，行会比页内其他内容偏左。64dp 高，左右 24dp，标题 titleMedium，
  * 说明 bodySmall，右侧可放操作控件。
  *
- * [horizontalPadding]：弹窗内使用时传 4dp（弹窗容器已有 20dp 内边距，
- * 合计 24dp 与页边距一致）。
+ * [horizontalPadding]：弹窗内使用时传 0dp（TokiSheetContainer 容器已有
+ * 24dp 内边距，合计 24dp 与页边距一致）；设置弹窗（原生 sheet，列边距
+ * 同样 24dp）内的行沿用 4dp 的既有样式（总计 28dp，第六轮第 19 项未动）。
  */
 @Composable fun SettingsRow(
     headline: String,
@@ -156,7 +157,8 @@ fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".form
  * 可选说明 + 右侧 chevron，整行可点。圆角 20dp，卡片色 surfaceContainer
  *（Cirro 模式下为 #1C1C1E）。
  *
- * [horizontalPadding]：弹窗内使用时传 4dp（弹窗容器已有 20dp 内边距）。
+ * [horizontalPadding]：弹窗内使用时传 0dp（TokiSheetContainer 容器已有
+ * 24dp 内边距）；设置弹窗内的行沿用 4dp 的既有样式。
  */
 @Composable
 fun CirroCardRow(
@@ -189,7 +191,9 @@ fun CirroCardRow(
 /**
  * 底部弹窗容器（TokiNote SheetContainer 配方，见 ProfileSheet.kt /
  * NoteSheets.kt）：ModalBottomSheet，容器色 surfaceContainerLow，顶部圆角
- * 32dp，横向内边距 20dp，底部 28dp。设置 / 搜索 / 队列三个弹窗共用。
+ * 32dp，横向内边距 24dp（第六轮第 19 项：由 20dp 改为 24dp，与页边距统一；
+ * 里面用 4dp 的行同步改为 0dp，合计仍为 24dp），底部 28dp。设置 /
+ * 搜索 / 队列三个弹窗共用。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -206,7 +210,7 @@ fun TokiSheetContainer(
         modifier = modifier,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             content = content,
         )

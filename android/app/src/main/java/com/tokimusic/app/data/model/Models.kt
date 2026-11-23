@@ -1,7 +1,20 @@
 package com.tokimusic.app.data.model
+/** Music source (sixth round, item 19/20 + QQ playback): the two login sources. */
+enum class MusicSource { NETEASE, QQ }
+
+/** Stable 64-bit id for a QQ song: QQ songmids are strings, but the app keys songs by Long id (queue, mediaId, url cache). FNV-1a 64 over "qq:$songmid" — deterministic across restarts, collision odds negligible; QQ songs never go through NetEase id-based APIs, so a synthetic id is safe. */
+fun qqSongId(songmid: String): Long {
+    var h = -3750763034362895579L // FNV-1a 64 offset basis (0xcbf29ce484222325)
+    for (b in "qq:$songmid".toByteArray(Charsets.UTF_8)) {
+        h = h xor (b.toLong() and 0xFF)
+        h *= 1099511628211L // FNV-1a 64 prime
+    }
+    return h
+}
+
 data class Artist(val id: Long, val name: String, val picUrl: String = "", val briefDesc: String = "", val musicSize: Int = 0, val albumSize: Int = 0)
 data class Album(val id: Long, val name: String, val coverUrl: String = "", val artistText: String = "", val trackCount: Int = 0)
-data class Song(val id: Long, val name: String, val artists: List<Artist>, val albumName: String = "", val picUrl: String = "", val durationMs: Long = 0, val fee: Int = 0) {
+data class Song(val id: Long, val name: String, val artists: List<Artist>, val albumName: String = "", val picUrl: String = "", val durationMs: Long = 0, val fee: Int = 0, /** Which backend serves this song (sixth round, QQ playback). NetEase songs keep their real numeric id; QQ songs carry a synthetic id from [qqSongId] and the real songmid in [sourceId]. */ val source: MusicSource = MusicSource.NETEASE, val sourceId: String = "") {
     val artistText: String get() = artists.joinToString(" / ") { it.name }
 }
 data class Playlist(val id: Long, val name: String, val coverUrl: String = "", val trackCount: Int = 0, val creatorName: String = "", val creatorId: Long = 0, val subscribed: Boolean = false, val playCount: Long = 0, val description: String = "")

@@ -61,8 +61,11 @@ import dev.chrisbanes.haze.HazeState
  * 上移动画），返回 chip 不参与——歌单详情页滑动时返回按钮一直显示。
  * [titleSolidColor]（第五轮第 25 项）：非空时标题 chip 在磨砂之下先铺一层
  * 不透明底色——详情页滚动后，封面渐变的上端色会透过半透明磨砂让顶栏
- * 看起来还留着封面；不透明底按页面底色（CirroBlack）盖住它。chip 本身
- * 仍随 titleAlpha 淡入淡出，所以进页时（alpha 0）看不到这层底色。
+ * 看起来还留着封面；不透明底按页面底色（CirroBlack）盖住它。
+ * 第六轮第 3 项根因：底色修饰符必须放在 graphicsLayer 之内（之后），
+ * 否则 titleAlpha 的淡入淡出只作用于文字、底色永远不透明——进歌单时
+ * （alpha 0）文字看不见、黑底整块留在顶栏，就是用户截图里的空黑框。
+ * 修饰符顺序是本函数的关键不变量：clip → graphicsLayer → background。
  */
 @Composable
 fun OverlayTitleHeader(
@@ -77,6 +80,9 @@ fun OverlayTitleHeader(
     titleOffsetY: Float = 0f,
     trailing: (@Composable () -> Unit)? = null,
     titleSolidColor: Color? = null,
+    // 第六轮第 1 项：标题组最左侧的插槽（主页左上角源切换下拉入口）——
+    // 只在主页双源都启用时传，放在返回 chip 之前，与标题 chip 同样 12dp 间距。
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
@@ -97,6 +103,10 @@ fun OverlayTitleHeader(
             Modifier.weight(1f, fill = false),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(tokiSpace("md")))
+            }
             if (onBack != null) {
                 TokiScrollBackChip(backdropBlur, hazeState, onBack, strong = strong)
                 Spacer(Modifier.width(tokiSpace("md")))
@@ -106,8 +116,10 @@ fun OverlayTitleHeader(
                     .weight(1f, fill = false)
                     .heightIn(min = 56.dp)
                     .clip(titleShape)
-                    .let { if (titleSolidColor != null) it.background(titleSolidColor, titleShape) else it }
-                    .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY },
+                    // 第六轮第 3 项：底色在 graphicsLayer 之内——与文字一起淡入淡出、
+                    // 一起上移；放外面时 alpha 管不到底色，进页会留一个空黑框。
+                    .graphicsLayer { alpha = titleAlpha; translationY = titleOffsetY }
+                    .let { if (titleSolidColor != null) it.background(titleSolidColor, titleShape) else it },
                 contentAlignment = Alignment.CenterStart,
             ) {
                 TokiScrollChipBackdrop(

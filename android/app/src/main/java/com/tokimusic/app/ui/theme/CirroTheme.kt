@@ -22,6 +22,10 @@ val CirroSecondary: Color = Color(0xFF8E8E93)
 val CirroPlayKey: Color = Color(0xFFF5E6D3)
 val CirroPlayKeyIcon: Color = Color(0xFF2E1A0C)
 val CirroLogoutRed: Color = Color(0xFFFF3B30)
+/** 源品牌色（第六轮第 19 项）：两源都用实心音符图标，以颜色区分——
+ * 网易云红、QQ 绿（品牌标准色）。 */
+val NeteaseRed: Color = Color(0xFFE60026)
+val QqGreen: Color = Color(0xFF31C27C)
 /** 播放器暖棕渐变的回退色（取色失败或封面无彩色时用）。 */
 val CirroWarmTop: Color = Color(0xFF5A2A12)
 val CirroWarmBottom: Color = Color(0xFF2E1A0C)

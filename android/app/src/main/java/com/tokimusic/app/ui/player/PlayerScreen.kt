@@ -64,6 +64,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -207,7 +208,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val castActive = rememberCastActive()
     val context = LocalContext.current
     LaunchedEffect(state.index) {
-        song?.let { vm.loadLyrics(it.id) }
+        song?.let { vm.loadLyrics(it) }
         // 切歌时沉浸式复位（showLyrics 不复位——第 21 项用户确认“切歌不用复位”）。
         immersiveLyrics = false
     }
@@ -677,7 +678,12 @@ private fun MoreSheet(
     onOpenQueue: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // 第六轮第 25 项：与设置弹窗同款 skipPartiallyExpanded = true，内容
+    // 加长时也不会先停在 50% 半展开锚点（内容短时无视觉变化）。
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)

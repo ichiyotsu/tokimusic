@@ -95,6 +95,39 @@ class CoverColorsTest {
     }
 
     @Test
+    fun onCoverTextAtSamplesPositionNotTop() {
+        // 第六轮第 3/5 项：顶部亮、越往下越暗的渐变——按顶部算是深色字，
+        // 按标题实际位置（约 0.4–0.5 高度）算应是白字；旧的 onCoverText()
+        // 在这种封面上会把深色字落在偏暗的中段背景上。
+        val colors = CoverColors(
+            androidx.compose.ui.graphics.Color(0xFFE8E0D0),
+            androidx.compose.ui.graphics.Color(0xFF2E1A0C),
+        )
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF1C1C1E), colors.onCoverTextAt(0f))
+        assertEquals(androidx.compose.ui.graphics.Color.White, colors.onCoverTextAt(0.5f))
+        assertEquals(androidx.compose.ui.graphics.Color.White, colors.onCoverTextAt(0.43f))
+        assertEquals(colors.onCoverTextAt(0.43f).copy(alpha = 0.7f), colors.onCoverTextDimAt(0.43f))
+    }
+
+    @Test
+    fun playButtonBgKeepsCoverHue() {
+        // 第六轮第 5 项：按钮不再是纯白/纯深灰二值——暗封面用浅色相底 +
+        // 黑图标，亮封面用深色相底 + 白图标；两种底色都保留封面的暖色相。
+        val dark = CoverColors(androidx.compose.ui.graphics.Color(0xFF5A2A12), androidx.compose.ui.graphics.Color(0xFF2E1A0C))
+        val darkBg = dark.playButtonBg()
+        assertTrue(darkBg.red > 0.7f) // 浅色相底
+        assertTrue(darkBg.red > darkBg.green)
+        assertTrue(darkBg.green > darkBg.blue)
+        assertEquals(androidx.compose.ui.graphics.Color.Black, dark.playButtonIcon())
+        val light = CoverColors(androidx.compose.ui.graphics.Color(0xFFE8E0D0), androidx.compose.ui.graphics.Color(0xFF8A7A60))
+        val lightBg = light.playButtonBg()
+        assertTrue(lightBg.red < 0.45f) // 深色相底
+        assertTrue(lightBg.red > lightBg.green)
+        assertTrue(lightBg.green > lightBg.blue)
+        assertEquals(androidx.compose.ui.graphics.Color.White, light.playButtonIcon())
+    }
+
+    @Test
     fun totalDurationKeepsMinutesPastOneHour() {
         // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))

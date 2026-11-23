@@ -12,7 +12,7 @@ interface ApiSettings {
 }
 
 /** Persists the login cookie, the anonymous device id and theme mode. (Swap SharedPreferences for EncryptedSharedPreferences before release.) */
-class SettingsStore(context: Context) : ApiSettings {
+class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.QqSettings {
     private val prefs = context.getSharedPreferences("tokimusic_settings", Context.MODE_PRIVATE)
     override var cookie: String get() = prefs.getString("cookie", "") ?: ""
         set(v) { prefs.edit().putString("cookie", v).apply() }
@@ -82,4 +82,43 @@ class SettingsStore(context: Context) : ApiSettings {
     /** 歌词字体预设（第三轮第 16 项）："inter_pingfang"（默认）或 "google_noto"。 */
     var lyricFontPreset: String get() = prefs.getString("lyric_font_preset", "inter_pingfang") ?: "inter_pingfang"
         set(v) { prefs.edit().putString("lyric_font_preset", v).apply() }
+    /** QQ 音乐登录凭证（第六轮第 1 项）：musicid / musickey，与网易云 cookie
+     * 一样明文存 SharedPreferences（P1 同款，见类注释）。空 = 未登录 QQ。 */
+    override var qqMusicId: String get() = prefs.getString("qq_music_id", "") ?: ""
+        set(v) { prefs.edit().putString("qq_music_id", v).apply() }
+    override var qqMusicKey: String get() = prefs.getString("qq_music_key", "") ?: ""
+        set(v) { prefs.edit().putString("qq_music_key", v).apply() }
+    /** QQ 客户端 GUID（第六轮第 1 项）：CGI comm 的 OpenUDID/udid，
+     * 稳定不变，首次使用时生成。 */
+    override var qqDeviceId: String get() = prefs.getString("qq_device_id", null) ?: run {
+            val id = java.util.UUID.randomUUID().toString().replace("-", "")
+            prefs.edit().putString("qq_device_id", id).apply()
+            id
+        }
+        set(v) { prefs.edit().putString("qq_device_id", v).apply() }
+    /** QQ OpenUDID2（与 qqDeviceId 同批生成，comm 字段）。 */
+    override var qqDeviceId2: String get() = prefs.getString("qq_device_id_2", null) ?: run {
+            val id = java.util.UUID.randomUUID().toString().replace("-", "")
+            prefs.edit().putString("qq_device_id_2", id).apply()
+            id
+        }
+        set(v) { prefs.edit().putString("qq_device_id_2", v).apply() }
+    /** QQ Android id（第六轮第 1 项）：CGI comm 的 aid，16 位 hex，
+     * 首次使用时生成。 */
+    override var qqAndroidId: String get() = prefs.getString("qq_android_id", null) ?: run {
+            val id = (1..16).map { "0123456789abcdef".random() }.joinToString("")
+            prefs.edit().putString("qq_android_id", id).apply()
+            id
+        }
+        set(v) { prefs.edit().putString("qq_android_id", v).apply() }
+    /** 首次 QQ 登录时间戳（毫秒，第六轮第 6 项：QQ 加入天数从它起算；
+     * 0 = 未记录；退出 QQ 不清除——“第一次登录”只记一次）。 */
+    override var qqFirstLoginMs: Long get() = prefs.getLong("qq_first_login_ms", 0L)
+        set(v) { prefs.edit().putLong("qq_first_login_ms", v).apply() }
+    /** 源启用开关（第六轮第 19 项）：网易云默认开，QQ 默认关；QQ 登录成功
+     * 时自动打开 QQ。设置里的开关与主页/资料库下拉菜单翻同一个标志。 */
+    override var neteaseEnabled: Boolean get() = prefs.getBoolean("netease_enabled", true)
+        set(v) { prefs.edit().putBoolean("netease_enabled", v).apply() }
+    override var qqEnabled: Boolean get() = prefs.getBoolean("qq_enabled", false)
+        set(v) { prefs.edit().putBoolean("qq_enabled", v).apply() }
 }
