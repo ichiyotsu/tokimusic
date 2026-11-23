@@ -37,8 +37,8 @@ class UpdateCheckerTest {
           "tag_name": "$tag",
           "body": "1 Android 修复了播放器问题",
           "assets": [
-            {"name": "TokiMusic-${tag.removePrefix("v")}.apk", "browser_download_url": "https://example.com/TokiMusic.apk"},
-            {"name": "TokiMusic-${tag.removePrefix("v")}.aab", "browser_download_url": "https://example.com/TokiMusic.aab"}
+            {"name": "TokiMusic-${tag.removePrefix("v")}.apk", "browser_download_url": "https://example.com/TokiMusic.apk", "size": 27832027},
+            {"name": "TokiMusic-${tag.removePrefix("v")}.aab", "browser_download_url": "https://example.com/TokiMusic.aab", "size": 29827677}
           ]
         }
     """.trimIndent()
@@ -48,6 +48,11 @@ class UpdateCheckerTest {
         assertEquals("0.1.7", release.version)
         assertEquals("1 Android 修复了播放器问题", release.notes)
         assertEquals("https://example.com/TokiMusic.apk", release.apkUrl)
+    }
+
+    @Test fun parseLatestReleaseCapturesApkSize() {
+        val release = parseLatestRelease(sampleJson("v0.1.7"))!!
+        assertEquals(27_832_027L, release.apkSizeBytes)
     }
 
     @Test fun parseLatestReleaseWithoutApkAsset() {

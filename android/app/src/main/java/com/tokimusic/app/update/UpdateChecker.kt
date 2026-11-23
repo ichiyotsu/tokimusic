@@ -8,10 +8,11 @@ import okhttp3.Request
 import org.json.JSONObject
 
 /** 第三轮第 15 项：应用内更新检查。用户决定（2026-11-21）：提醒 + 弹窗——
- * 检查到新版时弹提醒对话框，不自动下载，不做独立更新页；用户点确认后
- * 再下载安装（见 UpdateInstaller）。每天最多自动查一次（SettingsStore
- * 的 lastUpdateCheckMs 节流）；设置页的“检查更新”行可随时手动查。
- * 注意：未登录的 GitHub API 每小时限 60 次，节流也为此服务。 */
+ * 检查到新版时弹提醒，不自动下载，不做独立更新页；用户点确认后
+ * 再下载安装（见 UpdateInstaller）。
+ * 第五轮第 15 项：每次冷启动都查一次（去掉每天一次节流；设置 → 通用
+ * 有“启动时检查更新”开关，默认开）；有新版时弹底部弹窗（见 UpdateDialog）。
+ * 注意：未登录的 GitHub API 每小时限 60 次。 */
 
 data class LatestRelease(
     /** 不带 v 前缀的版本号（如 0.1.7；预发布后缀 -bN 保留原样）。 */
@@ -20,6 +21,8 @@ data class LatestRelease(
     val notes: String,
     /** TokiMusic-{version}.apk 的下载地址；找不到对应附件时为 null。 */
     val apkUrl: String?,
+    /** APK 附件的字节数（GitHub assets 的 size 字段）；拿不到时为 null。 */
+    val apkSizeBytes: Long? = null,
 )
 
 sealed interface UpdateCheckResult {
@@ -52,6 +55,7 @@ fun parseLatestRelease(json: String): LatestRelease? {
     val notes = obj.optString("body", "")
     var apkUrl: String? = null
     var anyApkUrl: String? = null
+    var apkSizeBytes: Long? = null
     val assets = obj.optJSONArray("assets") ?: return LatestRelease(version, notes, null)
     for (i in 0 until assets.length()) {
         val asset = assets.optJSONObject(i) ?: continue
@@ -60,10 +64,13 @@ fun parseLatestRelease(json: String): LatestRelease? {
         if (url.isEmpty()) continue
         if (name.endsWith(".apk")) {
             if (anyApkUrl == null) anyApkUrl = url
-            if (name == "TokiMusic-$version.apk") apkUrl = url
+            if (name == "TokiMusic-$version.apk") {
+                apkUrl = url
+                apkSizeBytes = asset.optLong("size", -1).takeIf { it >= 0 }
+            }
         }
     }
-    return LatestRelease(version, notes, apkUrl ?: anyApkUrl)
+    return LatestRelease(version, notes, apkUrl ?: anyApkUrl, apkSizeBytes)
 }
 
 object UpdateChecker {

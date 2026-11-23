@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.tokimusic.app.CrashLog
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
@@ -318,7 +319,24 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             null -> {}
         }
     }
-    // 第三轮第 15 项：手动检查更新（自动检查每天最多一次，见 TokiMusicApp）。
+    // 第五轮第 15 项：启动时检查更新（默认开）；关掉后只在设置里手动检查。
+    item {
+        var checkOnLaunch by remember { mutableStateOf(vm.store.checkUpdateOnLaunch) }
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("启动时检查更新", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = checkOnLaunch,
+                onCheckedChange = { checkOnLaunch = it; vm.store.checkUpdateOnLaunch = it },
+            )
+        }
+        Text(
+            "每次打开软件时检查一次新版本；关闭后只在设置里手动检查。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 第三轮第 15 项：手动检查更新（自动检查每次冷启动一次，见 TokiMusicApp）。
     item {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -341,7 +359,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
                 }
             },
         )
-        if (update != null) UpdatePrompt(update!!) { update = null }
+        if (update != null) UpdatePrompt(update!!, currentVersion = vm.versionName) { update = null }
     }
     item {
         // About: version read from BuildConfig via ViewModel, never hardcoded.
@@ -349,6 +367,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             "关于 TokiMusic",
             "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version}",
             horizontalPadding = 4.dp,
+        )
+    }
+    item {
+        // 第五轮第 4 项：导出崩溃日志（cacheDir/crash/）。点投放闪退的堆栈
+        // 靠它发回定位；没有记录时提示暂无。
+        val context = LocalContext.current
+        val crashCount = remember { CrashLog.listCrashFiles(context).size }
+        SettingsRow(
+            "导出崩溃日志",
+            if (crashCount > 0) "已有 $crashCount 份崩溃记录" else "暂无崩溃记录",
+            horizontalPadding = 4.dp,
+            onClick = {
+                if (!CrashLog.shareLatestCrash(context)) {
+                    Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
+                }
+            },
         )
     }
 }

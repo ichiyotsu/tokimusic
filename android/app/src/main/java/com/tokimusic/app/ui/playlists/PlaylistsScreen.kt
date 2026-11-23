@@ -27,8 +27,6 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.theme.CirroBlack
-import com.tokimusic.app.ui.theme.CirroPlayKey
-import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 /**
@@ -96,16 +94,17 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     val count = if (tracks.isNotEmpty()) tracks.size else pl.trackCount
     BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
         val density = LocalDensity.current
-        val quarterPx = with(density) { maxHeight.toPx() * 0.25f }
+        // 第五轮第 9 项（用户确认）：封面进页占 1/3，取代第三轮定的 1/4。
+        val coverMaxPx = with(density) { maxHeight.toPx() * (1f / 3f) }
         val scrollPx by remember {
             derivedStateOf {
                 if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset
                 else titleHeightPx + listState.firstVisibleItemScrollOffset
             }
         }
-        val coverHeightPx = (quarterPx - scrollPx).coerceAtLeast(0f)
+        val coverHeightPx = (coverMaxPx - scrollPx).coerceAtLeast(0f)
         Column(Modifier.fillMaxSize()) {
-            // 封面：进页占 1/4、完整显示，下缘淡出到封面渐变的上端色；
+            // 封面：进页占 1/3、完整显示，下缘淡出到封面渐变的上端色；
             // 封面延伸到状态栏下，悬浮标题（滑动后出现）的磨砂盖在上面。
             Box(Modifier.fillMaxWidth().height(with(density) { coverHeightPx.toDp() })) {
                 AsyncImage(pl.coverUrl, pl.name, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
@@ -162,16 +161,18 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 if (tracks.isNotEmpty()) {
                                     // 纯图标胶囊播放键（用户定）：56dp 高，最大圆角。
+                                    // 第五轮第 9 项：胶囊形状保留，底色改封面取色
+                                    // （onCoverText），图标反色；米色 CirroPlayKey 不再用。
                                     Box(
                                         Modifier
                                             .height(56.dp)
                                             .clip(RoundedCornerShape(percent = 50))
-                                            .background(CirroPlayKey)
-                                            .clickable { vm.play(tracks, 0) }
+                                            .background(coverColors.onCoverText())
+                                            .clickable { vm.play(tracks, 0, pl.name) }
                                             .padding(horizontal = 20.dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = CirroPlayKeyIcon, modifier = Modifier.size(28.dp))
+                                        Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
                                     }
                                     Spacer(Modifier.width(16.dp))
                                 }
@@ -185,7 +186,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             }
                         }
                     }
-                    itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i) } }
+                    itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) } }
                 }
                 Box(
                     Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(

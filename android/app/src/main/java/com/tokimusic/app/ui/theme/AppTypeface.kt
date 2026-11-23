@@ -30,6 +30,13 @@ private fun variableFonts(latin: Int, weight: FontWeight): List<Font> {
     )
 }
 
+/**
+ * 第五轮第 2 项（用户 2026-11-23 定稿“Google Inter 字体”）：全局字体搭配 =
+ * Google Inter（Google Fonts 上的 Inter）+ 思源黑体粗体。西文全局继续用
+ * Inter，不改用 Google Sans——Google Sans 只留在歌词预设 (b) 里
+ * （LyricFontGoogleSansNotoBold），TokiUiThemeTest 的全局禁令不动。
+ * 日 / 韩 / 繁中一律思源黑体 Bold，见下面的 variableFonts 回退链。
+ */
 val InterFamily: FontFamily = FontFamily(
     listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
         .flatMap { variableFonts(R.font.inter, it) },

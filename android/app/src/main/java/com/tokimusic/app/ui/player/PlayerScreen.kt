@@ -58,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
@@ -75,6 +76,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -90,6 +92,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.player.PlayerState
+import com.tokimusic.app.player.queueRowState
+import com.tokimusic.app.player.QueueRowState
 import com.tokimusic.app.player.rememberCastActive
 import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
@@ -117,7 +121,7 @@ import kotlinx.coroutines.delay
  * 回退纯色 #2C2C2E（Cirro）/ surfaceContainerLow。
  */
 @Composable
-fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false) {
+fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.index, state.isPlaying) { while (true) { pos = vm.player.currentPosition(); delay(500) } }
@@ -155,9 +159,13 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                     }
                 }
             }
+            // 第五轮第 9 项：细进度线用当前播放歌曲的封面取色（与播放器页
+            // 滑杆同款逻辑）；没传取色时走默认主题色。
             LinearProgressIndicator(
                 progress = { if (song.durationMs > 0) (pos.toFloat() / song.durationMs).coerceIn(0f, 1f) else 0f },
                 Modifier.fillMaxWidth().height(2.dp),
+                color = coverColors?.onCoverText() ?: ProgressIndicatorDefaults.linearColor,
+                trackColor = coverColors?.onCoverText()?.copy(alpha = 0.3f) ?: ProgressIndicatorDefaults.linearTrackColor,
             )
         }
     }
@@ -276,6 +284,9 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 fontFamily = lyricFontFamily(vm.store.lyricFontPreset),
                                 // 底部淡出端色取歌词区底部位置的真实背景色（黑条修复）。
                                 bottomFadeColor = bottomFadeColor,
+                                // 第五轮第 6 项：点歌词行跳到该行开头；暂停时只
+                                // 跳转、不自动播放（seekTo 在暂停态同样有效）。
+                                onSeek = { vm.player.seekTo(it) },
                             )
                         }
                     } else {
@@ -379,20 +390,24 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     }
                 }
                 // 第 14 项：底部三钮各备空心/实心两套图标，选中态用实心。
+                // 第五轮第 8 项：歌词钮恒为实心——封面/歌词视图之分页面本身
+                // 已表达，图标再用空心/实心区分是重复的；投放/队列钮不动。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TokiLongPressLabel(if (showLyrics) "返回封面" else "歌词") {
-                        PlainArtButton(if (showLyrics) Icons.Filled.FormatQuote else Icons.Outlined.FormatQuote, "歌词", tint = onCover) { showLyrics = !showLyrics }
+                        PlainArtButton(Icons.Filled.FormatQuote, "歌词", tint = onCover) { showLyrics = !showLyrics }
                     }
                     TokiLongPressLabel("投放") {
                         PlainArtButton(if (castActive) Icons.Filled.Cast else Icons.Outlined.Cast, "投放", tint = onCover) {
                             // 第 18 项：打开安卓原生投放窗；选路后音频立即切换。
+                            // 第五轮第 4 项：打不开时 Toast 提示，不再闪退。
                             val activity = context as? androidx.fragment.app.FragmentActivity
-                            if (activity != null) showCastChooser(activity)
-                            else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
+                            if (activity != null) {
+                                if (!showCastChooser(activity)) Toast.makeText(context, "投放窗打开失败，请重试", Toast.LENGTH_SHORT).show()
+                            } else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
                         }
                     }
                     TokiLongPressLabel("播放队列") {
@@ -514,29 +529,38 @@ private fun QueueSheet(state: PlayerState, onJump: (Int) -> Unit, onDismiss: () 
                     Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(24.dp))
                 }
             }
+            // 第五轮第 3 项：队列顶上显示来源（歌单名 / 搜索结果等）。
+            if (state.sourceName != null) {
+                Text(
+                    "来自：${state.sourceName}",
+                    Modifier.padding(start = 16.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             // 第三轮第 14 项：队列弹窗内容区上下边缘 24dp 淡出（淡出色取
             // 弹窗底色 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
             val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
             Box(Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize()) {
-                if (state.queue.isNotEmpty() && state.index in state.queue.indices) {
-                    item {
-                        // 第 9 项：当前曲只保留大圆角高亮（28dp 圆角）。
-                        Box(
+                // 第五轮第 3 项：完整显示当前在放的列表——已播放的行也渲染，
+                // 变暗显示（alpha 0.45），点它照样跳回去；当前曲保留大圆角高亮。
+                itemsIndexed(state.queue) { i, song ->
+                    when (queueRowState(state.index, i)) {
+                        QueueRowState.Current -> Box(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(28.dp))
                                 .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
                         ) {
-                            SongRow(state.queue[state.index], onLongPress = onLongPressSong) { onJump(state.index); onDismiss() }
+                            SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() }
                         }
-                    }
-                    if (state.index + 1 < state.queue.size) {
-                        itemsIndexed(state.queue) { i, song ->
-                            if (i > state.index) SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() }
+                        QueueRowState.Played -> Box(Modifier.fillMaxWidth().alpha(0.45f)) {
+                            SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() }
                         }
+                        QueueRowState.Upcoming -> SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() }
                     }
-                } else {
-                    itemsIndexed(state.queue) { i, song -> SongRow(song, onLongPress = onLongPressSong) { onJump(i); onDismiss() } }
                 }
             }
             Box(

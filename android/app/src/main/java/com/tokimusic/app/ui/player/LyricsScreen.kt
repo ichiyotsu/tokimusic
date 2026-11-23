@@ -2,6 +2,9 @@ package com.tokimusic.app.ui.player
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -88,6 +93,8 @@ import kotlin.math.abs
      * 深，会露出一道黑条（0.1.7 真机反馈）。
      */
     bottomFadeColor: Color? = null,
+    // 第五轮第 6 项：点歌词行跳到该行开头（行级跳转）。
+    onSeek: (Long) -> Unit = {},
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
@@ -115,8 +122,19 @@ import kotlin.math.abs
     var viewportH by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val anchorPx = (viewportH * 0.28f).toInt()
-    LaunchedEffect(active, viewportH) {
-        if (active >= 0 && viewportH > 0) listState.animateScrollToItem(active, scrollOffset = -anchorPx)
+    // 第五轮第 7 项（A）：用户手动拖动后暂停自动跟随，直到点“回到当前行”。
+    // 只认手指拖动（collectIsDraggedAsState），程序滚动（animateScrollToItem）
+    // 不会误触发——isScrollInProgress 在两者下都为真，不能用它区分。
+    var userBrowsing by remember { mutableStateOf(false) }
+    val isDragged by listState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(isDragged) { if (isDragged) userBrowsing = true }
+    LaunchedEffect(active, viewportH, userBrowsing) {
+        if (active >= 0 && viewportH > 0 && !userBrowsing) {
+            // 注意：Compose 1.12 的 animateScrollToItem 没有 animationSpec
+            // 参数（计划里的 tween(450) 传不进去），用默认 spring；“跳”的
+            // 感觉主要来自浏览时被强行拉回，由下面的暂停跟随解决。
+            listState.animateScrollToItem(active, scrollOffset = -anchorPx)
+        }
     }
     Box(modifier.fillMaxSize()) {
         LazyColumn(
@@ -136,6 +154,7 @@ import kotlin.math.abs
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
                     entranceDelayMs = minOf(distance, 6) * 40L,
+                    onSeek = onSeek,
                 )
             }
         }
@@ -164,8 +183,30 @@ import kotlin.math.abs
                 )
             }
         }
+        // 第五轮第 7 项：手动翻看后暂停跟随，右下角出“回到当前行”小按钮；
+        // 点它恢复跟随（userBrowsing=false 后上面的 LaunchedEffect 自会滚回去）。
+        if (userBrowsing && active >= 0) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 80.dp)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(textColor.copy(alpha = 0.14f))
+                    .clickable { userBrowsing = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "回到当前行",
+                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor,
+                )
+            }
+        }
     }
 }
+
+/** 点歌词跳转的目标时间：行首（行级跳转，第五轮第 6 项）。纯函数，JVM 单测覆盖。 */
+fun lyricSeekTargetMs(line: LyricLine): Long = line.startMs
 
 /** 单行歌词：只有当前行订阅位置状态（50ms tick 只重组这一行）。 */
 @Composable
@@ -180,6 +221,7 @@ private fun LyricLineRow(
     fontFamily: FontFamily = InterFamily,
     entranceWindow: Boolean = false,
     entranceDelayMs: Long = 0L,
+    onSeek: (Long) -> Unit = {},
 ) {
     val pos = if (isActive) posState.value else 0L
     val dim = lineAlpha(distance)
@@ -218,6 +260,9 @@ private fun LyricLineRow(
     }
     Box(
         Modifier.fillMaxWidth()
+            // 第五轮第 6 项：点行跳到行首；无水波纹，避免破坏歌词排版。
+            // 外层防误触盾是父级 clickable，子级点击优先，不会被盾吞掉。
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSeek(lyricSeekTargetMs(line)) }
             .graphicsLayer {
                 alpha = enterAlpha.value
                 translationY = enterOffsetY.value
