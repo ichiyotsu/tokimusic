@@ -71,10 +71,10 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.FloatingNavBar
 import com.tokimusic.app.ui.components.OverlayTitleHeader
 import com.tokimusic.app.ui.components.SongActionsSheet
+import com.tokimusic.app.ui.components.SourceDropdownButton
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.TokiSideActionButton
 import com.tokimusic.app.ui.components.navEntries
-import com.tokimusic.app.ui.discover.DiscoverScreen
 import com.tokimusic.app.ui.home.HomeScreen
 import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.library.LibrarySection
@@ -124,9 +124,10 @@ fun TokiMusicApp() {
     // 第五轮第 15 项：每次冷启动都查一次更新（去掉每天一次节流；设置 →
     // 通用可关“启动时检查更新”）。LaunchedEffect(Unit) 只在冷启动跑一次，
     // 从后台切回前台不重复查。有新版时弹底部弹窗（UpdatePrompt），不自动下载。
+    // 第六轮第 9 项：延后到 5 秒，不与首页请求抢带宽。
     var pendingUpdate by remember { mutableStateOf<LatestRelease?>(null) }
     LaunchedEffect(Unit) {
-        delay(2000)
+        delay(5000)
         if (!vm.store.checkUpdateOnLaunch) return@LaunchedEffect
         when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
             is UpdateCheckResult.UpdateAvailable -> pendingUpdate = r.release
@@ -240,6 +241,9 @@ fun TokiMusicApp() {
             label = "detailHeaderOffset",
         )
         val profile by vm.profile.collectAsState()
+        // 第六轮第 1 项：源启用开关（主页左上角下拉入口只在双源都启用时出现）。
+        val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+        val qqEnabled by vm.qqEnabled.collectAsState()
         val hazeState = rememberHazeState()
         // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 迷你播放器 + 悬浮标题共用。
         val barGlass = tokiContentChromeStrong(hazeState, theme.backdropBlur)
@@ -271,7 +275,7 @@ fun TokiMusicApp() {
         }
         // The player is a second-level page: no top bar, no bottom bar, no
         // rail — but it now carries its own floating back chip (0.1.10: every
-        // second-level page gets one). Tab pages (Home / Discover / Library)
+        // second-level page gets one). Tab pages (Home / Library)
         // draw the pinned overlay title too (round 2 item 3); playlist detail
         // keeps its overlay title for now — round 2 item 8 makes it
         // scroll-driven in phase B.
@@ -395,6 +399,19 @@ fun TokiMusicApp() {
                                     // tab 页不传（标题常显，磨砂是设计的一部分）。
                                     // chip 本身随 titleAlpha 淡入，进页时看不到这层底。
                                     titleSolidColor = if (albumId != null || artistId != null || playlistId != null) CirroBlack else null,
+                                    // 第六轮第 1 项：主页左上角源切换入口——
+                                    // 只在主页 tab 且双源都启用时出现；点开
+                                    // 下拉，网易云在上、QQ 在下，点行切换。
+                                    leading = if (dest == Dest.Home && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && neteaseEnabled && qqEnabled) {
+                                        {
+                                            SourceDropdownButton(
+                                                neteaseEnabled = neteaseEnabled,
+                                                qqEnabled = qqEnabled,
+                                                onToggleNetease = { vm.setSourceEnabled(MusicSource.NETEASE, !neteaseEnabled) },
+                                                onToggleQq = { vm.setSourceEnabled(MusicSource.QQ, !qqEnabled) },
+                                            )
+                                        }
+                                    } else null,
                                     // Tab 页：头像入口放标题行右侧（第 3 项）；第二级页面
                                     // （歌单/歌手/专辑详情 / 资料库分段 / 听歌时长）不放，只留返回 chip。
                                     // 搜索是底部弹窗，不占标题位。
@@ -502,7 +519,6 @@ fun TokiMusicApp() {
                                             onOpenArtist = { artistId = it },
                                             onSectionTitle = { homeSectionTitle = it },
                                         )
-                                        key == Dest.Discover -> DiscoverScreen(vm, topPadding, bottomPadding) { playlistId = it }
                                         else -> LibraryScreen(
                                             vm, topPadding, bottomPadding,
                                             onOpenSettings = { showSettings = true },

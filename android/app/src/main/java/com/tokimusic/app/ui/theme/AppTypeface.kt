@@ -20,14 +20,22 @@ import com.tokimusic.app.R
  * - 思源黑体 SC 连完整版也不含谚文音节，韩文由 noto_sans_kr.ttf 补——
  *   Noto Sans KR 的谚文子集（音节 11,172 全 + 谚文字母，wght 轴保留）。
  *   回退顺序永远是 SC 在前、KR 在后，共用字形只取 SC 的形状。
+ * - 第六轮第 4 项：SC 只有 122 个 CJK 兼容表意字（F900–FAFF），日文
+ *   数据里常见的兼容字（如 FA10 塚、FA6D）会落到系统字体；JP 子集
+ *   noto_sans_jp_bold.ttf（NotoSansJP[wght].ttf，Google Fonts，用
+ *   pyftsubset 切出假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F 共
+ *   1,074 字形、566KB，wght 轴保留）补在 SC 之后、KR 之前，共用字形
+ *   仍取 SC 的形状。注意：者 U+FAD6 与 﨑 U+FAD0 在全部 Noto 字体里都
+ *   没有（Google Fonts 变量版与 Adobe 完整 OTF 均实测缺失），这两字
+ *   仍走系统回退；JP 子集修的是其余 240 个 SC 所缺的兼容字。
  */
+/** CJK 回退链顺序（第六轮第 4 项，可单测）：SC 在前、JP 在后、KR 最后。 */
+internal val cjkFallbackOrder = listOf(R.font.noto_sans_sc, R.font.noto_sans_jp_bold, R.font.noto_sans_kr)
+
 private fun variableFonts(latin: Int, weight: FontWeight): List<Font> {
     val variation = FontVariation.Settings(FontVariation.weight(weight.weight))
-    return listOf(
-        Font(latin, weight = weight, variationSettings = variation),
-        Font(R.font.noto_sans_sc, weight = weight, variationSettings = variation),
-        Font(R.font.noto_sans_kr, weight = weight, variationSettings = variation),
-    )
+    return listOf(Font(latin, weight = weight, variationSettings = variation)) +
+        cjkFallbackOrder.map { Font(it, weight = weight, variationSettings = variation) }
 }
 
 /**
@@ -61,6 +69,8 @@ val LyricFontGoogleSansNotoBold: FontFamily = FontFamily(
     listOf(
         Font(R.font.google_sans_bold, FontWeight.Bold),
         Font(R.font.noto_sans_sc, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+        // 第六轮第 4 项：JP 子集补 SC 所缺的兼容表意字（与 InterFamily 同链）。
+        Font(R.font.noto_sans_jp_bold, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
         Font(R.font.noto_sans_kr, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
     ),
 )

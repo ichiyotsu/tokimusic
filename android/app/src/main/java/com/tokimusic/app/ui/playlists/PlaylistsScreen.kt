@@ -93,6 +93,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
         // 第五轮第 9 项（用户确认）：封面进页占 1/3，取代第三轮定的 1/4。
         val coverHeight = maxHeight * COLLAPSING_COVER_FRACTION
+        // 第六轮第 3/5 项：标题块中心约在封面底边下方 82dp 处（创建者行 +
+        // 歌单名行的一半），取色按该高度的渐变色算，不再按渐变顶部算。
+        val titleFraction = (coverHeight + 82.dp) / maxHeight
         if (loadError && detail == null) {
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
@@ -109,7 +112,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
             // 的淡出由悬浮标题的磨砂与 TokiGlassFade 负责。淡出层没有触摸处理，不会挡住滚动。
             Box(Modifier.fillMaxSize()) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
-                collapsingCoverItem(pl.coverUrl, pl.name, coverHeight, coverColors.top)
+                // 第六轮第 3 项：封面底部淡出目标色取封面底边处的页面背景真实色
+                // colorAt(1/3)，不再取最亮的 top——否则底边会露出一道台阶。
+                collapsingCoverItem(pl.coverUrl, pl.name, coverHeight, coverColors.colorAt(COLLAPSING_COVER_FRACTION))
                 item {
                     // 第三轮第 6 项：小标题（作者）→ 大标题 → 胶囊播放键 +
                     // 曲目统计；颜色按封面亮度自适应（亮封面深字 / 暗封面白字）。
@@ -122,7 +127,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             Text(
                                 pl.creatorName,
                                 style = MaterialTheme.typography.titleSmall,
-                                color = coverColors.onCoverTextDim(),
+                                color = coverColors.onCoverTextDimAt(titleFraction),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -132,7 +137,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             pl.name,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = coverColors.onCoverText(),
+                            color = coverColors.onCoverTextAt(titleFraction),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -140,25 +145,26 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             if (tracks.isNotEmpty()) {
                                 // 纯图标胶囊播放键（用户定）：56dp 高，最大圆角。
-                                // 第五轮第 9 项：胶囊形状保留，底色改封面取色
-                                // （onCoverText），图标反色；米色 CirroPlayKey 不再用。
+                                // 第六轮第 5 项：底色改封面色相衍生色（playButtonBg，
+                                // 亮封面深色相、暗封面浅色相），图标取反色；米色
+                                // CirroPlayKey 与纯白/纯深灰二值不再用。
                                 Box(
                                     Modifier
                                         .height(56.dp)
                                         .clip(RoundedCornerShape(percent = 50))
-                                        .background(coverColors.onCoverText())
+                                        .background(coverColors.playButtonBg())
                                         .clickable { vm.play(tracks, 0, pl.name) }
                                         .padding(horizontal = 20.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
+                                    Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = coverColors.playButtonIcon(), modifier = Modifier.size(28.dp))
                                 }
                                 Spacer(Modifier.width(16.dp))
                             }
                             Text(
                                 "$count 首 · ${formatTotalDurationMs(totalMs)}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = coverColors.onCoverTextDim(),
+                                color = coverColors.onCoverTextDimAt(titleFraction),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )

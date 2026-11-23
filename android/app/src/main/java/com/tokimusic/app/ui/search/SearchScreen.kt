@@ -132,7 +132,7 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
         OutlinedTextField(
             query,
             { query = it },
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp).focusRequester(focusRequester),
+            Modifier.fillMaxWidth().focusRequester(focusRequester),
             placeholder = { Text("搜索歌曲、歌手、歌单") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             singleLine = true,
@@ -146,10 +146,10 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (home.searching) {
-                    item { Text("搜索中…", Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item { Text("搜索中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else if (query.isNotBlank()) {
                     if (home.searchResults.isNotEmpty()) {
-                        item { Text("歌曲", Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
+                        item { Text("歌曲", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
                         itemsIndexed(home.searchResults) { i, song ->
                             SongRow(
                                 song,
@@ -171,11 +171,11 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
                         }
                     }
                     if (home.searchPlaylists.isNotEmpty()) {
-                        item { Text("歌单", Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
+                        item { Text("歌单", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
                         item {
                             LazyRow(
                                 Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 0.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(home.searchPlaylists) { playlist -> PlaylistCard(playlist) { onOpenPlaylist(playlist.id) } }
@@ -183,7 +183,7 @@ private fun SearchContent(vm: AppViewModel, onOpenPlaylist: (Long) -> Unit, onOp
                         }
                     }
                     if (home.searchResults.isEmpty() && home.searchPlaylists.isEmpty()) {
-                        item { Text("没有找到相关结果", Modifier.padding(horizontal = 4.dp, vertical = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        item { Text("没有找到相关结果", Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
             }

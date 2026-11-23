@@ -40,6 +40,24 @@ data class CoverColors(val top: Color, val bottom: Color) {
     fun isLight(): Boolean = top.relativeLuminance() > 0.35
     fun onCoverText(): Color = if (isLight()) Color(0xFF1C1C1E) else Color.White
     fun onCoverTextDim(): Color = onCoverText().copy(alpha = 0.7f)
+    /**
+     * 按元素实际所在位置取色（第六轮第 3/5 项）：onCoverText() 按渐变顶部
+     * 亮度定黑/白，但标题块坐在封面下方约 40% 高度处——该处比顶部暗得多，
+     * 边界亮度封面会算出深色字落在偏暗背景上。改为按该高度处的渐变色
+     * （colorAt）亮度定色；fraction 取元素中心高度占比（纯函数，可单测）。
+     */
+    fun onCoverTextAt(fraction: Float): Color =
+        if (colorAt(fraction).relativeLuminance() > 0.35) Color(0xFF1C1C1E) else Color.White
+    fun onCoverTextDimAt(fraction: Float): Color = onCoverTextAt(fraction).copy(alpha = 0.7f)
+    /**
+     * 播放胶囊的封面色相底色（第六轮第 5 项）：不再用纯白/纯深灰二值，改
+     * 取 top 的色相、向白/黑方向归一化亮度——亮封面用深色相底 + 白图标，
+     * 暗封面用浅色相底 + 黑图标。标题字体仍用 onCoverTextAt 的二值
+     * （文字可读性优先，不跟色相）。
+     */
+    fun playButtonBg(): Color =
+        if (isLight()) lerp(top, Color.Black, 0.65f) else lerp(top, Color.White, 0.75f)
+    fun playButtonIcon(): Color = if (isLight()) Color.White else Color.Black
     /** 封面自适应按钮底色：亮封面用深色半透明，暗封面用白色半透明。 */
     fun onCoverButtonBg(): Color =
         if (isLight()) Color.Black.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.14f)

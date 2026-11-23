@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,6 +41,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,19 +58,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.CrashLog
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
+import com.tokimusic.app.ui.MusicSource
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.daysSince
 import com.tokimusic.app.ui.theme.CirroLogoutRed
+import com.tokimusic.app.ui.theme.NeteaseRed
+import com.tokimusic.app.ui.theme.QqGreen
 import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
 import com.tokimusic.app.ui.theme.LyricFontInterPingFangBold
 import com.tokimusic.app.ui.theme.ThemePreferences
-import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.TokiUiHolder
 import com.tokimusic.app.update.LatestRelease
 import com.tokimusic.app.update.UpdateCheckResult
@@ -80,14 +86,16 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
 /**
  * 账户与设置弹窗（第二轮第 4 项）：参考 TokiNote〈我的〉页
  * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——标题 +
- * 36dp 关闭钮；头像卡片 + 通用 / 个性化 / 音频 / 歌词 4 行 + 红色退出登录。
+ * 36dp 关闭钮；头像卡片 + 加入天数卡片 + 两源 logo 行 + 通用 / 个性化 /
+ * 音频 / 歌词 4 行（第六轮第 6 项起加入天数出头像卡片独立成卡，第 19 项
+ * 起退出登录收进各源 logo 行，旧红色退出登录行删除）。
  * 子页在弹窗内切换。外壳自第五轮第 19-4 项起是 MoreSheet 同款原生
  * ModalBottomSheet（默认顶圆角 28dp），见 SettingsSheet 上的注释。
  *
  * 第三轮第 1 项（用户定 A）：保留底部弹窗，只按 TokiUI 重做内容——
  * 入口行无图标，退出登录是 SettingsRow 形态的红色警示行；关闭钮保持 36dp。
- * 第 8 项：标题行按外面悬浮模糊标题配方做成磨砂 chip（标题 chip +
- * 圆形关闭 chip，子页里关闭 icon 也是 X、点 X 回主列表）；通用 /
+ * 第 8 项：标题行原按外面悬浮模糊标题配方做成磨砂 chip，第六轮第 7 项起
+ * 改为纯文字标题 + 纯色圆形关闭钮（模糊只属于整个弹窗容器）；通用 /
  * 个性化 / 音频 / 歌词 / 退出登录五个区域各进 28dp surface 底卡。
  *
  * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
@@ -97,8 +105,12 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
  * 第五轮第 19-4 项（用户确认“把设置改成这种”）：外壳改成 MoreSheet 同款
  * 原生 ModalBottomSheet（不用 TokiSheetContainer）——默认 28dp 顶圆角、
  * 横向 24dp / 底部 24dp 内边距；内容（磨砂标题行、头像卡、五区底卡）不动。
- * 注意：原生弹窗默认允许半展开，内容高时首次打开只露一半，上滑才全开；
- * 若真机觉得不便，退路是加 skipPartiallyExpanded = true 回到原来的全开。
+ * 第六轮第 25 项：加 skipPartiallyExpanded = true，打开即全高（0.88f），
+ * 不再先停在 50% 半展开锚点——搜索弹窗（TokiSheetContainer）一直是全开，
+ * 设置一半正是缺了这一行。
+ * 第六轮第 7 项：容器改极淡磨砂——surfaceContainerLow 85% 透明度 +
+ * 1dp 描边（scrim 保持现有，不加深）；标题行去磨砂（纯文字标题 +
+ * 纯色圆形关闭钮），内容区上下 24dp 淡出保留（淡出色跟随容器色）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,45 +119,49 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     val profile by vm.profile.collectAsState()
     val authState by vm.authState.collectAsState()
     val health by vm.health.collectAsState()
+    // 第六轮第 1/19 项：QQ 登录态与源启用开关（供 logo 行与确认弹窗用）。
+    val qqProfile by vm.qqProfile.collectAsState()
+    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+    val qqEnabled by vm.qqEnabled.collectAsState()
     var showLogin by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onClose) {
+    var showQqLogin by remember { mutableStateOf(false) }
+    // 第六轮第 19 项：开关 / 退出登录的二次确认（AlertDialog 弹窗，
+    // Q12-2 定弹窗而非底部 sheet）。
+    var sourceConfirm by remember { mutableStateOf<SourceConfirm?>(null) }
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.85f),
+        modifier = Modifier.border(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ),
+    ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            // 第 8 项：标题与返回用外面悬浮模糊标题同款配方——标题进磨砂
-            // chip（headlineMedium Bold），返回键进圆形磨砂 chip；弹窗是
-            // 独立窗口、没有 hazeState，走配方自带的半透明底色（模糊关时
-            // 是实色 + 主色描边）。返回键的图标一律改成关闭（X），位置
-            // （标题行右侧、36dp）不变；子页里点 X 回主列表，主列表点 X 关弹窗。
+            // 第 8 项（第六轮第 7 项改）：标题不再进磨砂 chip——纯文字标题
+            // （headlineMedium Bold）+ 纯色圆形关闭钮；模糊只属于整个弹窗
+            // 容器。返回键的图标一律是关闭（X），位置（标题行右侧、36dp）
+            // 不变；子页里点 X 回主列表，主列表点 X 关弹窗。
             Row(
                 Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier.weight(1f, fill = false).heightIn(min = 56.dp).clip(RoundedCornerShape(percent = 50)),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    TokiScrollChipBackdrop(
-                        shape = RoundedCornerShape(percent = 50),
-                        backdropBlur = theme.backdropBlur,
-                        modifier = Modifier.matchParentSize(),
-                    )
-                    Text(
-                        if (sub == null) "账户与设置" else sub!!.title,
-                        Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                Text(
+                    if (sub == null) "账户与设置" else sub!!.title,
+                    Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Box(
                     Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
                         .clickable { if (sub != null) sub = null else onClose() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    TokiScrollChipBackdrop(
-                        shape = CircleShape,
-                        backdropBlur = theme.backdropBlur,
-                        modifier = Modifier.matchParentSize(),
-                    )
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = if (sub == null) "关闭" else "返回",
@@ -154,8 +170,9 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 }
             }
             // 第三轮第 14 项：弹窗内容区上下边缘 24dp 淡出（淡出色取
-            // 弹窗底色 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
-            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
+            // 弹窗底色——第六轮第 7 项起与容器同为 85% 透明度的
+            // surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
+            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.85f)
             Box(Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -163,7 +180,11 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (sub) {
-                    null -> mainSections(vm, theme, onTheme, profile, authState, showLogin, { showLogin = it }) { sub = it }
+                    null -> mainSections(
+                        vm, theme, onTheme, profile, authState, qqProfile,
+                        neteaseEnabled, qqEnabled, showLogin, { showLogin = it },
+                        showQqLogin, { showQqLogin = it }, { sourceConfirm = it },
+                    ) { sub = it }
                     SettingsSub.General -> generalSection(vm, health)
                     SettingsSub.Personalize -> personalizeSection(theme, onTheme)
                     SettingsSub.Audio -> audioSection(vm)
@@ -181,8 +202,32 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 ),
             )
             }
+            // 第六轮第 19 项：开关 / 退出登录的二次确认弹窗（AlertDialog，
+            // 默认内容边距 24dp 横向，与页边距一致）。
+            sourceConfirm?.let { confirm ->
+                SourceConfirmDialog(
+                    confirm = confirm,
+                    onDismiss = { sourceConfirm = null },
+                    onConfirm = {
+                        when (confirm) {
+                            is SourceConfirm.Toggle -> vm.setSourceEnabled(confirm.source, confirm.enable)
+                            is SourceConfirm.Logout -> when (confirm.source) {
+                                MusicSource.NETEASE -> vm.logout()
+                                MusicSource.QQ -> vm.qqLogout()
+                            }
+                        }
+                        sourceConfirm = null
+                    },
+                )
+            }
         }
     }
+}
+
+/** 第六轮第 19 项：源开关 / 退出登录的二次确认（弹窗，Q12-2）。 */
+private sealed interface SourceConfirm {
+    data class Toggle(val source: MusicSource, val enable: Boolean) : SourceConfirm
+    data class Logout(val source: MusicSource) : SourceConfirm
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
@@ -191,8 +236,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     onTheme: (ThemePreferences) -> Unit,
     profile: com.tokimusic.app.data.model.UserProfile?,
     authState: AuthState,
+    qqProfile: com.tokimusic.app.data.api.QqProfile?,
+    neteaseEnabled: Boolean,
+    qqEnabled: Boolean,
     showLogin: Boolean,
     onShowLogin: (Boolean) -> Unit,
+    showQqLogin: Boolean,
+    onShowQqLogin: (Boolean) -> Unit,
+    onRequestConfirm: (SourceConfirm) -> Unit,
     onOpenSub: (SettingsSub) -> Unit,
 ) {
     item {
@@ -211,22 +262,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                         profile?.let { "UID ${it.uid}" } ?: "点击下方按钮扫码登录网易云",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (profile != null) {
-                        // 第五轮第 24 项：UID 下方两行加入天数，与 UID 行同样式
-                        //（bodySmall、onSurfaceVariant，用户确认）；TokiMusic 从
-                        // 首次登录时间起算（vm.store.firstLoginMs），网易云取
-                        // createDays，取不到显示 —（用户确认）。
-                        Text(
-                            "已加入TokiMusic ${daysSince(vm.store.firstLoginMs, System.currentTimeMillis())} 天",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            if (profile.createDays >= 0) "已加入NeteaseMusic ${profile.createDays} 天" else "已加入NeteaseMusic — 天",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                 }
             }
             if (profile == null) {
@@ -235,6 +270,71 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 }
             }
         }
+    }
+    // 第六轮第 6 项：加入天数出头像卡片，独立成一张 28dp 底卡——
+    // TokiMusic（首次登录时间起算，需 > 0 才显示）、网易云（createDays）、
+    // QQ（qqFirstLoginMs 起算，登录 QQ 后才有第三行）。
+    if (profile != null || qqProfile != null) item {
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (vm.store.firstLoginMs > 0L) {
+                    Text(
+                        "已加入TokiMusic ${daysSince(vm.store.firstLoginMs, System.currentTimeMillis())} 天",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (profile != null) {
+                    Text(
+                        if (profile.createDays >= 0) "已加入NeteaseMusic ${profile.createDays} 天" else "已加入NeteaseMusic — 天",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (qqProfile != null && vm.store.qqFirstLoginMs > 0L) {
+                    Text(
+                        "已加入QQ音乐 ${daysSince(vm.store.qqFirstLoginMs, System.currentTimeMillis())} 天",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+    // 第六轮第 19 项：网易云 / QQ 各一 logo 行——左侧实心音符（红 / 绿
+    // 区分），中间源名 + 账号（未登录显示“未登录”），右侧开关 + 退出
+    // 按钮；开关与退出都要二次确认（弹窗）；未登录时开关置灰不可点，
+    // 只显示登录按钮。旧红色“退出登录”行已删除，功能收进网易云行。
+    item {
+        SourceRow(
+            name = "网易云音乐",
+            iconTint = NeteaseRed,
+            accountText = profile?.let { "${it.nickname} · UID ${it.uid}" },
+            loggedIn = profile != null,
+            enabled = neteaseEnabled,
+            onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.NETEASE, it)) },
+            onLogout = { onRequestConfirm(SourceConfirm.Logout(MusicSource.NETEASE)) },
+            onLogin = { onShowLogin(true) },
+        )
+    }
+    item {
+        SourceRow(
+            name = "QQ音乐",
+            iconTint = QqGreen,
+            accountText = qqProfile?.let { "${it.nickname} · ${it.musicId}" },
+            loggedIn = qqProfile != null,
+            enabled = qqEnabled,
+            onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.QQ, it)) },
+            onLogout = { onRequestConfirm(SourceConfirm.Logout(MusicSource.QQ)) },
+            onLogin = { onShowQqLogin(true) },
+        )
     }
     if (authState == AuthState.Expired) item {
         Card(
@@ -258,23 +358,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     item { SubRow("个性化") { onOpenSub(SettingsSub.Personalize) } }
     item { SubRow("音频") { onOpenSub(SettingsSub.Audio) } }
     item { SubRow("歌词") { onOpenSub(SettingsSub.Lyrics) } }
-    if (profile != null) item {
-        Spacer(Modifier.height(8.dp))
-        // 第 8 项：退出登录也进 28dp 底卡（红色警示行本身不变）。
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        ) {
-            SettingsRow(
-                "退出登录",
-                onClick = { vm.logout() },
-                horizontalPadding = 24.dp,
-                headlineColor = CirroLogoutRed,
-            )
-        }
-    }
     if (showLogin) item { LoginDialog(vm) { onShowLogin(false) } }
+    if (showQqLogin) item { QqLoginDialog(vm) { onShowQqLogin(false) } }
 }
 
 /**
@@ -556,4 +641,113 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
             }
         }
     }, confirmButton = { TextButton(onClick = { vm.cancelQrLogin(); onDismiss() }) { Text("关闭") } })
+}
+
+/**
+ * 源 logo 行（第六轮第 19 项）：28dp surface 底卡；左侧实心音符圆底
+ * （品牌色 tint），中间源名 + 账号（未登录显示“未登录”），右侧开关 +
+ * 登录/退出按钮；未登录时开关置灰不可点。
+ */
+@Composable
+private fun SourceRow(
+    name: String,
+    iconTint: Color,
+    accountText: String?,
+    loggedIn: Boolean,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onLogout: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(40.dp).clip(CircleShape).background(iconTint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    accountText ?: "未登录",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle, enabled = loggedIn)
+            if (loggedIn) {
+                TextButton(onClick = onLogout) { Text("退出", color = CirroLogoutRed) }
+            } else {
+                TextButton(onClick = onLogin) { Text("登录") }
+            }
+        }
+    }
+}
+
+/** 第六轮第 19 项：源开关 / 退出登录的二次确认弹窗（AlertDialog）。 */
+@Composable
+private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val sourceName = when (confirm) {
+        is SourceConfirm.Toggle -> if (confirm.source == MusicSource.NETEASE) "网易云音乐" else "QQ音乐"
+        is SourceConfirm.Logout -> if (confirm.source == MusicSource.NETEASE) "网易云音乐" else "QQ音乐"
+    }
+    val (title, text, isLogout) = when (confirm) {
+        is SourceConfirm.Toggle -> if (confirm.enable) {
+            Triple("启用$sourceName？", "启用后主页、资料库与搜索将显示$sourceName 的内容。", false)
+        } else {
+            Triple("停用$sourceName？", "停用后该源的内容不再显示，本地播放不受影响。", false)
+        }
+        is SourceConfirm.Logout -> Triple(
+            "退出登录$sourceName？",
+            "退出后该源的歌单与收藏不再显示，本地播放不受影响。",
+            true,
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("确认", color = if (isLogout) CirroLogoutRed else MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+/** 第六轮第 1 项：QQ 二维码登录弹窗（与 LoginDialog 同款结构，QQ 扫码态）。 */
+@Composable
+fun QqLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    val qr by vm.qqQrState.collectAsState(); val img by vm.qqQrImage.collectAsState(); val qrError by vm.qqQrError.collectAsState()
+    LaunchedEffect(Unit) { vm.startQqQrLogin() }
+    // Closing the dialog cancels the poll; reopening starts a fresh one.
+    AlertDialog(onDismissRequest = { vm.cancelQqQrLogin(); onDismiss() }, title = { Text("扫码登录 QQ音乐") }, text = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val bitmap = remember(img) { runCatching { val raw = img.substringAfter("base64,", img); if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull() }
+            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
+            if (qrError != null) {
+                Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                FilledTonalButton(onClick = { vm.startQqQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
+            } else {
+                Text(when (qr) {
+                    com.tokimusic.app.data.api.QqQrCheck.Waiting -> "等待扫码"
+                    com.tokimusic.app.data.api.QqQrCheck.Scanned -> "已扫码，请在手机上确认"
+                    is com.tokimusic.app.data.api.QqQrCheck.Done -> "登录成功"
+                    com.tokimusic.app.data.api.QqQrCheck.Expired -> "二维码已过期，正在重新生成…"
+                    com.tokimusic.app.data.api.QqQrCheck.Refused -> "已在手机上拒绝登录"
+                    null -> "使用手机 QQ App 扫码"
+                }, Modifier.padding(top = 12.dp))
+            }
+        }
+    }, confirmButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onDismiss() }) { Text("关闭") } })
 }

@@ -3,6 +3,7 @@ package com.tokimusic.app.ui.theme
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -117,5 +118,45 @@ class FontCoverageTest {
         // 注明分工：SC 连完整版也不含谚文音节，韩文必须走 KR 文件。
         val ranges = cmapRanges(fontFile("noto_sans_sc.ttf").readBytes())
         assertTrue(!covers(ranges, 0xAC00))
+    }
+
+    @Test
+    fun notoSansJpSubsetCoversCompatibilityIdeographsScLacks() {
+        // 第六轮第 4 项：JP 子集（假名 + F900–FAFF + 2F800–2FA1F，566KB）
+        // 补 SC 所缺的兼容表意字；wght 轴保留，Bold 靠 variationSettings 取 700。
+        val bytes = fontFile("noto_sans_jp_bold.ttf").readBytes()
+        val ranges = cmapRanges(bytes)
+        assertTrue(covers(ranges, 0x3042)) // あ
+        assertTrue(covers(ranges, 0x30A2)) // ア
+        assertTrue(covers(ranges, 0xFF76)) // ｶ 半角片假名
+        assertTrue(covers(ranges, 0xFA10)) // 塚：SC 没有，JP 有
+        assertTrue(covers(ranges, 0xFA6D)) // 舘：SC 没有，JP 有
+        assertTrue(maxWght(bytes) >= 700f)
+        // SC 的缺口对照：这两个兼容字确实不在 SC 里，JP 子集就是为它们补的。
+        val scRanges = cmapRanges(fontFile("noto_sans_sc.ttf").readBytes())
+        assertTrue(!covers(scRanges, 0xFA10))
+        assertTrue(!covers(scRanges, 0xFA6D))
+    }
+
+    @Test
+    fun cjkFallbackOrderIsScThenJpThenKr() {
+        // 第六轮第 4 项：回退链顺序锁死——共用字形只取 SC 的形状，JP 只补缺口。
+        assertEquals(
+            listOf(com.tokimusic.app.R.font.noto_sans_sc, com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.noto_sans_kr),
+            cjkFallbackOrder,
+        )
+    }
+
+    @Test
+    fun fad0AndFad6AreAbsentFromEveryNotoFont() {
+        // 已知缺失（第六轮第 4 项实测）：者 U+FAD6 与 﨑 U+FAD0 在 Google
+        // Fonts 的 NotoSansJP 变量版与 Adobe 的 NotoSansCJKjp-Bold 完整
+        // OTF 里都没有——Noto 全家都不含 FAD0–FAD9 这段尾巴，这两字仍走
+        // 系统回退（常规字重）。本测试把该结论锁死，免得后人误以为“换
+        // 个 Noto 字体就能补上”而反复折腾；若将来找到含这两字的免费
+        // 字体，再把本测试改成覆盖断言。
+        val ranges = cmapRanges(fontFile("noto_sans_jp_bold.ttf").readBytes())
+        assertTrue(!covers(ranges, 0xFAD6))
+        assertTrue(!covers(ranges, 0xFAD0))
     }
 }
