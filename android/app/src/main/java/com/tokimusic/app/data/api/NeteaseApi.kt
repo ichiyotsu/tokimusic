@@ -31,6 +31,7 @@ interface NeteaseApi {
     suspend fun artistSublist(): List<Artist>         // /artist/sublist （我关注的歌手）
     suspend fun artistDetail(id: Long): Artist        // /artist/head/info/get （第三轮第 12 项，weapi；上游模块未指定 crypto，实测 weapi 可用）
     suspend fun artistTopSongs(id: Long): List<Song>  // /artist/top/song （第三轮第 12 项，weapi，热门 50 首）
+    suspend fun artistSongs(id: Long): List<Song>   // /v1/artist/songs （第五轮第 13 项，eapi，分页拉全量 + 去 live + 原唱/单曲优先排序）
     suspend fun artistAlbums(id: Long): List<Album>   // /artist/albums/{id} （第三轮第 12 项，weapi，首屏 30 张）
     suspend fun albumDetail(id: Long): Pair<Album, List<Song>> // /v1/album/{id} （第三轮第 12 项，weapi）
     suspend fun albumSublist(): List<Album>           // /album/sublist （我收藏的专辑）
@@ -40,4 +41,4 @@ interface NeteaseApi {
     suspend fun lyric(id: Long): LyricPayload         // /lyric/new preferred, /lyric fallback (also when /lyric/new answers empty)
 }
 data class QrCheck(val code: Int, val cookie: String = "", val message: String = "")
-data class LyricPayload(val yrc: String? = null, val lrc: String? = null, val tlyric: String? = null)
+data class LyricPayload(val yrc: String? = null, val lrc: String? = null, val tlyric: String? = null, val romalrc: String? = null)

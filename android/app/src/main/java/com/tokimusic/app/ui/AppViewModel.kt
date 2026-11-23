@@ -85,6 +85,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet()
             } else {
                 _profile.value = p; _authState.value = AuthState.LoggedIn
+                // 第五轮第 24 项：首次登录时间只记一次——扫码登录成功与已登录
+                // 用户升级后首次启动都走这里（loadSession）；老用户从本轮
+                // 版本起算，之前无法回补；退出登录不清除。
+                if (store.firstLoginMs == 0L) store.firstLoginMs = System.currentTimeMillis()
                 runCatching {
                     val detail = api.userDetail(p.uid); _profile.value = detail
                     val pls = api.userPlaylists(p.uid); _myPlaylists.value = pls
@@ -202,7 +206,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun loadLyrics(songId: Long) = viewModelScope.launch {
-        _lyrics.value = runCatching { val p = api.lyric(songId); YrcParser.parse(p.yrc, p.lrc, p.tlyric) }.getOrDefault(emptyList())
+        _lyrics.value = runCatching { val p = api.lyric(songId); YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc) }.getOrDefault(emptyList())
     }
     fun startQrLogin() {
         qrJob?.cancel()

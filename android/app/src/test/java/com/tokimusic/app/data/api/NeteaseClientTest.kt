@@ -221,6 +221,18 @@ class NeteaseClientTest {
         assertEquals(9, client.userLevel())
     }
 
+    // 第五轮第 24 项：注册天数取响应顶层的 createDays；profile.createTime
+    // 与顶层 createTime 均为 -1 时也不能误用（回归：防止后人改成日期减法）。
+    @Test
+    fun userDetailReadsTopLevelCreateDays() = runBlocking {
+        server.enqueue(json("""{"code":200,"createDays":1065,"createTime":-1,"level":7,"profile":{"nickname":"ichiyotsu","avatarUrl":"https://example.com/a.jpg","follows":10,"followeds":20,"signature":"hi","createTime":-1}}"""))
+        val p = client.userDetail(9038398675L)
+        assertEquals(1065, p.createDays)
+        assertEquals("ichiyotsu", p.nickname)
+        val req = server.takeRequest()
+        assertEquals("/weapi/v1/user/detail/9038398675", req.path)
+    }
+
     @Test
     fun artistSublistUsesWeapi() = runBlocking {
         server.enqueue(json("""{"code":200,"data":[{"id":2,"name":"周杰伦","img1v1Url":"https://example.com/jay.jpg"},{"id":3,"name":"林俊杰","img1v1Url":""}]}"""))
@@ -269,6 +281,26 @@ class NeteaseClientTest {
         assertEquals("周杰伦", songs[0].artistText)
         val req = server.takeRequest()
         assertEquals("/weapi/artist/top/song", req.path)
+    }
+
+    @Test
+    fun artistSongsPaginatesEapiAndFiltersLive() = runBlocking {
+        server.enqueue(json("""{"code":200,"more":true,"total":3,"songs":[{"id":1,"name":"想你就写信 (Live)","ar":[{"id":6452,"name":"周杰伦"}],"al":{"name":"中国新歌声","picUrl":""},"dt":238000,"fee":0},{"id":2,"name":"晴天","ar":[{"id":6452,"name":"周杰伦"}],"al":{"name":"叶惠美","picUrl":""},"dt":269000,"fee":0}]}"""))
+        server.enqueue(json("""{"code":200,"more":false,"total":3,"songs":[{"id":3,"name":"想你就写信","ar":[{"id":6452,"name":"周杰伦"}],"al":{"name":"想你就写信","picUrl":""},"dt":238000,"fee":0}]}"""))
+        val songs = client.artistSongs(6452)
+        // 两页共 3 首；live 版被同名普通版挤掉；单曲（专辑名 = 歌名）排前面。
+        assertEquals(listOf(3L, 2L), songs.map { it.id })
+        assertEquals(2, server.requestCount)
+        val req1 = server.takeRequest()
+        assertEquals("/eapi/v1/artist/songs", req1.path)
+        val (_, data1) = eapiPayload(req1)
+        assertEquals(6452, data1.getInt("id"))
+        assertEquals(0, data1.getInt("offset"))
+        assertEquals(100, data1.getInt("limit"))
+        val req2 = server.takeRequest()
+        assertEquals("/eapi/v1/artist/songs", req2.path)
+        val (_, data2) = eapiPayload(req2)
+        assertEquals(2, data2.getInt("offset"))
     }
 
     @Test
@@ -466,12 +498,24 @@ class NeteaseClientTest {
     @Test
     fun lyricFallsBackWhenNewIsEmpty() = runBlocking {
         server.enqueue(json("""{"code":-460}"""))
-        server.enqueue(json("""{"code":200,"lrc":{"lyric":"[00:01.00]你好"},"tlyric":{"lyric":""}}"""))
+        server.enqueue(json("""{"code":200,"lrc":{"lyric":"[00:01.00]你好"},"tlyric":{"lyric":""},"romalrc":{"lyric":"[00:01.00]ni hao"}}"""))
         val payload = client.lyric(1)
         assertNull(payload.yrc)
         assertTrue(payload.lrc?.contains("你好") == true)
+        // 第五轮第 26 项：回退路由也读 romalrc。
+        assertEquals("[00:01.00]ni hao", payload.romalrc)
         assertEquals("/eapi/song/lyric/v1", server.takeRequest().path)
         assertEquals("/eapi/song/lyric", server.takeRequest().path)
+    }
+
+    // 第五轮第 26 项：/lyric/v1 的 romalrc 读进 payload。
+    @Test
+    fun lyricReadsRomalrcFromV1() = runBlocking {
+        server.enqueue(json("""{"code":200,"yrc":{"lyric":"[1000,2000](1000,500,0)你"},"lrc":{"lyric":"[00:01.00]你"},"tlyric":{"lyric":""},"romalrc":{"lyric":"[00:01.20]ni"}}"""))
+        val payload = client.lyric(1)
+        assertEquals("[00:01.20]ni", payload.romalrc)
+        assertEquals(1, server.requestCount)
+        assertEquals("/eapi/song/lyric/v1", server.takeRequest().path)
     }
 
     @Test

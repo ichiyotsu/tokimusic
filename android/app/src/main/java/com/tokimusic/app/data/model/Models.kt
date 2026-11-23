@@ -6,7 +6,7 @@ data class Song(val id: Long, val name: String, val artists: List<Artist>, val a
 }
 data class Playlist(val id: Long, val name: String, val coverUrl: String = "", val trackCount: Int = 0, val creatorName: String = "", val creatorId: Long = 0, val subscribed: Boolean = false, val playCount: Long = 0, val description: String = "")
 data class BannerItem(val picUrl: String, val title: String, val targetId: Long = 0)
-data class UserProfile(val uid: Long, val nickname: String, val avatarUrl: String = "", val level: Int = 0, val follows: Int = 0, val followeds: Int = 0, val signature: String = "")
+data class UserProfile(val uid: Long, val nickname: String, val avatarUrl: String = "", val level: Int = 0, val follows: Int = 0, val followeds: Int = 0, val signature: String = "", /** 注册天数（/api/v1/user/detail 顶层 createDays；-1 = 未知）。第五轮第 24 项。 */ val createDays: Int = -1)
 data class RecordItem(val song: Song, val playCount: Int, val score: Int = 0)
 enum class PlaylistGroup(val title: String) { Liked("我喜欢的音乐"), Created("我创建的歌单"), Subscribed("我收藏的歌单") }
 fun groupPlaylists(all: List<Playlist>, myUid: Long): Map<PlaylistGroup, List<Playlist>> {

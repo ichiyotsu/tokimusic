@@ -12,20 +12,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.tokimusic.app.data.model.*
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.components.COLLAPSING_COVER_FRACTION
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.collapsingCoverItem
 import com.tokimusic.app.ui.components.formatTotalDurationMs
+import com.tokimusic.app.ui.components.isTitleScrolledOut
 import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
@@ -83,127 +82,99 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     LaunchedEffect(pl.name) { onTitle(pl.name) }
     val coverColors = rememberCoverColors(playlistId, pl.coverUrl)
     val listState = rememberLazyListState()
-    // 标题行（第 0 项）滑出可视区后，通知外层显示悬浮标题。
-    val showFloatingTitle by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    // 第五轮第 25 项（结构性根治）：封面移进 LazyColumn 做第 0 项，随
+    // 列表自然滑走；旧的累计滚动量公式（漏算已滚出的行，封面收不完）
+    // 与 titleHeightPx 实测全部删掉，不再算任何滚动量。
+    // 标题行（第 1 项）滑出可视区后，通知外层显示悬浮标题。
+    val showFloatingTitle by remember { derivedStateOf { listState.isTitleScrolledOut() } }
     LaunchedEffect(showFloatingTitle) { onHeaderVisible(showFloatingTitle) }
-    // 第三轮第 7 项：进页时封面占视口 1/4，向上滑时按滚动距离等量收起；
-    // 标题行高度用实测值参与累计滚动量，避免第 0 项 → 第 1 项切换时
-    // 封面高度跳变（若真机仍不稳，退回固定 1/4 + 标题 morph）。
-    var titleHeightPx by remember { mutableIntStateOf(0) }
     val totalMs = tracks.sumOf { it.durationMs }
     val count = if (tracks.isNotEmpty()) tracks.size else pl.trackCount
     BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
-        val density = LocalDensity.current
         // 第五轮第 9 项（用户确认）：封面进页占 1/3，取代第三轮定的 1/4。
-        val coverMaxPx = with(density) { maxHeight.toPx() * (1f / 3f) }
-        val scrollPx by remember {
-            derivedStateOf {
-                if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset
-                else titleHeightPx + listState.firstVisibleItemScrollOffset
+        val coverHeight = maxHeight * COLLAPSING_COVER_FRACTION
+        if (loadError && detail == null) {
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("歌单加载失败", style = MaterialTheme.typography.titleMedium)
+                Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
             }
-        }
-        val coverHeightPx = (coverMaxPx - scrollPx).coerceAtLeast(0f)
-        Column(Modifier.fillMaxSize()) {
-            // 封面：进页占 1/3、完整显示，下缘淡出到封面渐变的上端色；
-            // 封面延伸到状态栏下，悬浮标题（滑动后出现）的磨砂盖在上面。
-            Box(Modifier.fillMaxWidth().height(with(density) { coverHeightPx.toDp() })) {
-                AsyncImage(pl.coverUrl, pl.name, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-                Box(
-                    Modifier.matchParentSize().background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, coverColors.top),
-                        ),
-                    ),
-                )
-            }
-            // 歌曲列表：上下各 32dp 淡出。淡出层没有触摸处理，不会挡住滚动。
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-            if (loadError && detail == null) {
-                Column(
-                    Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("歌单加载失败", style = MaterialTheme.typography.titleMedium)
-                    Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
-                }
-            } else {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
-                    item {
-                        // 第三轮第 6 项：小标题（作者）→ 大标题 → 胶囊播放键 +
-                        // 曲目统计；颜色按封面亮度自适应（亮封面深字 / 暗封面白字）。
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 16.dp)
-                                .onGloballyPositioned { titleHeightPx = it.size.height },
-                        ) {
-                            if (pl.creatorName.isNotBlank()) {
-                                Text(
-                                    pl.creatorName,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = coverColors.onCoverTextDim(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(4.dp))
-                            }
+        } else {
+            // 歌曲列表：底部 32dp 淡出。顶部淡出不要了——封面已在列表内，
+            // 列表顶边就是封面顶边，再叠一层会把封面顶部盖暗；顶部边缘
+            // 的淡出由悬浮标题的磨砂与 TokiGlassFade 负责。淡出层没有触摸处理，不会挡住滚动。
+            Box(Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
+                collapsingCoverItem(pl.coverUrl, pl.name, coverHeight, coverColors.top)
+                item {
+                    // 第三轮第 6 项：小标题（作者）→ 大标题 → 胶囊播放键 +
+                    // 曲目统计；颜色按封面亮度自适应（亮封面深字 / 暗封面白字）。
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                    ) {
+                        if (pl.creatorName.isNotBlank()) {
                             Text(
-                                pl.name,
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = coverColors.onCoverText(),
+                                pl.creatorName,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = coverColors.onCoverTextDim(),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            Spacer(Modifier.height(16.dp))
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                if (tracks.isNotEmpty()) {
-                                    // 纯图标胶囊播放键（用户定）：56dp 高，最大圆角。
-                                    // 第五轮第 9 项：胶囊形状保留，底色改封面取色
-                                    // （onCoverText），图标反色；米色 CirroPlayKey 不再用。
-                                    Box(
-                                        Modifier
-                                            .height(56.dp)
-                                            .clip(RoundedCornerShape(percent = 50))
-                                            .background(coverColors.onCoverText())
-                                            .clickable { vm.play(tracks, 0, pl.name) }
-                                            .padding(horizontal = 20.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
-                                    }
-                                    Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        Text(
+                            pl.name,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = coverColors.onCoverText(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            if (tracks.isNotEmpty()) {
+                                // 纯图标胶囊播放键（用户定）：56dp 高，最大圆角。
+                                // 第五轮第 9 项：胶囊形状保留，底色改封面取色
+                                // （onCoverText），图标反色；米色 CirroPlayKey 不再用。
+                                Box(
+                                    Modifier
+                                        .height(56.dp)
+                                        .clip(RoundedCornerShape(percent = 50))
+                                        .background(coverColors.onCoverText())
+                                        .clickable { vm.play(tracks, 0, pl.name) }
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
                                 }
-                                Text(
-                                    "$count 首 · ${formatTotalDurationMs(totalMs)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = coverColors.onCoverTextDim(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Spacer(Modifier.width(16.dp))
                             }
+                            Text(
+                                "$count 首 · ${formatTotalDurationMs(totalMs)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = coverColors.onCoverTextDim(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
-                    itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) } }
                 }
-                Box(
-                    Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                        Brush.verticalGradient(
-                            listOf(coverColors.top, Color.Transparent),
-                        ),
-                    ),
-                )
-                Box(
-                    Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, CirroBlack),
-                        ),
-                    ),
-                )
+                itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) } }
             }
+            Box(
+                Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, CirroBlack),
+                    ),
+                ),
+            )
         }
     }
-    }
+}
 }

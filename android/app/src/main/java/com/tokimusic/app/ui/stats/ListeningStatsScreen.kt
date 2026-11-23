@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SectionTitle
+import com.tokimusic.app.ui.components.SettingsRow
+import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.theme.CirroBlack
 import java.time.LocalDate
 import java.time.YearMonth
@@ -148,14 +150,13 @@ fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, on
             }
         }
         if (breakdown.isNotEmpty()) {
+            // 第五轮第 23 项：按 TokiUI 设计规范重做——明细行走 SettingsRow
+            //（64dp、titleMedium 标题 + 右侧数值），不再用裸 Row。
             items(breakdown) { (label, ms) ->
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Text(formatLongDuration(ms), style = MaterialTheme.typography.bodyMedium)
-                }
+                SettingsRow(
+                    headline = label,
+                    trailing = { Text(formatLongDuration(ms), style = MaterialTheme.typography.bodyMedium) },
+                )
             }
         } else {
             item {
@@ -170,13 +171,13 @@ fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, on
         item { Spacer(Modifier.height(8.dp)) }
         item { SectionTitle("网易云统计") }
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("累计听歌（估算）", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                Text("${mine.estimatedListeningMinutes / 60} 小时", style = MaterialTheme.typography.bodyMedium)
-            }
+            // 第五轮第 23 项：数值行走 SettingsRow；说明文字仍另起一行
+            //（SettingsRow 的 supporting 只显示一行，写不下这句说明）。
+            // 数值与资料库统计卡同款 h 格式。
+            SettingsRow(
+                headline = "累计听歌（估算）",
+                trailing = { Text(formatHours(mine.estimatedListeningMinutes), style = MaterialTheme.typography.bodyMedium) },
+            )
         }
         item {
             Text(
@@ -202,6 +203,7 @@ fun ListeningStatsScreen(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, on
 
 internal fun formatLongDuration(ms: Long): String {
     val minutes = ms / 60_000
-    val hours = minutes / 60
-    return if (hours > 0) "$hours 小时 ${minutes % 60} 分" else "$minutes 分钟"
+    // 第五轮第 23 项：满 1 小时用 h 格式（整小时 "1537h"，有零头一位小数
+    // 如 "1537.5h"）；不足 1 小时仍写“X 分钟”（"0.5h" 不如分钟直观）。
+    return if (minutes >= 60) formatHours(minutes) else "$minutes 分钟"
 }

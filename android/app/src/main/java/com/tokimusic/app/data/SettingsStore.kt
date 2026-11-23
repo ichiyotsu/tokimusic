@@ -45,6 +45,9 @@ class SettingsStore(context: Context) : ApiSettings {
     /** 歌词翻译显示开关。 */
     var showTranslation: Boolean get() = prefs.getBoolean("show_translation", true)
         set(v) { prefs.edit().putBoolean("show_translation", v).apply() }
+    /** 罗马音显示开关（第五轮第 26 项；默认关——只有服务端有 romalrc 的歌才显示）。 */
+    var showRomaji: Boolean get() = prefs.getBoolean("show_romaji", false)
+        set(v) { prefs.edit().putBoolean("show_romaji", v).apply() }
     /** 实时通知（媒体通知）开关（默认开）。 */
     var liveUpdatesEnabled: Boolean get() = prefs.getBoolean(LIVE_UPDATES_KEY, true)
         set(v) { prefs.edit().putBoolean(LIVE_UPDATES_KEY, v).apply() }
@@ -71,6 +74,11 @@ class SettingsStore(context: Context) : ApiSettings {
      * 靠它判断 versionCode 是否变大；0 = 从未记录过）。 */
     var lastLaunchedVersionCode: Int get() = prefs.getInt("last_launched_version_code", 0)
         set(v) { prefs.edit().putInt("last_launched_version_code", v).apply() }
+    /** 首次登录时间戳（毫秒，第五轮第 24 项：TokiMusic 加入天数从它起算；
+     * 0 = 未记录。已登录用户从装上本轮版本的首次启动开始算，之前无法回补；
+     * 退出登录不清除——“第一次登录”只记一次）。 */
+    var firstLoginMs: Long get() = prefs.getLong("first_login_ms", 0L)
+        set(v) { prefs.edit().putLong("first_login_ms", v).apply() }
     /** 歌词字体预设（第三轮第 16 项）："inter_pingfang"（默认）或 "google_noto"。 */
     var lyricFontPreset: String get() = prefs.getString("lyric_font_preset", "inter_pingfang") ?: "inter_pingfang"
         set(v) { prefs.edit().putString("lyric_font_preset", v).apply() }

@@ -1,7 +1,8 @@
 package com.tokimusic.app.data.lyric
 data class LyricWord(val startMs: Long, val durationMs: Long, val text: String)
 data class LyricLine(val startMs: Long, val durationMs: Long, val words: List<LyricWord>, var translation: String? = null, var romaji: String? = null) {
-    // romaji 预留：网易 YRC 不提供罗马音，v1 不填（见 PLAN §2.5）。
+    // romaji 来自 /api/song/lyric/v1 返回的 romalrc 字段（第五轮第 26 项），
+    // 不是 YRC——YRC 本身不提供罗马音；没有 romalrc 的歌不填，不编造。
     val text: String get() = words.joinToString("") { it.text }
     val endMs: Long get() = startMs + durationMs
 }
@@ -14,11 +15,17 @@ object YrcParser {
     private val yrcHead = Regex("""\[(\d+),(\d+)]""")
     private val yrcWord = Regex("""\((\d+),(\d+),\d+\)([^(]*)""")
     private val lrcTag = Regex("""\[(\d+):(\d+)(?:\.(\d{1,3}))?]""")
-    fun parse(yrc: String?, lrc: String?, tlyric: String? = null): List<LyricLine> {
+    fun parse(yrc: String?, lrc: String?, tlyric: String? = null, romalrc: String? = null): List<LyricLine> {
         val lines = if (!yrc.isNullOrBlank()) parseYrc(yrc).ifEmpty { parseLrc(yrc) } else if (!lrc.isNullOrBlank()) parseLrc(lrc) else emptyList()
         if (!tlyric.isNullOrBlank() && lines.isNotEmpty()) {
             val trans = parseLrc(tlyric)
             for (line in lines) { line.translation = trans.minByOrNull { kotlin.math.abs(it.startMs - line.startMs) }?.takeIf { kotlin.math.abs(it.startMs - line.startMs) <= 500 }?.text }
+        }
+        // 第五轮第 26 项：罗马音与翻译同一套对齐（时间戳最近行，≤500ms 才贴），
+        // 不参与逐字高亮，只跟当前行的亮暗走。
+        if (!romalrc.isNullOrBlank() && lines.isNotEmpty()) {
+            val roma = parseLrc(romalrc)
+            for (line in lines) { line.romaji = roma.minByOrNull { kotlin.math.abs(it.startMs - line.startMs) }?.takeIf { kotlin.math.abs(it.startMs - line.startMs) <= 500 }?.text }
         }
         return lines.sortedBy { it.startMs }
     }
@@ -48,5 +55,19 @@ object YrcParser {
         word.durationMs <= 0L -> if (positionMs >= word.startMs) 1f else 0f
         positionMs <= word.startMs -> 0f; positionMs >= word.startMs + word.durationMs -> 1f
         else -> (positionMs - word.startMs).toFloat() / word.durationMs
+    }
+    /**
+     * 0f..1f progress of a whole line at [positionMs] — drives the continuous
+     * sung-mask width (第五轮第 18 项）。Time-weighted by the word timeline:
+     * each word contributes wordProgress × its char count, so gaps between
+     * words hold the boundary still and long words sweep slowly; a
+     * durationMs<=0 word flips binary (same as wordProgress). Line start
+     * is 0, line end (all words sung) is 1.
+     */
+    fun lineProgress(line: LyricLine, positionMs: Long): Float {
+        val totalChars = line.words.sumOf { it.text.length }
+        if (totalChars <= 0) return 0f
+        val sungChars = line.words.sumOf { wordProgress(it, positionMs).toDouble() * it.text.length }
+        return (sungChars / totalChars).toFloat().coerceIn(0f, 1f)
     }
 }
