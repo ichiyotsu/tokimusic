@@ -206,7 +206,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(home.recent) { index, song ->
-                            RecentCard(song) { vm.play(home.recent, index) }
+                            RecentCard(song) { vm.play(home.recent, index, "最近播放") }
                         }
                     }
                 }
@@ -242,7 +242,7 @@ fun HomeScreen(
                 )
             }
             items(home.newSongs) { song ->
-                SongRow(song, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(home.newSongs, home.newSongs.indexOf(song)) }
+                SongRow(song, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(home.newSongs, home.newSongs.indexOf(song), "推荐新歌") }
             }
         }
     }

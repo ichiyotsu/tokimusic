@@ -153,7 +153,7 @@ fun ArtistScreen(
                                 color = coverColors.onCoverText(),
                             )
                         }
-                        itemsIndexed(topSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(topSongs, i) } }
+                        itemsIndexed(topSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(topSongs, i, a?.name) } }
                     }
                     if (albums.isNotEmpty()) {
                         item {

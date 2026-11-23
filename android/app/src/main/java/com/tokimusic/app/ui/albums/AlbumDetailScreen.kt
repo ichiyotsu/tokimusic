@@ -143,7 +143,7 @@ fun AlbumDetailScreen(
                                                 .height(56.dp)
                                                 .clip(RoundedCornerShape(percent = 50))
                                                 .background(CirroPlayKey)
-                                                .clickable { vm.play(tracks, 0) }
+                                                .clickable { vm.play(tracks, 0, album.name) }
                                                 .padding(horizontal = 20.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
@@ -161,7 +161,7 @@ fun AlbumDetailScreen(
                                 }
                             }
                         }
-                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i) } }
+                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i, album.name) } }
                     }
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(

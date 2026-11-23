@@ -2,4 +2,6 @@
 <paths>
     <!-- 第三轮第 15 项：更新包下载目录（cacheDir/update/），FileProvider 对外授临时读权限。 -->
     <cache-path name="update" path="update/" />
+    <!-- 第五轮第 4 项：崩溃日志目录（cacheDir/crash/），设置页“导出崩溃日志”用。 -->
+    <cache-path name="crash" path="crash/" />
 </paths>

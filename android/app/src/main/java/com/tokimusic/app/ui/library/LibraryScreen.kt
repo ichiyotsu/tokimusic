@@ -109,11 +109,11 @@ fun LibraryScreen(
             // Round 3 item 2: no in-page back row — the floating header
             // (OverlayTitleHeader) carries the back chip + title now.
             when (section) {
-                LibrarySection.Liked -> likedSongsSection(likedSongs, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(likedSongs, i) }
+                LibrarySection.Liked -> likedSongsSection(likedSongs, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(likedSongs, i, "收藏") }
                 LibrarySection.Playlists -> playlistsSection(myPlaylists, profile?.uid ?: 0, onOpenPlaylist)
                 LibrarySection.Artists -> artistsSection(artists, onOpenArtist)
                 LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
-                LibrarySection.Songs -> songsSection(mine.recent, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i) }
+                LibrarySection.Songs -> songsSection(mine.recent, onOpenArtist, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i, "歌曲") }
                 null -> {}
             }
             return@LazyColumn
@@ -189,7 +189,7 @@ fun LibraryScreen(
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(mine.record.take(10).map { it.song }, i) }
+                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(mine.record.take(10).map { it.song }, i, "听歌排行") }
             }
         }
     }

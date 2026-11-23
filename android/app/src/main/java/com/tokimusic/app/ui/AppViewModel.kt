@@ -151,7 +151,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _home.value = _home.value.copy(searchResults = songs, searchPlaylists = playlists, searching = false)
         }
     }
-    fun play(songs: List<Song>, index: Int) = viewModelScope.launch {
+    fun play(songs: List<Song>, index: Int, sourceName: String? = null) = viewModelScope.launch {
         val first = songs.getOrNull(index) ?: return@launch
         // Only the song being started gets its URL up front; the rest of the
         // queue loads lazily through the player's urlLoader as it plays.
@@ -167,7 +167,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _userMessage.value = if (result.isTrial) "这首歌仅提供试听，暂无完整播放地址" else "这首歌暂无播放地址（可能无版权或需 VIP）"
             return@launch
         }
-        player.playQueue(songs, index, mapOf(first.id to url)) { id -> runCatching { api.songUrl(id).url }.getOrNull() }
+        player.playQueue(songs, index, mapOf(first.id to url), sourceName) { id -> runCatching { api.songUrl(id).url }.getOrNull() }
         loadLyrics(first.id)
     }
     fun playNext(song: Song) = viewModelScope.launch {

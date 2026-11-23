@@ -37,8 +37,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0) {
+data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val sourceName: String? = null) {
     val current: Song? get() = queue.getOrNull(index)
+}
+
+/** 队列行状态（纯函数，JVM 单测覆盖）：已播放 / 当前 / 未播放。 */
+enum class QueueRowState { Played, Current, Upcoming }
+
+fun queueRowState(currentIndex: Int, rowIndex: Int): QueueRowState = when {
+    rowIndex < currentIndex -> QueueRowState.Played
+    rowIndex == currentIndex -> QueueRowState.Current
+    else -> QueueRowState.Upcoming
 }
 
 /** 系统媒体通知用的元数据（纯数据，可单测）。 */
@@ -100,7 +109,7 @@ class PlayerController(context: Context) {
 
     /** 会话接通前收到的播放请求（只存最新一次）。 */
     private var pendingQueue: PendingQueue? = null
-    private data class PendingQueue(val songs: List<Song>, val startIndex: Int, val urls: Map<Long, String?>)
+    private data class PendingQueue(val songs: List<Song>, val startIndex: Int, val urls: Map<Long, String?>, val sourceName: String? = null)
 
     /** 空间音频开关的当前值；接通前调用只记下来，接通后立即应用。 */
     private var spatialAudioEnabled = false
@@ -138,7 +147,7 @@ class PlayerController(context: Context) {
         mediaController = controller
         controller.addListener(createListener(controller))
         applySpatialAudio(controller, spatialAudioEnabled)
-        pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls) }
+        pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
     }
 
     private fun createListener(player: Player) = object : Player.Listener {
@@ -214,23 +223,23 @@ class PlayerController(context: Context) {
         }
     }
 
-    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, urlLoader: (suspend (Long) -> String?)? = null) {
+    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
         this.urlLoader = urlLoader
         unplayable.clear()
         val controller = mediaController
         if (controller == null) {
             // 会话还没接通：先记下来，接通后立即开播；界面状态先行更新。
-            pendingQueue = PendingQueue(songs, startIndex, urls)
-            _state.value = PlayerState(songs, startIndex, true)
+            pendingQueue = PendingQueue(songs, startIndex, urls, sourceName)
+            _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName)
             return
         }
-        startQueue(controller, songs, startIndex, urls)
+        startQueue(controller, songs, startIndex, urls, sourceName)
     }
 
-    private fun startQueue(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>) {
+    private fun startQueue(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null) {
         controller.setMediaItems(songs.map { mediaItemForSong(it, urls[it.id]) }, startIndex, 0)
         controller.prepare(); controller.play()
-        _state.value = PlayerState(songs, startIndex, true)
+        _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName)
         ensureUrlForCurrent(controller)
     }
 

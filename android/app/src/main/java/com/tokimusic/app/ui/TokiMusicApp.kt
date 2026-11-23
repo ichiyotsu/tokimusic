@@ -47,6 +47,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,10 +95,16 @@ import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiGlassFade
 import com.tokimusic.app.ui.theme.tokiPageBackground
 import com.tokimusic.app.ui.theme.tokiSpace
+import com.tokimusic.app.BuildConfig
+import com.tokimusic.app.update.AppOptimizer
 import com.tokimusic.app.update.LatestRelease
+import com.tokimusic.app.update.OptimizeResult
+import com.tokimusic.app.update.OptimizeSheet
+import com.tokimusic.app.update.OptimizeSnapshot
 import com.tokimusic.app.update.UpdateCheckResult
 import com.tokimusic.app.update.UpdateChecker
 import com.tokimusic.app.update.UpdatePrompt
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -113,19 +120,39 @@ fun TokiMusicApp() {
     LaunchedEffect(userMessage) {
         userMessage?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.consumeMessage() }
     }
-    // 第三轮第 15 项：启动后延迟 2 秒自动检查一次更新；每天最多一次
-    // （lastUpdateCheckMs 节流；设置页手动检查不受限）。有新版时弹提醒
-    // 对话框（UpdatePrompt），不自动下载。
+    // 第五轮第 15 项：每次冷启动都查一次更新（去掉每天一次节流；设置 →
+    // 通用可关“启动时检查更新”）。LaunchedEffect(Unit) 只在冷启动跑一次，
+    // 从后台切回前台不重复查。有新版时弹底部弹窗（UpdatePrompt），不自动下载。
     var pendingUpdate by remember { mutableStateOf<LatestRelease?>(null) }
     LaunchedEffect(Unit) {
         delay(2000)
-        val now = System.currentTimeMillis()
-        if (now - vm.store.lastUpdateCheckMs < 24 * 60 * 60 * 1000L) return@LaunchedEffect
-        vm.store.lastUpdateCheckMs = now
+        if (!vm.store.checkUpdateOnLaunch) return@LaunchedEffect
         when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
             is UpdateCheckResult.UpdateAvailable -> pendingUpdate = r.release
             else -> Unit
         }
+    }
+    // 第五轮第 15 项：更新完首次启动（versionCode 变大）时，先算优化前数值
+    // 再弹二次确认问是否优化；确认后清理并展示优化后数值，拒绝则本次跳过
+    // （记下当前 versionCode，下次升版再问）。首次记录（0）时只记数不弹。
+    var optimizeSnapshot by remember { mutableStateOf<OptimizeSnapshot?>(null) }
+    var optimizeResult by remember { mutableStateOf<OptimizeResult?>(null) }
+    var optimizeCleaning by remember { mutableStateOf(false) }
+    val optimizeScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        val lastCode = vm.store.lastLaunchedVersionCode
+        val currentCode = BuildConfig.VERSION_CODE
+        if (AppOptimizer.isUpgrade(lastCode, currentCode)) {
+            optimizeSnapshot = AppOptimizer.measure(context)
+        } else if (lastCode == 0) {
+            vm.store.lastLaunchedVersionCode = currentCode
+        }
+    }
+    // 拒绝/上滑关闭都算“本次跳过”：记下当前 versionCode，下次升版再问。
+    val dismissOptimize: () -> Unit = {
+        vm.store.lastLaunchedVersionCode = BuildConfig.VERSION_CODE
+        optimizeSnapshot = null
+        optimizeResult = null
     }
     var theme by remember {
         mutableStateOf(
@@ -250,6 +277,11 @@ fun TokiMusicApp() {
         // scroll-driven in phase B.
         val chromeVisible = !showPlayer
         val headerVisible = chromeVisible
+        // 第五轮第 9 项（用户确认）：底栏隐藏所有二级页都一样做——导航胶囊
+        // 只在三个 tab 页显示；MiniPlayer 仍留在底边（见 BottomChrome）。
+        val isSecondLevel = albumId != null || artistId != null || playlistId != null ||
+            searchOpen || statsOpen || treemapOpen || librarySection != null
+        val bottomNavVisible = !showPlayer && !isSecondLevel
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
             albumId != null -> ({ albumId = null })
@@ -280,6 +312,8 @@ fun TokiMusicApp() {
 
         // Page identity drives the transitions: the player slides up from the
         // bottom, a playlist detail slides in from the right, tabs crossfade.
+        // 第五轮第 1 项：资料库分段页也编进 pageKey（否则分段页进出没有
+        // 动画触发点——pageKey 之前一直是 dest，分段切换不触发 AnimatedContent）。
         val pageKey: Any = when {
             showPlayer -> "player"
             albumId != null -> "album:$albumId"
@@ -288,6 +322,7 @@ fun TokiMusicApp() {
             searchOpen -> "search"
             treemapOpen -> "treemap"
             statsOpen -> "stats"
+            librarySection != null -> "section:$librarySection"
             else -> dest
         }
 
@@ -384,8 +419,17 @@ fun TokiMusicApp() {
                                     transitionSpec = {
                                         val toPlayer = targetState == "player"
                                         val fromPlayer = initialState == "player"
-                                        val toDetail = (targetState as? String)?.startsWith("playlist:") == true
-                                        val fromDetail = (initialState as? String)?.startsWith("playlist:") == true
+                                        // 第五轮第 1 项：二级页统一从右滑入（之前只覆盖
+                                        // 歌单详情）；tab 间切换仍纯淡入淡出。二级页
+                                        // 之间互切（如歌单 → 歌手）方向不明，走淡入淡出。
+                                        fun isDetailKey(key: Any): Boolean {
+                                            val s = key as? String ?: return false
+                                            return s.startsWith("album:") || s.startsWith("artist:") ||
+                                                s.startsWith("playlist:") || s.startsWith("section:") ||
+                                                s == "search" || s == "stats" || s == "treemap"
+                                        }
+                                        val toDetail = isDetailKey(targetState) && !isDetailKey(initialState) && initialState != "player"
+                                        val fromDetail = isDetailKey(initialState) && !isDetailKey(targetState) && targetState != "player"
                                         when {
                                             toPlayer -> (slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
                                                 fadeOut(scheme.defaultEffectsSpec())
@@ -486,9 +530,11 @@ fun TokiMusicApp() {
                             BottomChrome(
                                 modifier = Modifier.align(Alignment.BottomCenter),
                                 visible = chromeVisible,
+                                navVisible = bottomNavVisible,
                                 wide = wide,
                                 showMiniPlayer = !showPlayer && playerState.current != null,
                                 playerState = playerState,
+                                coverColors = playerCoverColors,
                                 vm = vm,
                                 dest = dest,
                                 glass = barGlass,
@@ -537,7 +583,28 @@ fun TokiMusicApp() {
             )
         }
         // 第三轮第 15 项：启动自动检查发现的新版提醒（与设置页手动检查共用 UpdatePrompt）。
-        if (pendingUpdate != null) UpdatePrompt(pendingUpdate!!) { pendingUpdate = null }
+        if (pendingUpdate != null) UpdatePrompt(pendingUpdate!!, currentVersion = vm.versionName) { pendingUpdate = null }
+        // 第五轮第 15 项：更新完首次启动的优化二次确认（清理在 IO 协程里跑，
+        // 按钮在清理期间禁用；清理完才记 versionCode，中途被杀下次再问）。
+        if (optimizeSnapshot != null) {
+            OptimizeSheet(
+                snapshot = optimizeSnapshot!!,
+                result = optimizeResult,
+                cleaning = optimizeCleaning,
+                onConfirm = {
+                    if (optimizeCleaning) return@OptimizeSheet
+                    optimizeCleaning = true
+                    optimizeScope.launch {
+                        val result = AppOptimizer.clean(context)
+                        optimizeResult = result
+                        optimizeCleaning = false
+                        vm.store.lastLaunchedVersionCode = BuildConfig.VERSION_CODE
+                    }
+                },
+                onDecline = dismissOptimize,
+                onDismiss = dismissOptimize,
+            )
+        }
     }
 }
 
@@ -546,9 +613,11 @@ fun TokiMusicApp() {
 private fun BottomChrome(
     modifier: Modifier = Modifier,
     visible: Boolean,
+    navVisible: Boolean,
     wide: Boolean,
     showMiniPlayer: Boolean,
     playerState: com.tokimusic.app.player.PlayerState,
+    coverColors: com.tokimusic.app.ui.theme.CoverColors? = null,
     vm: AppViewModel,
     dest: Dest,
     glass: Modifier,
@@ -576,22 +645,30 @@ private fun BottomChrome(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
-            if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn)
-            if (!wide) {
-                // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
-                // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
-                    TokiSideActionButton(
-                        Icons.Filled.Search,
-                        stringResource(R.string.nav_search),
-                        onClick = onSearch,
-                        glass = glass,
-                        solidFill = solidStroke,
-                    )
+            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来——进二级页时导航
+            // 弹走，MiniPlayer 留在底边（贴底，只留手势导航条间距）。
+            if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
+            AnimatedVisibility(
+                visible = navVisible,
+                enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
+                exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+            ) {
+                if (!wide) {
+                    // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
+                    // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+                        TokiSideActionButton(
+                            Icons.Filled.Search,
+                            stringResource(R.string.nav_search),
+                            onClick = onSearch,
+                            glass = glass,
+                            solidFill = solidStroke,
+                        )
+                    }
                 }
             }
         }
