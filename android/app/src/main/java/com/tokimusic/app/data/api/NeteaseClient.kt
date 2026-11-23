@@ -442,6 +442,15 @@ class NeteaseClient(
         post("/api/cloudsearch/pc", obj("s" to keywords, "type" to 1000, "limit" to 20, "offset" to 0, "total" to true), Crypto.EAPI)
             .body.getJSONObject("result").arr("playlists").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }
 
+    override suspend fun searchArtists(keywords: String): List<Artist> =
+        post("/api/cloudsearch/pc", obj("s" to keywords, "type" to 100, "limit" to 10, "offset" to 0, "total" to true), Crypto.EAPI)
+            .body.getJSONObject("result").arr("artists").let { a ->
+                (0 until a.length()).map {
+                    val o = a.getJSONObject(it)
+                    Artist(o.optLong("id"), o.optString("name"), o.optString("img1v1Url", o.optString("picUrl")), o.optString("briefDesc"), o.optInt("musicSize"), o.optInt("albumSize"))
+                }
+            }
+
     override suspend fun userPlaylists(uid: Long): List<Playlist> =
         post("/api/user/playlist", obj("uid" to uid, "limit" to 100, "offset" to 0, "includeVideo" to true), Crypto.WEAPI)
             .body.arr("playlist").let { a -> (0 until a.length()).map { parsePlaylist(a.getJSONObject(it)) } }

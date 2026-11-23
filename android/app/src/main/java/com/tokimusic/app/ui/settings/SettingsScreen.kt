@@ -214,6 +214,8 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                             is SourceConfirm.Logout -> when (confirm.source) {
                                 MusicSource.NETEASE -> vm.logout()
                                 MusicSource.QQ -> vm.qqLogout()
+                                // LOCAL has no login to log out of (no confirm dialog offers it).
+                                MusicSource.LOCAL -> Unit
                             }
                         }
                         sourceConfirm = null

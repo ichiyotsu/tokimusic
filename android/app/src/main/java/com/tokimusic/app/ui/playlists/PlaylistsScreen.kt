@@ -72,7 +72,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                 creatorName = "Netease Music",
             ) to songs
         } else {
-            detail = runCatching { vm.api.playlistDetail(playlistId) }.onFailure { loadError = true }.getOrNull()
+            detail = runCatching { vm.playlistDetail(playlistId) }.onFailure { loadError = true }.getOrNull()
         }
     }
     val (pl, tracks) = detail ?: (Playlist(playlistId, "加载中…") to emptyList())

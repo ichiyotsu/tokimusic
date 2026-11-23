@@ -10,7 +10,9 @@
     <application android:name=".TokiMusicApplication" android:label="@string/app_name"
         android:usesCleartextTraffic="true" android:theme="@style/Theme.TokiMusic"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round">
-        <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
+        <!-- 第六轮第 29 项：singleTop——从通知栏媒体卡片点进时走 onNewIntent
+             回到已有播放器页，不再另起一个 Activity 叠在上面。 -->
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".player.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">

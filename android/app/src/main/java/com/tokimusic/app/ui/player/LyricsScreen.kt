@@ -1,6 +1,8 @@
 package com.tokimusic.app.ui.player
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,10 +15,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,13 +47,18 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.lyric.YrcParser
+import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.InterFamily
 import com.tokimusic.app.ui.theme.chromeBlurActive
@@ -54,6 +67,7 @@ import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Immersive lyrics — LEFT-ALIGNED on purpose (TokiMusic spec, unlike centred
@@ -126,15 +140,54 @@ import kotlin.math.abs
     val listState = rememberLazyListState()
     var viewportH by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
-    val anchorPx = (viewportH * 0.28f).toInt()
+    // 第六轮第 16 项：歌词锚点 28% → 1/5（0.20f）；contentPadding 顶部跟随锚点（下不变）。
+    val anchorPx = (viewportH * 0.20f).toInt()
+    // 第六轮第 16 项：首行弹簧入场——首次播放 / 切歌时，首行从锚点下约
+    // 120dp、透明起步，弹簧落到锚点（阻尼 0.75、刚度 400，约 400ms）；
+    // 弹簧期间行进度保持 0、自动跟随暂停，落定后才开始扫过与跟随。
+    // 只在 lines 变化（切歌）与首次组成时触发一次，后续行走原跟随滚动。
+    val springOffsetY = remember { Animatable(0f) }
+    val springAlpha = remember { Animatable(1f) }
+    var springRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(lines) {
+        springRunning = true
+        springOffsetY.snapTo(with(density) { 120.dp.toPx() })
+        springAlpha.snapTo(0f)
+        launch { springOffsetY.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 400f)) }
+        springAlpha.animateTo(1f, tween(400))
+        springRunning = false
+    }
+    // 第六轮第 26 项：按屏上位置淡化——只有上下 64dp 渐隐带内的行才模糊/
+    // 变淡（平滑 0→8px / →18% alpha），中间净区无论离当前行多远都清晰
+    // （模糊 0、alpha ≥0.85）。用 layoutInfo + derivedStateOf 算每行
+    // 的（模糊，alpha），量化后才变，减少滚动时的重组；distance 只留给
+    // 入场 stagger（见下）。
+    val fadeBandPx = with(density) { 64.dp.toPx() }
+    val rowFade by remember {
+        derivedStateOf {
+            val vh = viewportH
+            if (vh <= 0) return@derivedStateOf emptyMap<Int, Pair<Float, Float>>()
+            val map = mutableMapOf<Int, Pair<Float, Float>>()
+            for (item in listState.layoutInfo.visibleItemsInfo) {
+                val center = (item.offset + item.size / 2).toFloat()
+                val topF = ((fadeBandPx - center) / fadeBandPx).coerceIn(0f, 1f)
+                val bottomF = ((center - (vh - fadeBandPx)) / fadeBandPx).coerceIn(0f, 1f)
+                val f = maxOf(topF, bottomF)
+                val blur = ((f * 8f).roundToInt().coerceIn(0, 8) / 2 * 2).toFloat()
+                val alpha = ((1f - f * 0.82f) * 10).roundToInt() / 10f
+                map[item.index] = blur to alpha.coerceIn(0.18f, 1f)
+            }
+            map
+        }
+    }
     // 第五轮第 7 项（A）：用户手动拖动后暂停自动跟随，直到点“回到当前行”。
     // 只认手指拖动（collectIsDraggedAsState），程序滚动（animateScrollToItem）
     // 不会误触发——isScrollInProgress 在两者下都为真，不能用它区分。
     var userBrowsing by remember { mutableStateOf(false) }
     val isDragged by listState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(isDragged) { if (isDragged) userBrowsing = true }
-    LaunchedEffect(active, viewportH, userBrowsing) {
-        if (active >= 0 && viewportH > 0 && !userBrowsing) {
+    LaunchedEffect(active, viewportH, userBrowsing, springRunning) {
+        if (active >= 0 && viewportH > 0 && !userBrowsing && !springRunning) {
             // 注意：Compose 1.12 的 animateScrollToItem 没有 animationSpec
             // 参数（计划里的 tween(450) 传不进去），用默认 spring；“跳”的
             // 感觉主要来自浏览时被强行拉回，由下面的暂停跟随解决。
@@ -159,6 +212,13 @@ import kotlin.math.abs
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
                     entranceDelayMs = minOf(distance, 6) * 40L,
+                    // 第六轮第 26 项：位置淡化（行中心在渐隐带内才淡）。
+                    fade = rowFade[i] ?: (0f to 1f),
+                    // 第六轮第 16 项：弹簧期间当前行进度保持 0。
+                    freezeProgress = springRunning,
+                    // 首行才接弹簧入场（其余行只走 stagger 入场）。
+                    springOffset = if (i == 0) springOffsetY else null,
+                    springAlpha = if (i == 0) springAlpha else null,
                     onSeek = onSeek,
                 )
             }
@@ -188,29 +248,50 @@ import kotlin.math.abs
                 )
             }
         }
-        // 第五轮第 7 项：手动翻看后暂停跟随，右下角出“回到当前行”小按钮；
+        // 第五轮第 7 项：手动翻看后暂停跟随，右下角出“回到当前行”按钮；
         // 点它恢复跟随（userBrowsing=false 后上面的 LaunchedEffect 自会滚回去）。
         // 第五轮第 17 项：沉浸式下按钮弹到最底（16dp，跟歌词区一起撑满全屏）。
+        // 第六轮第 17 项：文字 pill 改 48dp 圆形图标钮——当前行在可视区上方
+        // 用上箭头、下方用下箭头；放在 More 按钮正上方、右对齐（end 24dp，
+        // bottom 80dp / 沉浸 16dp）；长按提示“回到当前行”。
         if (userBrowsing && active >= 0) {
             val backToCurrentBottom by animateDpAsState(
                 targetValue = if (immersive) 16.dp else 80.dp,
                 animationSpec = tween(300),
                 label = "backToCurrentBottom",
             )
-            Box(
-                Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = backToCurrentBottom)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(textColor.copy(alpha = 0.14f))
-                    .clickable { userBrowsing = false },
-                contentAlignment = Alignment.Center,
+            val arrowUp by remember {
+                derivedStateOf {
+                    val vh = viewportH
+                    val info = listState.layoutInfo.visibleItemsInfo
+                    val item = info.firstOrNull { it.index == active }
+                    if (item != null) {
+                        (item.offset + item.size / 2) < vh / 2
+                    } else if (info.isNotEmpty()) {
+                        active < info.first().index
+                    } else {
+                        true
+                    }
+                }
+            }
+            TokiLongPressLabel(
+                "回到当前行",
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = backToCurrentBottom),
             ) {
-                Text(
-                    "回到当前行",
-                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                )
+                Box(
+                    Modifier.size(48.dp)
+                        .clip(RoundedCornerShape(percent = 50))
+                        .background(textColor.copy(alpha = 0.14f))
+                        .clickable { userBrowsing = false },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (arrowUp) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = "回到当前行",
+                        tint = textColor,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
     }
@@ -218,6 +299,20 @@ import kotlin.math.abs
 
 /** 点歌词跳转的目标时间：行首（行级跳转，第五轮第 6 项）。纯函数，JVM 单测覆盖。 */
 fun lyricSeekTargetMs(line: LyricLine): Long = line.startMs
+
+/** 一行歌词里的一个视觉行（折行后的每一段），字符偏移按原行文本计。 */
+data class VisualLineSegment(val startChar: Int, val endChar: Int)
+
+/**
+ * 第六轮第 31 项：折行歌词按视觉行分段扫过——每段的进度只看该段已唱字符数
+ * 占段长的比例（纯函数，JVM 单测覆盖）。sungChars 是整行已唱字符数
+ * （lineProgress × 行总字符数）；不折行时只有一段，与整行扫过一致。
+ */
+fun visualLineProgresses(sungChars: Float, segments: List<VisualLineSegment>): List<Float> =
+    segments.map { seg ->
+        val len = (seg.endChar - seg.startChar).coerceAtLeast(1)
+        ((sungChars - seg.startChar) / len).coerceIn(0f, 1f)
+    }
 
 /** 单行歌词：只有当前行订阅位置状态（50ms tick 只重组这一行）。 */
 @Composable
@@ -233,18 +328,25 @@ private fun LyricLineRow(
     fontFamily: FontFamily = InterFamily,
     entranceWindow: Boolean = false,
     entranceDelayMs: Long = 0L,
+    // 第六轮第 26 项：按屏上位置的（模糊 px，alpha），中间净区 (0f, 1f)。
+    fade: Pair<Float, Float> = 0f to 1f,
+    // 第六轮第 16 项：弹簧入场期间，当前行进度保持 0。
+    freezeProgress: Boolean = false,
+    // 第六轮第 16 项：首行弹簧入场的位移 / 透明度（只传首行）。
+    springOffset: Animatable<Float, AnimationVector1D>? = null,
+    springAlpha: Animatable<Float, AnimationVector1D>? = null,
     onSeek: (Long) -> Unit = {},
 ) {
     val pos = if (isActive) posState.value else 0L
-    val dim = lineAlpha(distance)
-    // 非当前行按距离轻微模糊，越远越糊；当前行始终清晰（第 17 项）。
-    val blurPx = when (distance) {
-        0 -> 0f
-        1 -> 2f
-        2 -> 4f
-        3 -> 6f
-        else -> 8f
-    }
+    val density = LocalDensity.current
+    // 第六轮第 27 项：文本实宽（onTextLayout 量），可点区 = 实宽 + 8dp、
+    // 贴向文本一侧；右侧空白不接点击，透传给父级手势（单击回封面、双击沉浸）。
+    var textWidthPx by remember { mutableIntStateOf(0) }
+    var rowHeightPx by remember { mutableIntStateOf(0) }
+    // 第六轮第 26 项：模糊 / 变淡只看屏上位置（fade），不再按离当前行的距离；
+    // distance 只留给入场 stagger 的延迟。
+    val blurPx = fade.first
+    val rowAlpha = fade.second
     // 第三轮第 8 项：切页入场——窗口期内组成的行从透明 + 24px 下移
     // 逐行淡入；窗口期后才滚入的行直接以最终态出现（不重复入场）。
     val enterAlpha = remember { Animatable(if (entranceWindow) 0f else 1f) }
@@ -257,12 +359,10 @@ private fun LyricLineRow(
     }
     Box(
         Modifier.fillMaxWidth()
-            // 第五轮第 6 项：点行跳到行首；无水波纹，避免破坏歌词排版。
-            // 外层防误触盾是父级 clickable，子级点击优先，不会被盾吞掉。
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSeek(lyricSeekTargetMs(line)) }
+            .onSizeChanged { rowHeightPx = it.height }
             .graphicsLayer {
-                alpha = enterAlpha.value
-                translationY = enterOffsetY.value
+                alpha = enterAlpha.value * (springAlpha?.value ?: 1f) * rowAlpha
+                translationY = enterOffsetY.value + (springOffset?.value ?: 0f)
                 renderEffect = if (blurPx > 0f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
             },
     ) {
@@ -277,25 +377,42 @@ private fun LyricLineRow(
                 // 前行仍是单层 dim 色（第 18 项只重做当前行）。
                 val activeStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp)
                 BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-                    val density = LocalDensity.current
                     val widthPx = with(density) { maxWidth.toPx() }
-                    val progress = YrcParser.lineProgress(line, pos)
-                    val sungBrush = if (widthPx <= 0f) {
-                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                    } else {
-                        val fadePx = with(density) { 2.dp.toPx() }
-                        val w = (widthPx * progress).coerceIn(0f, widthPx)
-                        val fadeStart = ((w - fadePx).coerceAtLeast(0f) / widthPx).coerceIn(0f, 1f)
-                        val fadeEnd = (w / widthPx).coerceIn(0f, 1f)
-                        Brush.horizontalGradient(
-                            0f to textColor,
-                            fadeStart to textColor,
-                            fadeEnd to textColor.copy(alpha = 0f),
-                            1f to textColor.copy(alpha = 0f),
-                        )
+                    // 第六轮第 16 项：弹簧期间进度保持 0，落定后才开始扫过。
+                    val progress = if (freezeProgress) 0f else YrcParser.lineProgress(line, pos)
+                    // 第六轮第 31 项：折行按视觉行分段扫过——用 TextMeasurer
+                    // 按 28sp 样式量出每段的字符范围，每段独立算进度、独立
+                    // 画双层；不折行时只有一段，与原来完全一致。翻译/罗马音
+                    // 行不参与逐字高亮（不走这段）。
+                    val measurer = rememberTextMeasurer()
+                    val segments = remember(line.text, widthPx, fontFamily) {
+                        if (widthPx <= 0f || line.text.isEmpty()) {
+                            listOf(VisualLineSegment(0, line.text.length))
+                        } else {
+                            val result = measurer.measure(
+                                text = line.text,
+                                style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = fontFamily),
+                                constraints = Constraints(maxWidth = widthPx.toInt()),
+                            )
+                            (0 until result.lineCount).map { k ->
+                                VisualLineSegment(result.getLineStart(k), result.getLineEnd(k))
+                            }.filter { it.endChar > it.startChar }
+                                .ifEmpty { listOf(VisualLineSegment(0, line.text.length)) }
+                        }
                     }
-                    Text(line.text, textAlign = TextAlign.Start, style = activeStyle, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = textColor.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth())
-                    Text(line.text, textAlign = TextAlign.Start, style = activeStyle.copy(brush = sungBrush), fontWeight = FontWeight.Bold, fontFamily = fontFamily, modifier = Modifier.fillMaxWidth())
+                    val sungChars = progress * line.text.length
+                    val progresses = visualLineProgresses(sungChars, segments)
+                    // 第 27 项的文本实宽取最长视觉行的宽。
+                    val onSegmentLayout: (TextLayoutResult) -> Unit = { textWidthPx = maxOf(textWidthPx, it.size.width) }
+                    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
+                        segments.forEachIndexed { k, seg ->
+                            SungSegmentText(
+                                line.text.substring(seg.startChar, seg.endChar),
+                                progresses[k], widthPx, activeStyle, fontFamily, textColor,
+                                onTextLayout = onSegmentLayout,
+                            )
+                        }
+                    }
                 }
             } else {
                 Text(
@@ -304,8 +421,11 @@ private fun LyricLineRow(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     fontFamily = fontFamily,
-                    color = textColor.copy(alpha = dim),
+                    // 第六轮第 26 项：中间净区非当前行固定 0.85（不再按距离变淡），
+                    // 渐隐带内的变淡走整行的 rowAlpha。
+                    color = textColor.copy(alpha = 0.85f),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    onTextLayout = { textWidthPx = it.size.width },
                 )
             }
             // 第五轮第 26 项：罗马音行夹在原文与翻译之间（原文 → 罗马音 →
@@ -318,7 +438,7 @@ private fun LyricLineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
-                color = if (isActive) dimColor else textColor.copy(alpha = (dim * 0.5f).coerceAtMost(0.4f)),
+                color = if (isActive) dimColor else textColor.copy(alpha = 0.4f),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
@@ -327,17 +447,56 @@ private fun LyricLineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
-                color = if (isActive) dimColor else textColor.copy(alpha = (dim * 0.5f).coerceAtMost(0.4f)),
+                color = if (isActive) dimColor else textColor.copy(alpha = 0.4f),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+        // 第六轮第 27 项：点歌词行跳到行首（行级跳转，第五轮第 6 项）——
+        // 但只有文本区可点（实宽 + 8dp 容差）；右侧空白留给父级手势，
+        // 不再整行接点击。无水波纹，避免破坏歌词排版。
+        if (textWidthPx > 0 && rowHeightPx > 0) {
+            Box(
+                Modifier.align(Alignment.TopStart)
+                    .width(with(density) { (textWidthPx + 8.dp.toPx()).toDp() })
+                    .height(with(density) { rowHeightPx.toDp() })
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSeek(lyricSeekTargetMs(line)) },
             )
         }
     }
 }
 
-private fun lineAlpha(distance: Int): Float = when (distance) {
-    0 -> 1f
-    1 -> 0.6f
-    2 -> 0.4f
-    3 -> 0.28f
-    else -> 0.18f
+/**
+ * 一段视觉行的双层逐字高亮（第六轮第 31 项）：底层整段 45% 透明 + 顶层实色，
+ * 顶层用横向渐变 Brush 做连续扫过的遮罩（与原来整行的画法一致，只是按段
+ * 独立算进度）。翻译/罗马音行不参与逐字高亮，不走这里。
+ */
+@Composable
+private fun SungSegmentText(
+    text: String,
+    progress: Float,
+    widthPx: Float,
+    style: TextStyle,
+    fontFamily: FontFamily,
+    textColor: Color,
+    onTextLayout: ((TextLayoutResult) -> Unit)? = null,
+) {
+    val density = LocalDensity.current
+    val sungBrush = if (widthPx <= 0f) {
+        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+    } else {
+        val fadePx = with(density) { 2.dp.toPx() }
+        val w = (widthPx * progress).coerceIn(0f, widthPx)
+        val fadeStart = ((w - fadePx).coerceAtLeast(0f) / widthPx).coerceIn(0f, 1f)
+        val fadeEnd = (w / widthPx).coerceIn(0f, 1f)
+        Brush.horizontalGradient(
+            0f to textColor,
+            fadeStart to textColor,
+            fadeEnd to textColor.copy(alpha = 0f),
+            1f to textColor.copy(alpha = 0f),
+        )
+    }
+    Box(Modifier.fillMaxWidth()) {
+        Text(text, textAlign = TextAlign.Start, style = style, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = textColor.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth(), onTextLayout = onTextLayout)
+        Text(text, textAlign = TextAlign.Start, style = style.copy(brush = sungBrush), fontWeight = FontWeight.Bold, fontFamily = fontFamily, modifier = Modifier.fillMaxWidth())
+    }
 }

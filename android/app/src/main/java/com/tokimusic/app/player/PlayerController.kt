@@ -109,6 +109,8 @@ class PlayerController(context: Context) {
 
     /** 会话接通前收到的播放请求（只存最新一次）。 */
     private var pendingQueue: PendingQueue? = null
+    /** 会话接通前收到的队列恢复请求（只存最新一次；接通后不自动播放）。 */
+    private var pendingRestore: PendingQueue? = null
     private data class PendingQueue(val songs: List<Song>, val startIndex: Int, val urls: Map<Long, String?>, val sourceName: String? = null)
 
     /** 空间音频开关的当前值；接通前调用只记下来，接通后立即应用。 */
@@ -148,6 +150,7 @@ class PlayerController(context: Context) {
         controller.addListener(createListener(controller))
         applySpatialAudio(controller, spatialAudioEnabled)
         pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
+        pendingRestore?.let { pendingRestore = null; startRestore(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
     }
 
     private fun createListener(player: Player) = object : Player.Listener {
@@ -177,7 +180,7 @@ class PlayerController(context: Context) {
         playStartElapsedMs = if (playing) now else null
     }
 
-    private fun ensureUrlForCurrent(player: Player) {
+    private fun ensureUrlForCurrent(player: Player, autoPlay: Boolean = true) {
         val idx = player.currentMediaItemIndex
         if (idx < 0 || idx >= player.mediaItemCount) return
         val item = player.getMediaItemAt(idx)
@@ -195,9 +198,11 @@ class PlayerController(context: Context) {
                     MediaItem.Builder().setUri(url).setMediaId(id.toString())
                         .setMediaMetadata(old.mediaMetadata).build(),
                 )
-                player.prepare(); player.play()
+                player.prepare(); if (autoPlay) player.play()
             } else {
                 unplayable.add(id)
+                // 恢复队列时的预取失败不提示、不跳歌：用户还没点播放。
+                if (!autoPlay) return@launch
                 onPlaybackError?.invoke("这首歌暂无播放地址（可能无版权或需 VIP），已跳过")
                 if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.pause()
             }
@@ -241,6 +246,33 @@ class PlayerController(context: Context) {
         controller.prepare(); controller.play()
         _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName)
         ensureUrlForCurrent(controller)
+    }
+
+    /**
+     * Sixth round, batch 2, item 2: restores the last queue on cold start
+     * WITHOUT autoplay — the MiniPlayer shows the last song and the user
+     * taps play when ready. Local songs already carry their content URI
+     * in [urls]; network songs keep an empty URI and load lazily through
+     * [urlLoader] (prefetched here with autoPlay=false so a tap on play
+     * starts immediately; a failed prefetch stays silent — the user
+     * hasn't asked to play anything yet).
+     */
+    fun restoreQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
+        this.urlLoader = urlLoader
+        val controller = mediaController
+        if (controller == null) {
+            pendingRestore = PendingQueue(songs, startIndex, urls, sourceName)
+            _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName)
+            return
+        }
+        startRestore(controller, songs, startIndex, urls, sourceName)
+    }
+
+    private fun startRestore(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null) {
+        controller.setMediaItems(songs.map { mediaItemForSong(it, urls[it.id]) }, startIndex, 0)
+        controller.prepare()
+        _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName)
+        ensureUrlForCurrent(controller, autoPlay = false)
     }
 
     fun toggle() { mediaController?.let { if (it.isPlaying) it.pause() else it.play() } }
@@ -319,7 +351,9 @@ class PlaybackService : MediaSessionService() {
         val player = ExoPlayer.Builder(this).build()
         val sessionActivity = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java),
+            // 第六轮第 29 项：通知栏媒体卡片点进时直达播放器页（MainActivity
+            // 据此恢复 showPlayer / showLyrics / 沉浸态）。
+            Intent(this, MainActivity::class.java).apply { putExtra(MainActivity.EXTRA_OPEN_PLAYER, true) },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         session = MediaSession.Builder(this, player)
