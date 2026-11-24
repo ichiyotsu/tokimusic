@@ -33,6 +33,7 @@ class QqClientTest {
     private class FakeQqSettings : QqSettings {
         override var qqMusicId: String = ""
         override var qqMusicKey: String = ""
+        override var qqEncryptUin: String = ""
         override var qqDeviceId: String = "0123456789abcdef0123456789abcdef"
         override var qqDeviceId2: String = "fedcba9876543210fedcba9876543210"
         override var qqAndroidId: String = "a1b2c3d4e5f6a1b2"
@@ -1150,5 +1151,261 @@ class QqClientTest {
         assertEquals("绅士", detail?.album?.name)
         assertTrue(detail?.songs.isNullOrEmpty())
         assertEquals("", detail?.singerMid)
+    }
+
+    // ---- QQ library sync (0.1.15 第 2 项补做) ----
+    //
+    // Mock 形状只采信 L-1124 源码能佐证的部分：
+    // - GetPlaylistByUin: modules/user.py get_created_songlist，
+    //   param {uin}，data.v_playlist[*]（UserPlaylistSummary extends
+    //   SongList：id/tid/dissid、title、picurl、songnum、uin、nick）。
+    // - CgiGetPlaylistFavInfo: get_fav_songlist，param {uin: euin,
+    //   offset, size}，data.v_list（UserFavSonglistItem extends SongList）。
+    // - CgiGetDiss（喜欢的歌曲）: get_fav_song，param {disstid 0,
+    //   dirid 201, tag, song_begin, song_num, userinfo, orderlist,
+    //   enc_host_uin}，data.songlist + total_song_num（同
+    //   GetSonglistDetailResponse）。
+    // - GetFollowSingerList: get_follow_singers，param {HostUin: euin,
+    //   From, Size}，data.List[*]（RelationUser：MID/EncUin/Name/
+    //   Desc/AvatarUrl/FanNum/IsFollow）+ Total/HasMore。
+    // - euin 来源：L-1124 本版没有 get_euin 方法，测试夹具直接注入
+    //   ENCRYPT_UIN；本实现从 QQLogin / GetLoginUserInfo 响应里
+    //   抓 encryptUin，抓不到再用明文 UIN 探 GetHomepageHeader
+    //   （data.Info.BaseInfo.EncryptedUin，见 UserHomepageBaseInfo）。
+
+    @Test
+    fun createdPlaylistsUsePlainUin() = runBlocking {
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我","createTime":1700000000,"updateTime":1700000001}],"v_delTid":[],"bFinish":true}""",
+                ),
+            ),
+            seen,
+        )
+        val playlists = client.qqLibraryPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("我建的歌单", playlists[0].name)
+        assertEquals(12, playlists[0].trackCount)
+        assertEquals("https://example.com/p.jpg", playlists[0].coverUrl)
+        assertEquals("我", playlists[0].creatorName)
+        assertEquals(123456L, playlists[0].creatorId)
+        assertEquals(false, playlists[0].subscribed)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, playlists[0].source)
+        assertEquals("8812345678", playlists[0].sourceId)
+        // 自建歌单只用明文 UIN，不等 euin；euin 拿不到时不调收藏接口。
+        val methods = seen.map { it.getString("method") }
+        assertTrue(methods.contains("GetPlaylistByUin"))
+        assertTrue(!methods.contains("CgiGetPlaylistFavInfo"))
+        val param = seen.first { it.getString("method") == "GetPlaylistByUin" }.getJSONObject("param")
+        assertEquals("123456", param.getString("uin"))
+    }
+
+    @Test
+    fun favPlaylistsUseEuin() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":0,"v_playlist":[],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.musicasset.PlaylistFavRead/CgiGetPlaylistFavInfo" to cgiOk(
+                    """{"number":1,"total":1,"hasmore":0,"hide":false,"v_list":[{"id":7123456789,"title":"收藏的歌单","picurl":"https://example.com/f.jpg","songnum":30,"uin":"999888","nickname":"别人","createtime":1700000000,"updateTime":1700000001}],"v_delTids":[],"v_failTids":[]}""",
+                ),
+            ),
+            seen,
+        )
+        val playlists = client.qqLibraryPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("收藏的歌单", playlists[0].name)
+        assertEquals(30, playlists[0].trackCount)
+        assertEquals("别人", playlists[0].creatorName)
+        assertEquals(999888L, playlists[0].creatorId)
+        assertEquals(true, playlists[0].subscribed)
+        assertEquals("7123456789", playlists[0].sourceId)
+        val param = seen.first { it.getString("method") == "CgiGetPlaylistFavInfo" }.getJSONObject("param")
+        assertEquals("EUIN123", param.getString("uin"))
+        assertEquals(0, param.getInt("offset"))
+        assertEquals(50, param.getInt("size"))
+    }
+
+    @Test
+    fun favSongsUseEncHostUin() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.srfDissInfo.DissInfo/CgiGetDiss" to cgiOk(
+                    """{"dirinfo":{"dissname":"我喜欢的音乐"},"songlist":[${qqSongJson()}],"total_song_num":1,"songlist_size":1,"hasmore":0}""",
+                ),
+            ),
+            seen,
+        )
+        val songs = client.qqFavSongs()
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, songs[0].source)
+        val param = seen.single().getJSONObject("param")
+        assertEquals(0, param.getInt("disstid"))
+        assertEquals(201, param.getInt("dirid"))
+        assertEquals("EUIN123", param.getString("enc_host_uin"))
+        assertEquals(100, param.getInt("song_num"))
+    }
+
+    @Test
+    fun followSingersParseList() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.concern.RelationList/GetFollowSingerList" to cgiOk(
+                    """{"Total":1,"List":[{"MID":"0025NhlN2yWrP4","EncUin":"E2","Name":"周杰伦","Desc":"华语流行","AvatarUrl":"https://example.com/a.jpg","FanNum":123456,"IsFollow":true}],"HasMore":false,"LastPos":""}""",
+                ),
+            ),
+            seen,
+        )
+        val artists = client.qqFollowSingers()
+        assertEquals(1, artists.size)
+        assertEquals("周杰伦", artists[0].name)
+        assertEquals("0025NhlN2yWrP4", artists[0].mid)
+        assertEquals(com.tokimusic.app.data.model.qqArtistId("0025NhlN2yWrP4"), artists[0].id)
+        assertEquals("https://example.com/a.jpg", artists[0].picUrl)
+        val param = seen.single().getJSONObject("param")
+        assertEquals("EUIN123", param.getString("HostUin"))
+        assertEquals(0, param.getInt("From"))
+        assertEquals(50, param.getInt("Size"))
+    }
+
+    @Test
+    fun libraryReturnsEmptyWhenLoggedOut() = runBlocking {
+        val library = client.qqLibrary()
+        assertTrue(library.playlists.isEmpty())
+        assertTrue(library.favSongs.isEmpty())
+        assertTrue(library.followedArtists.isEmpty())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun libraryCreatedOnlyWhenNoEuin() = runBlocking {
+        // euin 三路都落空：GetLoginUserInfo 报 1000、主页探针回包里
+        // 没有 EncryptedUin——自建歌单仍能同步，喜欢的歌曲与关注
+        // 歌手为空，且不调那两个 euin 接口。
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我"}],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to
+                    """{"code":0,"req_0":{"code":1000,"data":{}}}""",
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"BaseInfo":{"Name":"我","Avatar":"https://example.com/a.jpg"}}}""",
+                ),
+            ),
+            seen,
+        )
+        val library = client.qqLibrary()
+        assertEquals(1, library.playlists.size)
+        assertEquals("我建的歌单", library.playlists[0].name)
+        assertTrue(library.favSongs.isEmpty())
+        assertTrue(library.followedArtists.isEmpty())
+        val methods = seen.map { it.getString("method") }
+        assertTrue(!methods.contains("CgiGetDiss"))
+        assertTrue(!methods.contains("GetFollowSingerList"))
+    }
+
+    @Test
+    fun phoneAuthorizeCapturesEncryptUin() = runBlocking {
+        server.dispatcher = musicuDispatcher { _ ->
+            json("""{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456","encryptUin":"EUIN_LOGIN"}}}""")
+        }
+        val credential = client.phoneAuthorize("13812345678", "123456")
+        assertEquals("123456", credential.musicId)
+        assertEquals("EUIN_LOGIN", settings.qqEncryptUin)
+    }
+
+    @Test
+    fun getLoginUserInfoCapturesEncryptUin() = runBlocking {
+        loggedIn()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to cgiOk(
+                    """{"NickName":"测试","EncryptUin":"EUIN_PROFILE"}""",
+                ),
+            ),
+        )
+        val profile = client.getLoginUserInfo()
+        assertEquals("测试", profile?.nickname)
+        assertEquals("EUIN_PROFILE", settings.qqEncryptUin)
+    }
+
+    @Test
+    fun resolveEuinPrefersStoredValue() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN_STORED"
+        assertEquals("EUIN_STORED", client.resolveEuin())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun resolveEuinProbesHomepageWithPlainUin() = runBlocking {
+        // 前两路落空（GetLoginUserInfo 回包无 euin），主页探针用明文
+        // UIN 当 uin 参数、回包里带 EncryptedUin——该行为未经真机证实，
+        // 单测只锁定“探针确实这么发、回包确实这么读”。
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to cgiOk(
+                    """{"NickName":"测试"}""",
+                ),
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"BaseInfo":{"EncryptedUin":"EUIN_PROBE","Name":"我","Avatar":"https://example.com/a.jpg"}}}""",
+                ),
+            ),
+            seen,
+        )
+        assertEquals("EUIN_PROBE", client.resolveEuin())
+        assertEquals("EUIN_PROBE", settings.qqEncryptUin)
+        val probe = seen.first { it.getString("method") == "GetHomepageHeader" }.getJSONObject("param")
+        assertEquals("123456", probe.getString("uin"))
+        assertEquals(1, probe.getInt("IsQueryTabDetail"))
+    }
+
+    @Test
+    fun qqLibraryCombinesAllThree() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我"}],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.musicasset.PlaylistFavRead/CgiGetPlaylistFavInfo" to cgiOk(
+                    """{"number":1,"total":1,"hasmore":0,"hide":false,"v_list":[{"id":7123456789,"title":"收藏的歌单","picurl":"https://example.com/f.jpg","songnum":30,"uin":"999888","nickname":"别人"}],"v_delTids":[],"v_failTids":[]}""",
+                ),
+                "music.srfDissInfo.DissInfo/CgiGetDiss" to cgiOk(
+                    """{"dirinfo":{"dissname":"我喜欢的音乐"},"songlist":[${qqSongJson()}],"total_song_num":1,"songlist_size":1,"hasmore":0}""",
+                ),
+                "music.concern.RelationList/GetFollowSingerList" to cgiOk(
+                    """{"Total":1,"List":[{"MID":"0025NhlN2yWrP4","EncUin":"E2","Name":"周杰伦","Desc":"","AvatarUrl":"https://example.com/a.jpg","FanNum":1,"IsFollow":true}],"HasMore":false,"LastPos":""}""",
+                ),
+            ),
+        )
+        val library = client.qqLibrary()
+        assertEquals(2, library.playlists.size)
+        assertEquals("我建的歌单", library.playlists[0].name)
+        assertEquals("收藏的歌单", library.playlists[1].name)
+        assertEquals(1, library.favSongs.size)
+        assertEquals("晴天", library.favSongs[0].name)
+        assertEquals(1, library.followedArtists.size)
+        assertEquals("周杰伦", library.followedArtists[0].name)
     }
 }

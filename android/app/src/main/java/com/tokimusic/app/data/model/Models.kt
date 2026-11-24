@@ -72,7 +72,9 @@ data class RecordItem(val song: Song, val playCount: Int, val score: Int = 0)
 enum class PlaylistGroup(val title: String) { Liked("我喜欢的音乐"), Created("我创建的歌单"), Subscribed("我收藏的歌单") }
 fun groupPlaylists(all: List<Playlist>, myUid: Long): Map<PlaylistGroup, List<Playlist>> {
     val liked = all.filter { it.name.contains("喜欢的音乐") }
-    val created = all.filter { it !in liked && !it.subscribed && (myUid == 0L || it.creatorId == myUid) }
+    // 0.1.15 资料库同步：QQ 自建歌单的 creatorId 是 QQ musicid，永远
+    // 不等于网易云 uid——不特殊处理会在双登录时从三个分组全漏掉。
+    val created = all.filter { it !in liked && !it.subscribed && (it.source == MusicSource.QQ || myUid == 0L || it.creatorId == myUid) }
     val sub = all.filter { it !in liked && it.subscribed }
     return linkedMapOf(PlaylistGroup.Liked to liked, PlaylistGroup.Created to created, PlaylistGroup.Subscribed to sub)
 }

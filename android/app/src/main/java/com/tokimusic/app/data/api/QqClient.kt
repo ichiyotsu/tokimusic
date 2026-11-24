@@ -43,6 +43,10 @@ interface QqSettings {
     var qqDeviceId2: String
     /** Stable 16-hex Android id (CGI comm aid), generated once. */
     var qqAndroidId: String
+    /** Encrypted UIN (euin) captured from the QQLogin / GetLoginUserInfo
+     * responses when the server returns one — the euin-gated library
+     * calls need it; empty = unknown (see [QqClient.resolveEuin]). */
+    var qqEncryptUin: String
     var neteaseEnabled: Boolean
     var qqEnabled: Boolean
 }
@@ -306,6 +310,12 @@ class QqClient(
         val credential = QqCredential(musicId, musicKey, data.optString("str_musicid", musicId))
         store.qqMusicId = credential.musicId
         store.qqMusicKey = credential.musicKey
+        // 0.1.15 资料库同步：QQLogin 响应里若带 encryptUin（L-1124 的
+        // Credential 模型同样声明了该字段），落库供资料库的 euin
+        // 接口用；没有也不报错（resolveEuin 再想办法）。
+        euinCacheTried = false
+        euinCache = null
+        captureEncryptUin(data)
         return credential
     }
 
@@ -512,7 +522,22 @@ class QqClient(
         val avatar = firstString(data, "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
             ?: firstString(data.optJSONObject("userinfo"), "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
             ?: firstString(data.optJSONObject("userInfo"), "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
+        // 0.1.15 资料库同步：响应里若带加密 UIN 也落库（L-1124 不建模
+        // 该响应、只验 code，所以字段名只能防御性地读；没有也不报错）。
+        captureEncryptUin(data)
+        captureEncryptUin(data.optJSONObject("userinfo"))
+        captureEncryptUin(data.optJSONObject("userInfo"))
         return QqProfile(nickname, avatar?.takeIf { it.isNotBlank() }, musicId)
+    }
+
+    /** 读出对象里的加密 UIN（encryptUin / EncryptUin / encrypted_uin /
+     * EncryptedUin）并落库；没有或为空时不动已存的值（登录响应不带
+     * 该字段是常态）。 */
+    private fun captureEncryptUin(obj: JSONObject?) {
+        if (obj == null) return
+        val euin = firstString(obj, "encryptUin", "EncryptUin", "encrypted_uin", "EncryptedUin")
+            ?.takeIf { it.isNotBlank() } ?: return
+        store.qqEncryptUin = euin
     }
 
     // ---- playback (sixth round, QQ playback) ----
@@ -522,6 +547,10 @@ class QqClient(
 
     /** In-memory Android session (GetSession uid/sid, one call per client lifetime). */
     private var cachedSession: QqSession? = null
+
+    /** euin 解析的内存缓存（resolveEuin 只探一次；换凭证 / 退出登录时清掉）。 */
+    private var euinCacheTried = false
+    private var euinCache: String? = null
 
     /** Stored login credential, if the user is logged in to QQ. */
     private fun storedCredential(): QqCredential? {
@@ -1108,6 +1137,203 @@ class QqClient(
         return playlist to songs
     }
 
+    // ---- QQ library sync (0.1.15 第 2 项补做) ----
+    //
+    // euin（加密 UIN）结论（L-1124 源码核实，非记忆）：
+    // - L-1124 本版没有 get_euin 方法（credential.md 的例子引用
+    //   的方法并不存在）；测试夹具直接从环境变量注入 ENCRYPT_UIN。
+    //   euin 不能由 musicid+musickey 本地算出来，必须来自服务端：
+    //   ① QQLogin 响应 data.encryptUin（L-1124 Credential 模型
+    //   声明了 encryptUin 字段，_validate_result 原样透传响应，
+    //   有就收下）——登录时 [credentialFromLoginResp] 落库；
+    //   ② GetLoginUserInfo 响应（L-1124 不建模，只验 code）——
+    //   [getLoginUserInfo] 防御性地读；
+    //   ③ GetHomepageHeader 探针：响应 data.Info.BaseInfo.
+    //   EncryptedUin（UserHomepageBaseInfo），L-1124 调它时传的
+    //   uin 参数就是 euin；明文 UIN 能不能当 uin 传、服务端会不
+    //   会回加密值，源码无法证实——只在前两路都落空时试一次，
+    //   成败都写进 NOTES，真机验证。
+    // - 自建歌单 GetPlaylistByUin 只需明文 UIN + 凭证，不用 euin，
+    //   所以即使 euin 拿不到，自建歌单仍能同步。
+    // - 四个端点（模块 / 方法 / 参数）均取自 L-1124 modules/user.py：
+    //   GetPlaylistByUin / CgiGetPlaylistFavInfo / CgiGetDiss
+    //   （disstid 0 + dirid 201 + enc_host_uin）/
+    //   GetFollowSingerList（HostUin + From/Size）。
+    // - 所有函数失败时返回空列表、不抛异常（资料库页不能因为
+    //   QQ 接口失败就崩）；未登录时不发请求。
+
+    /** QQ 资料库三件套（歌单 / 喜欢的歌曲 / 关注歌手）。 */
+    data class QqLibrary(
+        val playlists: List<Playlist> = emptyList(),
+        val favSongs: List<Song> = emptyList(),
+        val followedArtists: List<Artist> = emptyList(),
+    )
+
+    /** 解析 euin（带内存缓存，只探一次）：已存的优先；没有就走
+     * GetLoginUserInfo 再读一次；仍没有就用明文 UIN 探一次
+     * GetHomepageHeader（见上，未证实）。全失败返回 null；未登录
+     * 直接返回 null，不发请求。 */
+    suspend fun resolveEuin(): String? {
+        if (euinCacheTried) return euinCache
+        euinCacheTried = true
+        euinCache = resolveEuinUncached()
+        return euinCache
+    }
+
+    private suspend fun resolveEuinUncached(): String? {
+        if (storedCredential() == null) return null
+        store.qqEncryptUin.takeIf { it.isNotBlank() }?.let { return it }
+        runCatching { getLoginUserInfo() }
+        store.qqEncryptUin.takeIf { it.isNotBlank() }?.let { return it }
+        val musicId = store.qqMusicId
+        val resp = runCatching {
+            cgi(
+                module = "music.UnifiedHomepage.UnifiedHomepageSrv",
+                method = "GetHomepageHeader",
+                param = JSONObject().put("uin", musicId).put("IsQueryTabDetail", 1),
+            )
+        }.getOrNull() ?: return null
+        if (resp.optInt("code", -1) != 0) return null
+        val base = resp.optJSONObject("data")?.optJSONObject("Info")?.optJSONObject("BaseInfo")
+        val euin = firstString(base, "EncryptedUin", "EncryptUin", "encrypted_uin", "encryptUin")
+            ?.takeIf { it.isNotBlank() } ?: return null
+        store.qqEncryptUin = euin
+        return euin
+    }
+
+    /** One QQ user playlist (self-created via GetPlaylistByUin or
+     * favourited via CgiGetPlaylistFavInfo — both are SongList shapes:
+     * id/tid/dissid, title/dissname/name, picurl/cover/logo, songnum).
+     * [subscribed] decides the library group (self-created vs
+     * favourited); creator comes from the item's own uin/nick. */
+    internal fun parseQqUserPlaylist(obj: JSONObject, subscribed: Boolean): Playlist? {
+        val dissid = obj.optLong("dissid", obj.optLong("id", obj.optLong("tid", 0)))
+        if (dissid == 0L) return null
+        val name = firstString(obj, "title", "dissname", "name", "dirName").orEmpty()
+        val cover = firstString(obj.optJSONObject("cover"), "default_url")
+            ?: firstString(obj, "picurl", "cover", "logo", "picUrl")
+            ?: ""
+        val creatorObj = obj.optJSONObject("creator")
+        val creatorName = creatorObj?.optString("nick", "").orEmpty().takeIf { it.isNotBlank() }
+            ?: firstString(obj, "nick", "nickname").orEmpty()
+        val creatorId = creatorObj?.optString("uin", "")?.toLongOrNull()
+            ?: obj.optString("uin", "").toLongOrNull()
+            ?: 0L
+        return Playlist(
+            id = QqPlaylistIds.dissPlaylistId(dissid),
+            name = name,
+            coverUrl = cover,
+            trackCount = obj.optLong("songnum", obj.optLong("songNum", obj.optLong("song_cnt", 0))).toInt(),
+            creatorName = creatorName,
+            creatorId = creatorId,
+            subscribed = subscribed,
+            source = MusicSource.QQ,
+            sourceId = dissid.toString(),
+        )
+    }
+
+    /** QQ 歌单：自建（GetPlaylistByUin，明文 UIN + 凭证，不用 euin）
+     * + 收藏（CgiGetPlaylistFavInfo，需 euin）。未登录返回空列表。 */
+    suspend fun qqLibraryPlaylists(num: Int = 50): List<Playlist> {
+        val credential = storedCredential() ?: return emptyList()
+        val out = mutableListOf<Playlist>()
+        runCatching {
+            val resp = cgi(
+                module = "music.musicasset.PlaylistBaseRead",
+                method = "GetPlaylistByUin",
+                param = JSONObject().put("uin", credential.musicId),
+                credential = credential,
+            )
+            if (resp.optInt("code", -1) == 0) {
+                val arr = resp.optJSONObject("data")?.optJSONArray("v_playlist")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        parseQqUserPlaylist(arr.optJSONObject(i) ?: continue, subscribed = false)?.let { out += it }
+                    }
+                }
+            }
+        }
+        val euin = resolveEuin() ?: return out
+        runCatching {
+            val resp = cgi(
+                module = "music.musicasset.PlaylistFavRead",
+                method = "CgiGetPlaylistFavInfo",
+                param = JSONObject().put("uin", euin).put("offset", 0).put("size", num),
+                credential = credential,
+            )
+            if (resp.optInt("code", -1) == 0) {
+                val arr = resp.optJSONObject("data")?.optJSONArray("v_list")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        parseQqUserPlaylist(arr.optJSONObject(i) ?: continue, subscribed = true)?.let { out += it }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /** QQ 喜欢的歌曲：CgiGetDiss（disstid 0 + dirid 201 + enc_host_uin）。
+     * 响应形状与歌单详情相同（data.songlist），复用 [parseQqSong]。
+     * 无 euin 时返回空列表（不发请求）。 */
+    suspend fun qqFavSongs(num: Int = 100): List<Song> {
+        val credential = storedCredential() ?: return emptyList()
+        val euin = resolveEuin() ?: return emptyList()
+        val resp = runCatching {
+            cgi(
+                module = "music.srfDissInfo.DissInfo",
+                method = "CgiGetDiss",
+                param = JSONObject()
+                    .put("disstid", 0).put("dirid", 201).put("tag", true)
+                    .put("song_begin", 0).put("song_num", num).put("userinfo", true)
+                    .put("orderlist", true).put("enc_host_uin", euin),
+                credential = credential,
+            )
+        }.getOrNull() ?: return emptyList()
+        if (resp.optInt("code", -1) != 0) return emptyList()
+        val arr = resp.optJSONObject("data")?.optJSONArray("songlist") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parseQqSong(arr.optJSONObject(it) ?: return@mapNotNull null) }
+    }
+
+    /** QQ 关注的歌手：GetFollowSingerList（HostUin + From/Size）。
+     * 无 euin 时返回空列表（不发请求）。 */
+    suspend fun qqFollowSingers(num: Int = 50): List<Artist> {
+        val credential = storedCredential() ?: return emptyList()
+        val euin = resolveEuin() ?: return emptyList()
+        val resp = runCatching {
+            cgi(
+                module = "music.concern.RelationList",
+                method = "GetFollowSingerList",
+                param = JSONObject().put("HostUin", euin).put("From", 0).put("Size", num),
+                credential = credential,
+            )
+        }.getOrNull() ?: return emptyList()
+        if (resp.optInt("code", -1) != 0) return emptyList()
+        val arr = resp.optJSONObject("data")?.optJSONArray("List") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val mid = o.optString("MID", "").ifBlank { o.optString("mid", "") }
+            val name = o.optString("Name", "").ifBlank { o.optString("name", "") }
+            if (mid.isBlank() && name.isBlank()) null
+            else Artist(
+                qqArtistId(mid),
+                name,
+                picUrl = firstString(o, "AvatarUrl", "avatarUrl", "picUrl").orEmpty(),
+                mid = mid,
+            )
+        }
+    }
+
+    /** QQ 资料库三件套一次取齐（各自失败只留空，不连累其他两路）。 */
+    suspend fun qqLibrary(): QqLibrary {
+        if (storedCredential() == null) return QqLibrary()
+        return QqLibrary(
+            playlists = qqLibraryPlaylists(),
+            favSongs = qqFavSongs(),
+            followedArtists = qqFollowSingers(),
+        )
+    }
+
     /** GetCdnDispatch (L-1124 song.py): CDN roots for joining with purl. */
     private suspend fun cdnDispatch(): List<String> {
         cachedSip?.let { return it }
@@ -1136,6 +1362,9 @@ class QqClient(
     fun clearSession() {
         store.qqMusicId = ""
         store.qqMusicKey = ""
+        store.qqEncryptUin = ""
+        euinCacheTried = false
+        euinCache = null
         cachedSession = null
     }
 

@@ -160,6 +160,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var albumsLoaded = false
     private val _toplist = MutableStateFlow<List<Playlist>>(emptyList()); val toplist: StateFlow<List<Playlist>> = _toplist
     private var toplistLoaded = false
+    // 0.1.15 资料库同步：QQ 资料库（自建 + 收藏歌单 / 喜欢的歌曲 /
+    // 关注歌手）懒加载一次；未登录或 euin 拿不到时各路返回空列表，
+    // 资料库只显示网易云内容（失败不抛、不 toast）。
+    private val _qqLibrary = MutableStateFlow<QqClient.QqLibrary?>(null); val qqLibrary: StateFlow<QqClient.QqLibrary?> = _qqLibrary
+    private var qqLibraryLoaded = false
+    fun loadQqLibrary() {
+        if (qqLibraryLoaded || !_qqLoggedIn.value) return
+        qqLibraryLoaded = true
+        viewModelScope.launch {
+            _qqLibrary.value = runCatching { qqClient.qqLibrary() }.getOrNull() ?: QqClient.QqLibrary()
+        }
+    }
     private var searchJob: Job? = null
     private var qrJob: Job? = null
     private var qqQrJob: Job? = null
@@ -716,6 +728,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun qqLogout() {
         qqClient.clearSession(); _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
         _qqLoggedIn.value = false
+        _qqLibrary.value = null; qqLibraryLoaded = false
         store.qqEnabled = false; _qqEnabled.value = false
         refreshHome()
     }

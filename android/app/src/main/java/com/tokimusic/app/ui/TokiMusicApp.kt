@@ -680,6 +680,8 @@ fun TokiMusicApp(
                                             onOpenListeningStats = { statsOpen = true },
                                             onOpenArtist = { artistId = it },
                                             onOpenAlbum = { albumId = it },
+                                            // 0.1.15 资料库同步：QQ 关注歌手按 mid 进 QQ 歌手页。
+                                            onOpenQqArtist = { qqArtistMid = it },
                                         )
                                     }
                                 }

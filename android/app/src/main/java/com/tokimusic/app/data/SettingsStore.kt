@@ -109,6 +109,11 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putString("qq_music_id", v).apply() }
     override var qqMusicKey: String get() = prefs.getString("qq_music_key", "") ?: ""
         set(v) { prefs.edit().putString("qq_music_key", v).apply() }
+    /** QQ 加密 UIN（0.1.15 资料库同步）：登录 / GetLoginUserInfo 响应里
+     * 带 encryptUin 时落库（见 QqClient.resolveEuin）；空 = 未知，
+     * 资料库的 euin 接口会先探一次再决定。退出登录时清掉。 */
+    override var qqEncryptUin: String get() = prefs.getString("qq_encrypt_uin", "") ?: ""
+        set(v) { prefs.edit().putString("qq_encrypt_uin", v).apply() }
     /** QQ 客户端 GUID（第六轮第 1 项）：CGI comm 的 OpenUDID/udid，
      * 稳定不变，首次使用时生成。 */
     override var qqDeviceId: String get() = prefs.getString("qq_device_id", null) ?: run {
