@@ -11,7 +11,11 @@ import com.tokimusic.app.data.api.LyricPayload
 import com.tokimusic.app.data.api.QqClient
 import com.tokimusic.app.data.api.QqClient.QqArtist
 import com.tokimusic.app.data.api.QqProfile
+import com.tokimusic.app.data.api.QqMobileQrEvent
+import com.tokimusic.app.data.api.QqMqttClient
+import com.tokimusic.app.data.api.QqPhoneAuthResult
 import com.tokimusic.app.data.api.QqQrCheck
+import com.tokimusic.app.data.api.isValidCnPhone
 import com.tokimusic.app.data.api.QqSongUrlResult
 import com.tokimusic.app.data.api.QrCheck
 import com.tokimusic.app.data.api.apiErrorText
@@ -21,6 +25,9 @@ import com.tokimusic.app.data.local.LocalMusicScanner
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
+import com.tokimusic.app.data.playlistFavoriteKey
+import com.tokimusic.app.player.PlayMode
+import com.tokimusic.app.player.shuffleStartIndex
 import com.tokimusic.app.ui.components.SongActionsContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -79,11 +86,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _mine = MutableStateFlow(MineUiState()); val mine: StateFlow<MineUiState> = _mine
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList()); val lyrics: StateFlow<List<LyricLine>> = _lyrics
     private val _likedIds = MutableStateFlow<Set<Long>>(emptySet()); val likedIds: StateFlow<Set<Long>> = _likedIds
+    /** 0.1.12 歌单页收藏星星：本地收藏态（SettingsStore 持久化），初值从 store 读。 */
+    private val _favoritePlaylistIds = MutableStateFlow(store.favoritePlaylistIds); val favoritePlaylistIds: StateFlow<Set<String>> = _favoritePlaylistIds
+    fun toggleFavoritePlaylist(playlist: Playlist) {
+        val key = playlistFavoriteKey(playlist.source, playlist.id)
+        val updated = if (key in _favoritePlaylistIds.value) _favoritePlaylistIds.value - key else _favoritePlaylistIds.value + key
+        store.favoritePlaylistIds = updated
+        _favoritePlaylistIds.value = updated
+    }
     val qrState = MutableStateFlow<QrCheck?>(null); val qrImage = MutableStateFlow("")
     private val _qrError = MutableStateFlow<String?>(null); val qrError: StateFlow<String?> = _qrError
     // 第六轮第 1 项：QQ 二维码登录态（与网易云 qrState/qrImage/qrError 平行）。
     val qqQrState = MutableStateFlow<QqQrCheck?>(null); val qqQrImage = MutableStateFlow("")
     private val _qqQrError = MutableStateFlow<String?>(null); val qqQrError: StateFlow<String?> = _qqQrError
+    // 0.1.12：QQ音乐 App 扫码登录态（与 qqQrState 平行；事件是 QqMobileQrEvent）。
+    val qqMobileQrState = MutableStateFlow<QqMobileQrEvent?>(null); val qqMobileQrImage = MutableStateFlow("")
+    private val _qqMobileQrError = MutableStateFlow<String?>(null); val qqMobileQrError: StateFlow<String?> = _qqMobileQrError
+    // 0.1.12：手机号短信登录态。phone/code 是输入框的双向绑定；sent=true
+    // 进入验证码输入；countdown 是重发冷却秒数；captchaUrl 非空时弹
+    // WebView 做人机验证，验证完返回重新发送。
+    val qqSmsPhone = MutableStateFlow("")
+    val qqSmsCode = MutableStateFlow("")
+    val qqSmsSent = MutableStateFlow(false)
+    val qqSmsCountdown = MutableStateFlow(0)
+    private val _qqSmsError = MutableStateFlow<String?>(null); val qqSmsError: StateFlow<String?> = _qqSmsError
+    val qqSmsCaptchaUrl = MutableStateFlow<String?>(null)
+    private val qqMqttClient = QqMqttClient(qqClient)
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
@@ -109,6 +137,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: Job? = null
     private var qrJob: Job? = null
     private var qqQrJob: Job? = null
+    private var qqMobileQrJob: Job? = null
+    private var qqSmsJob: Job? = null
+    private var qqSmsCountdownJob: Job? = null
 
     // 第二轮第 6 项 B：启动时按设置应用空间音频开关。
     init {
@@ -350,6 +381,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * 0.1.12 歌单页播放控制：大播放键顺序播放（默认），随机键先切随机模式
+     * 再从随机一首起播；模式与播放共用一套逻辑（队列顶栏 pill 同款）。
+     */
+    fun playPlaylist(songs: List<Song>, playlist: Playlist, shuffle: Boolean = false) {
+        if (songs.isEmpty()) return
+        player.setPlayMode(if (shuffle) PlayMode.Shuffle else PlayMode.Sequential)
+        play(songs, if (shuffle) shuffleStartIndex(songs.size) else 0, playlist.name)
+    }
+
+    /**
      * First-song URL with user-facing errors. QQ without a credential
      * never hits the network — it explains "请先登录 QQ 音乐" instead
      * of failing silently or blaming copyright (104003 is "no
@@ -479,6 +520,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelQrLogin() {
         qrJob?.cancel(); qrState.value = null; qrImage.value = ""; _qrError.value = null
     }
+    /** QQ 任一登录方式成功后的收尾：启用 QQ 源、记首次登录时间、拉取资料。 */
+    private fun onQqLoginSuccess() {
+        store.qqEnabled = true; _qqEnabled.value = true
+        if (store.qqFirstLoginMs == 0L) store.qqFirstLoginMs = System.currentTimeMillis()
+        refreshQqSession()
+    }
+
     /** 第六轮第 1 项：QQ 二维码登录（与网易云 startQrLogin 同款状态机）：
      * 取码 → 轮询（66 等待 / 67 已扫待确认 / 65 过期重取 / 68 拒绝）→
      * 0 完成时换凭证；二维码约 5 分钟有效，过期重取，最多 3 次。
@@ -498,9 +546,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         when (check) {
                             is QqQrCheck.Done -> {
                                 qqClient.exchangeQrLogin(check.uin, check.sigx)
-                                store.qqEnabled = true; _qqEnabled.value = true
-                                if (store.qqFirstLoginMs == 0L) store.qqFirstLoginMs = System.currentTimeMillis()
-                                refreshQqSession()
+                                onQqLoginSuccess()
                                 return@launch
                             }
                             QqQrCheck.Expired -> break
@@ -522,6 +568,111 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun cancelQqQrLogin() {
         qqQrJob?.cancel(); qqQrState.value = null; qqQrImage.value = ""; _qqQrError.value = null
+    }
+
+    /** 0.1.12：QQ音乐 App 扫码登录（与 startQqQrLogin 同款状态机）：
+     * CreateQRCode 取码 → MQTT 订阅等事件（等待 / 已扫待确认 / 拒绝 /
+     * 超时）→ cookies 事件到时内部换凭证；二维码过期重取，最多 3 次。
+     * 成功后走 onQqLoginSuccess。MQTT 连接本身未在真机上验证过，见 NOTES。 */
+    fun startQqMobileQrLogin() {
+        qqMobileQrJob?.cancel()
+        _qqMobileQrError.value = null
+        qqMobileQrJob = viewModelScope.launch {
+            var attempts = 0
+            while (attempts < 3) {
+                attempts++
+                try {
+                    val (png, qrcodeId) = qqClient.mobileQrShow()
+                    qqMobileQrImage.value = QqClient.qrImageDataUri(png)
+                    val credential = qqMqttClient.watchMobileQrLogin(qrcodeId) { event ->
+                        qqMobileQrState.value = event
+                    }
+                    if (credential != null) {
+                        onQqLoginSuccess()
+                        return@launch
+                    }
+                    if (qqMobileQrState.value is QqMobileQrEvent.Refused) {
+                        _qqMobileQrError.value = "已在手机上拒绝登录"; return@launch
+                    }
+                    // 超时：循环重取一张新码（最多 3 次）。
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _qqMobileQrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查网络后重试"
+                    return@launch
+                }
+            }
+            _qqMobileQrError.value = "二维码已过期，请重新生成"
+        }
+    }
+    fun cancelQqMobileQrLogin() {
+        qqMobileQrJob?.cancel(); qqMobileQrState.value = null; qqMobileQrImage.value = ""; _qqMobileQrError.value = null
+    }
+
+    /** 0.1.12：手机号短信登录——发送验证码。手机号先做 11 位校验；
+     * CAPTCHA 时把 securityURL 交给 UI 的 WebView，验证完返回重新发送。 */
+    fun sendQqSmsCode() {
+        val phone = qqSmsPhone.value.trim()
+        if (!isValidCnPhone(phone)) {
+            _qqSmsError.value = "请输入 11 位手机号"; return
+        }
+        qqSmsJob?.cancel()
+        _qqSmsError.value = null
+        qqSmsJob = viewModelScope.launch {
+            try {
+                when (val result = qqClient.sendPhoneAuthCode(phone)) {
+                    QqPhoneAuthResult.Sent -> {
+                        qqSmsSent.value = true
+                        startSmsCountdown()
+                    }
+                    is QqPhoneAuthResult.Captcha -> qqSmsCaptchaUrl.value = result.securityUrl
+                    QqPhoneAuthResult.Frequency -> _qqSmsError.value = "请求过于频繁，请稍后再试"
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else "验证码发送失败，请检查网络后重试"
+            }
+        }
+    }
+
+    /** 0.1.12：手机号短信登录——提交验证码换凭证，成功后走 onQqLoginSuccess。 */
+    fun verifyQqSmsCode() {
+        val phone = qqSmsPhone.value.trim()
+        val code = qqSmsCode.value.trim()
+        if (code.isBlank()) {
+            _qqSmsError.value = "请输入验证码"; return
+        }
+        qqSmsJob?.cancel()
+        _qqSmsError.value = null
+        qqSmsJob = viewModelScope.launch {
+            try {
+                qqClient.phoneAuthorize(phone, code)
+                onQqLoginSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else "登录失败，请重试"
+            }
+        }
+    }
+
+    /** 0.1.12：手机号短信登录——60 秒重发冷却。 */
+    private fun startSmsCountdown() {
+        qqSmsCountdownJob?.cancel()
+        qqSmsCountdownJob = viewModelScope.launch {
+            for (i in 60 downTo 1) {
+                qqSmsCountdown.value = i
+                delay(1000)
+            }
+            qqSmsCountdown.value = 0
+        }
+    }
+
+    fun cancelQqSmsLogin() {
+        qqSmsJob?.cancel(); qqSmsCountdownJob?.cancel()
+        qqSmsSent.value = false; qqSmsCode.value = ""; qqSmsCountdown.value = 0
+        _qqSmsError.value = null; qqSmsCaptchaUrl.value = null
     }
     /** 第六轮第 19 项：退出 QQ 登录——只清 QQ 侧会话并关闭 QQ 源；
      * 网易云登录不受影响。 */

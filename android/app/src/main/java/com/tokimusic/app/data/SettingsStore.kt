@@ -129,4 +129,14 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putString("last_queue_json", v).apply() }
     var lastQueueIndex: Int get() = prefs.getInt("last_queue_index", 0)
         set(v) { prefs.edit().putInt("last_queue_index", v).apply() }
+    /** 收藏的歌单（0.1.12 歌单页收藏星星）：本地收藏态，不走服务端；
+     * 键是 [playlistFavoriteKey]（"源:id"，网易云与 QQ 的 id 空间不同，
+     * 不能只存数字 id）。 */
+    var favoritePlaylistIds: Set<String>
+        get() = prefs.getStringSet("favorite_playlist_ids", emptySet()) ?: emptySet()
+        set(v) { prefs.edit().putStringSet("favorite_playlist_ids", v).apply() }
 }
+
+/** 歌单收藏的存储键（纯函数，JVM 单测覆盖）：源 + id，避免跨源 id 撞号。 */
+fun playlistFavoriteKey(source: com.tokimusic.app.data.model.MusicSource, id: Long): String =
+    "${source.name}:$id"

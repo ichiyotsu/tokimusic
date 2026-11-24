@@ -618,4 +618,203 @@ class QqClientTest {
         assertNull(client.parseQqSong(JSONObject("""{"songname":"无 mid"}""")))
         assertTrue(client.parseQqSong(JSONObject(qqSongJson())) != null)
     }
+
+    // ---- 0.1.12：手机号短信登录 + QQ音乐 App 扫码登录 ----
+
+    @Test
+    fun isValidCnPhoneAcceptsOnly11DigitNumbersStartingWith1() {
+        assertTrue(isValidCnPhone("13812345678"))
+        assertTrue(!isValidCnPhone("1381234567")) // 10 位
+        assertTrue(!isValidCnPhone("138123456789")) // 12 位
+        assertTrue(!isValidCnPhone("23812345678")) // 非 1 开头
+        assertTrue(!isValidCnPhone("1381234567a")) // 含字母
+        assertTrue(!isValidCnPhone(""))
+    }
+
+    @Test
+    fun qqLoginCodeMessageMapsKnownCodes() {
+        assertNull(qqLoginCodeMessage(0))
+        assertEquals("验证码错误", qqLoginCodeMessage(20271))
+        assertEquals("账号已被封禁", qqLoginCodeMessage(20450))
+        assertEquals("登录设备数量超限", qqLoginCodeMessage(20279))
+        assertEquals("操作过于频繁，请稍后再试", qqLoginCodeMessage(104604))
+        assertNull(qqLoginCodeMessage(999999))
+    }
+
+    @Test
+    fun sendPhoneAuthCodeReturnsSentOnCode0() = runBlocking {
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf("music.login.LoginServer/SendPhoneAuthCode" to """{"code":0,"req_0":{"code":0,"data":{}}}"""),
+            seen,
+        )
+        assertEquals(QqPhoneAuthResult.Sent, client.sendPhoneAuthCode("13812345678"))
+        val req0 = seen.single()
+        assertEquals("SendPhoneAuthCode", req0.getString("method"))
+        val param = req0.getJSONObject("param")
+        assertEquals("qqmusic", param.getString("tmeAppid"))
+        assertEquals("86", param.getString("areaCode"))
+        assertEquals("13812345678", param.getString("phoneNo"))
+        // comm 由 musicuDispatcher 的 body 断言：tmeLoginMethod=3（见 sendPhoneAuthCodeRequestCarriesLoginMethod3）。
+    }
+
+    @Test
+    fun sendPhoneAuthCodeRequestCarriesLoginMethod3() = runBlocking {
+        var comm: JSONObject? = null
+        server.dispatcher = musicuDispatcher { body ->
+            comm = body.getJSONObject("comm")
+            json("""{"code":0,"req_0":{"code":0,"data":{}}}""")
+        }
+        client.sendPhoneAuthCode("13812345678")
+        assertEquals(3, comm!!.getInt("tmeLoginMethod"))
+    }
+
+    @Test
+    fun sendPhoneAuthCodeReturnsCaptchaWithSecurityUrl() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.login.LoginServer/SendPhoneAuthCode" to
+                    """{"code":0,"req_0":{"code":20276,"data":{"securityURL":"https://x.example.com/captcha"}}}""",
+            ),
+        )
+        val result = client.sendPhoneAuthCode("13812345678")
+        assertEquals(QqPhoneAuthResult.Captcha("https://x.example.com/captcha"), result)
+    }
+
+    @Test
+    fun sendPhoneAuthCodeReturnsFrequencyOn100001() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.login.LoginServer/SendPhoneAuthCode" to
+                    """{"code":0,"req_0":{"code":100001,"data":{}}}""",
+            ),
+        )
+        assertEquals(QqPhoneAuthResult.Frequency, client.sendPhoneAuthCode("13812345678"))
+    }
+
+    @Test
+    fun sendPhoneAuthCodeThrowsOnOtherCode() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.login.LoginServer/SendPhoneAuthCode" to
+                    """{"code":0,"req_0":{"code":20261,"data":{}}}""",
+            ),
+        )
+        val failure = runCatching { client.sendPhoneAuthCode("13812345678") }.exceptionOrNull()
+        assertTrue(failure is ApiException)
+        assertTrue(failure!!.message!!.contains("20261"))
+    }
+
+    @Test
+    fun phoneAuthorizePersistsCredential() = runBlocking {
+        val seen = mutableListOf<JSONObject>()
+        val seenComms = mutableListOf<JSONObject>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+                val body = JSONObject(request.body.readUtf8())
+                seen += body.getJSONObject("req_0")
+                seenComms += body.getJSONObject("comm")
+                return json("""{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456"}}}""")
+            }
+        }
+        val credential = client.phoneAuthorize("13812345678", "123456")
+        assertEquals("123456", credential.musicId)
+        assertEquals("KEY123", credential.musicKey)
+        assertEquals("123456", settings.qqMusicId)
+        assertEquals("KEY123", settings.qqMusicKey)
+        val req0 = seen.single()
+        assertEquals("Login", req0.getString("method"))
+        val param = req0.getJSONObject("param")
+        assertEquals("123456", param.getString("code"))
+        assertEquals(1, param.getInt("loginMode"))
+        assertEquals("13812345678", param.getString("phoneNo"))
+        val comm = seenComms.single()
+        assertEquals(3, comm.getInt("tmeLoginMethod"))
+        assertEquals(0, comm.getInt("tmeLoginType"))
+    }
+
+    @Test
+    fun phoneAuthorizeMapsWrongCode() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.login.LoginServer/Login" to
+                    """{"code":0,"req_0":{"code":20271,"data":{}}}""",
+            ),
+        )
+        val failure = runCatching { client.phoneAuthorize("13812345678", "000000") }.exceptionOrNull()
+        assertTrue(failure is ApiException)
+        assertTrue(failure!!.message!!.contains("验证码错误"))
+    }
+
+    @Test
+    fun mobileQrShowDecodesBase64QrAndId() = runBlocking {
+        // L-1124：qrcode 带 data: 前缀时只取逗号后的 base64。
+        val pngB64 = java.util.Base64.getEncoder().encodeToString(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+        val seen = mutableListOf<JSONObject>()
+        val seenComms = mutableListOf<JSONObject>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+                val body = JSONObject(request.body.readUtf8())
+                seen += body.getJSONObject("req_0")
+                seenComms += body.getJSONObject("comm")
+                return json(
+                    """{"code":0,"req_0":{"code":0,"data":{"qrcode":"data:image/png;base64,$pngB64","qrcodeID":"QRID123"}}}""",
+                )
+            }
+        }
+        val (png, qrcodeId) = client.mobileQrShow()
+        assertEquals("QRID123", qrcodeId)
+        assertEquals(0x89.toByte(), png[0])
+        assertEquals(0x50.toByte(), png[1])
+        val req0 = seen.single()
+        assertEquals("CreateQRCode", req0.getString("method"))
+        val param = req0.getJSONObject("param")
+        assertEquals("qqmusic", param.getString("tmeAppID"))
+        assertEquals(11, param.getInt("ct"))
+        assertEquals(20090008, param.getInt("cv"))
+        // comm ct/cv 被覆盖为 23/0（L-1124 _get_mobile_qr）。
+        val comm = seenComms.single()
+        assertEquals(23, comm.getInt("ct"))
+        assertEquals(0, comm.getInt("cv"))
+    }
+
+    @Test
+    fun mobileQrShowThrowsWhenQrOrIdMissing() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.login.LoginServer/CreateQRCode" to
+                    cgiOk("""{"qrcode":"","qrcodeID":""}"""),
+            ),
+        )
+        val failure = runCatching { client.mobileQrShow() }.exceptionOrNull()
+        assertTrue(failure is ApiException)
+    }
+
+    @Test
+    fun exchangeMobileQrLoginSendsMusicidAsNumber() = runBlocking {
+        val seen = mutableListOf<JSONObject>()
+        val seenComms = mutableListOf<JSONObject>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+                val body = JSONObject(request.body.readUtf8())
+                seen += body.getJSONObject("req_0")
+                seenComms += body.getJSONObject("comm")
+                return json("""{"code":0,"req_0":{"code":0,"data":{"musicid":987654,"musickey":"KEY987","str_musicid":"987654"}}}""")
+            }
+        }
+        val credential = client.exchangeMobileQrLogin("QRID123", "987654", "TOKENABC")
+        assertEquals("987654", credential.musicId)
+        assertEquals("KEY987", credential.musicKey)
+        assertEquals("987654", settings.qqMusicId)
+        assertEquals("KEY987", settings.qqMusicKey)
+        val param = seen.single().getJSONObject("param")
+        // L-1124 传 int(uin)：musicid 是数字，不是字符串。
+        assertEquals(987654L, param.getLong("musicid"))
+        assertEquals("QRID123", param.getString("qrCodeID"))
+        assertEquals("TOKENABC", param.getString("token"))
+        assertEquals(6, seenComms.single().getInt("tmeLoginType"))
+    }
 }

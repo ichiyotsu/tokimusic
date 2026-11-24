@@ -2,6 +2,8 @@ package com.tokimusic.app.ui.settings
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.ChevronRight
@@ -37,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -58,6 +62,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.viewinterop.AndroidView
+import com.tokimusic.app.data.api.QqMobileQrEvent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.CrashLog
@@ -730,15 +737,52 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
     )
 }
 
-/** 第六轮第 1 项：QQ 二维码登录弹窗（与 LoginDialog 同款结构，QQ 扫码态）。 */
+/** 0.1.12：QQ 登录方式三选一——手机 QQ 扫码 / QQ音乐 App 扫码 /
+ * 手机号短信登录，与现有 QQ 扫码并列。选一种后进入对应弹窗；
+ * 子弹窗的“返回”回到三选一，关闭则整个退出并取消进行中的登录。 */
 @Composable
 fun QqLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    var method by remember { mutableStateOf<QqLoginMethod?>(null) }
+    when (method) {
+        null -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("登录 QQ音乐") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("选择一种登录方式", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FilledTonalButton(onClick = { method = QqLoginMethod.QqQr }, Modifier.fillMaxWidth().height(56.dp)) { Text("手机 QQ 扫码") }
+                    FilledTonalButton(onClick = { method = QqLoginMethod.MobileQr }, Modifier.fillMaxWidth().height(56.dp)) { Text("QQ音乐 App 扫码") }
+                    FilledTonalButton(onClick = { method = QqLoginMethod.Sms }, Modifier.fillMaxWidth().height(56.dp)) { Text("手机号短信登录") }
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        )
+        QqLoginMethod.QqQr -> QqQrLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
+        QqLoginMethod.MobileQr -> QqMobileQrLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
+        QqLoginMethod.Sms -> QqSmsLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
+    }
+}
+
+private enum class QqLoginMethod { QqQr, MobileQr, Sms }
+
+/** 二维码 data-URI → ImageBitmap（QQ 扫码与 QQ音乐 App 扫码共用）。 */
+@Composable
+private fun rememberQrBitmap(img: String) = remember(img) {
+    runCatching {
+        val raw = img.substringAfter("base64,", img)
+        if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+    }.getOrNull()
+}
+
+/** 第六轮第 1 项：QQ 二维码登录弹窗（与 LoginDialog 同款结构，QQ 扫码态）。 */
+@Composable
+private fun QqQrLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
     val qr by vm.qqQrState.collectAsState(); val img by vm.qqQrImage.collectAsState(); val qrError by vm.qqQrError.collectAsState()
     LaunchedEffect(Unit) { vm.startQqQrLogin() }
     // Closing the dialog cancels the poll; reopening starts a fresh one.
     AlertDialog(onDismissRequest = { vm.cancelQqQrLogin(); onDismiss() }, title = { Text("扫码登录 QQ音乐") }, text = {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            val bitmap = remember(img) { runCatching { val raw = img.substringAfter("base64,", img); if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull() }
+            val bitmap = rememberQrBitmap(img)
             if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
             if (qrError != null) {
                 Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -754,5 +798,125 @@ fun QqLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 }, Modifier.padding(top = 12.dp))
             }
         }
-    }, confirmButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onDismiss() }) { Text("关闭") } })
+    }, confirmButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onDismiss() }) { Text("关闭") } },
+    dismissButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onBack() }) { Text("返回") } })
+}
+
+/** 0.1.12：QQ音乐 App 扫码登录弹窗（与 QqQrLoginDialog 同款结构）。
+ * 二维码下方提示：需用另一台设备上的 QQ音乐 App 摄像头扫码；
+ * QQ音乐是否支持相册识码未证实（不要写“支持相册扫码”）。 */
+@Composable
+private fun QqMobileQrLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
+    val qr by vm.qqMobileQrState.collectAsState(); val img by vm.qqMobileQrImage.collectAsState(); val qrError by vm.qqMobileQrError.collectAsState()
+    LaunchedEffect(Unit) { vm.startQqMobileQrLogin() }
+    // Closing the dialog cancels the MQTT watch; reopening starts a fresh one.
+    AlertDialog(onDismissRequest = { vm.cancelQqMobileQrLogin(); onDismiss() }, title = { Text("QQ音乐 App 扫码登录") }, text = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val bitmap = rememberQrBitmap(img)
+            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
+            Text(
+                "请用另一台设备上的 QQ音乐 App 摄像头扫码；QQ音乐是否支持相册识码未证实。",
+                Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (qrError != null) {
+                Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                FilledTonalButton(onClick = { vm.startQqMobileQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
+            } else {
+                Text(when (qr) {
+                    QqMobileQrEvent.Waiting -> "等待扫码"
+                    QqMobileQrEvent.Scanned -> "已扫码，请在手机上确认"
+                    QqMobileQrEvent.Done -> "登录成功"
+                    QqMobileQrEvent.Refused -> "已在手机上拒绝登录"
+                    QqMobileQrEvent.Timeout -> "二维码已过期，正在重新生成…"
+                    null -> "使用 QQ音乐 App 扫码"
+                }, Modifier.padding(top = 12.dp))
+            }
+        }
+    }, confirmButton = { TextButton(onClick = { vm.cancelQqMobileQrLogin(); onDismiss() }) { Text("关闭") } },
+    dismissButton = { TextButton(onClick = { vm.cancelQqMobileQrLogin(); onBack() }) { Text("返回") } })
+}
+
+/** 0.1.12：手机号短信登录弹窗——手机号 + 发送验证码 + 验证码输入；
+ * CAPTCHA 事件时弹 WebView 打开 securityURL 做人机验证，验证完返回重新发送。 */
+@Composable
+private fun QqSmsLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
+    val phone by vm.qqSmsPhone.collectAsState()
+    val code by vm.qqSmsCode.collectAsState()
+    val sent by vm.qqSmsSent.collectAsState()
+    val countdown by vm.qqSmsCountdown.collectAsState()
+    val smsError by vm.qqSmsError.collectAsState()
+    val captchaUrl by vm.qqSmsCaptchaUrl.collectAsState()
+    AlertDialog(
+        onDismissRequest = { vm.cancelQqSmsLogin(); onDismiss() },
+        title = { Text("手机号短信登录") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { vm.qqSmsPhone.value = it.filter { c -> c.isDigit() }.take(11) },
+                    label = { Text("手机号") },
+                    placeholder = { Text("11 位手机号") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { vm.qqSmsCode.value = it.filter { c -> c.isDigit() }.take(6) },
+                        label = { Text("验证码") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        enabled = sent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilledTonalButton(
+                        onClick = { vm.sendQqSmsCode() },
+                        enabled = countdown == 0,
+                        modifier = Modifier.height(56.dp),
+                    ) { Text(if (countdown > 0) "${countdown}s 后重发" else if (sent) "重新发送" else "发送验证码") }
+                }
+                Text("手机号须是 QQ音乐账号绑定的手机号。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (smsError != null) Text(smsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(onClick = { vm.verifyQqSmsCode() }, enabled = sent && code.isNotBlank(), modifier = Modifier.height(56.dp)) { Text("登录") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { vm.cancelQqSmsLogin(); onBack() }) { Text("返回") }
+                TextButton(onClick = { vm.cancelQqSmsLogin(); onDismiss() }) { Text("关闭") }
+            }
+        },
+    )
+    if (captchaUrl != null) CaptchaWebViewDialog(captchaUrl!!, onDismiss = { vm.qqSmsCaptchaUrl.value = null })
+}
+
+/** 人机验证页（L-1124 send_authcode 的 CAPTCHA 事件带 securityURL）：
+ * 应用内 WebView 打开，验证完点关闭，返回重新发送验证码。 */
+@Composable
+private fun CaptchaWebViewDialog(url: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("人机验证") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("请在下方完成验证，完成后返回重新发送验证码。", style = MaterialTheme.typography.bodyMedium)
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            webViewClient = WebViewClient()
+                            loadUrl(url)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(420.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
 }

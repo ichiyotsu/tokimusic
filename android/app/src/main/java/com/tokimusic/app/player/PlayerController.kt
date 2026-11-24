@@ -50,6 +50,39 @@ fun queueRowState(currentIndex: Int, rowIndex: Int): QueueRowState = when {
     else -> QueueRowState.Upcoming
 }
 
+/**
+ * 播放模式（0.1.12 播放器升级，队列顶栏三个 pill 用）。
+ *
+ * 映射到 Media3：RepeatAll → REPEAT_MODE_ALL、RepeatOne → REPEAT_MODE_ONE，
+ * 其余 → REPEAT_MODE_OFF。Shuffle 不走 Media3 的 shuffle——Media3 的
+ * shuffle 会重排时间线下标，`state.index`（currentMediaItemIndex）就对
+ * 不上 `_state.queue` 的原顺序；随机只在我们这一层实现（next() 随机跳），
+ * Media3 的 shuffle 永远保持关闭。
+ */
+enum class PlayMode { Sequential, Shuffle, RepeatAll, RepeatOne }
+
+/**
+ * 队列顶栏 pill 的点按：点未激活的切到它，点已激活的回顺序播放。
+ * 纯函数，JVM 单测覆盖。
+ */
+fun nextModeAfterTap(current: PlayMode, tapped: PlayMode): PlayMode =
+    if (current == tapped) PlayMode.Sequential else tapped
+
+/**
+ * Shuffle 下一次要跳到的下标：队列里除当前曲外随机一首；只有一首（或
+ * 为空）时返回 null（调用方不动）。纯函数，JVM 单测覆盖。
+ */
+fun nextShuffleIndex(queueSize: Int, currentIndex: Int, random: kotlin.random.Random = kotlin.random.Random): Int? {
+    if (queueSize <= 1) return null
+    var next = random.nextInt(queueSize)
+    while (next == currentIndex) next = random.nextInt(queueSize)
+    return next
+}
+
+/** 随机播放的起始下标：队列内随机一首；空队列返回 0。纯函数，JVM 单测覆盖。 */
+fun shuffleStartIndex(queueSize: Int, random: kotlin.random.Random = kotlin.random.Random): Int =
+    if (queueSize <= 0) 0 else random.nextInt(queueSize)
+
 /** 系统媒体通知用的元数据（纯数据，可单测）。 */
 data class SongNotificationMeta(val title: String, val artist: String, val artworkUrl: String)
 
@@ -116,6 +149,10 @@ class PlayerController(context: Context) {
     /** 空间音频开关的当前值；接通前调用只记下来，接通后立即应用。 */
     private var spatialAudioEnabled = false
 
+    /** 播放模式的当前值；接通前调用只记下来，接通后立即应用（同空间音频）。 */
+    private val _playMode = MutableStateFlow(PlayMode.Sequential)
+    val playMode: StateFlow<PlayMode> = _playMode
+
     private var mediaController: MediaController? = null
     private val controllerFuture = MediaController.Builder(
         appContext,
@@ -149,6 +186,7 @@ class PlayerController(context: Context) {
         mediaController = controller
         controller.addListener(createListener(controller))
         applySpatialAudio(controller, spatialAudioEnabled)
+        applyPlayMode(controller, _playMode.value)
         pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
         pendingRestore?.let { pendingRestore = null; startRestore(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
     }
@@ -156,6 +194,16 @@ class PlayerController(context: Context) {
     private fun createListener(player: Player) = object : Player.Listener {
         override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p); notePlayingChanged(p) }
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); ensureUrlForCurrent(player) }
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            // Shuffle 模式：自然播完一首（REPEAT_MODE_OFF 时 STATE_ENDED）
+            // 后随机跳一首；顺序模式下播完即停（原行为，不动）。
+            // RepeatAll / RepeatOne 由 Media3 的 repeatMode 自己接管，
+            // 不会走到 ENDED。只在有两首以上时跳，一首时不动。
+            if (playbackState == Player.STATE_ENDED && _playMode.value == PlayMode.Shuffle) {
+                val idx = nextShuffleIndex(player.mediaItemCount, player.currentMediaItemIndex)
+                if (idx != null) jumpTo(idx)
+            }
+        }
         override fun onPlayerError(error: PlaybackException) {
             // An empty-URI item errors while its URL is being fetched lazily —
             // ensureUrlForCurrent owns that case (replace or skip + explain).
@@ -288,6 +336,25 @@ class PlayerController(context: Context) {
         mediaController?.let { applySpatialAudio(it, enabled) }
     }
 
+    /**
+     * 播放模式（0.1.12）：只改 repeatMode——RepeatAll / RepeatOne 交给
+     * Media3；Shuffle 是我们这一层的随机跳（next() 与播完回调），Media3
+     * 的 shuffleMode 永远不开（见 PlayMode 注释：会打乱下标语义）。
+     * 接通前调用只记下来，接通后立即应用（同空间音频）。
+     */
+    fun setPlayMode(mode: PlayMode) {
+        _playMode.value = mode
+        mediaController?.let { applyPlayMode(it, mode) }
+    }
+
+    private fun applyPlayMode(player: Player, mode: PlayMode) {
+        player.repeatMode = when (mode) {
+            PlayMode.RepeatAll -> Player.REPEAT_MODE_ALL
+            PlayMode.RepeatOne -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+    }
+
     private fun applySpatialAudio(player: Player, enabled: Boolean) {
         player.setAudioAttributes(
             AudioAttributes.Builder()
@@ -301,7 +368,17 @@ class PlayerController(context: Context) {
         )
     }
 
-    fun next() { mediaController?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() } }
+    fun next() {
+        // 0.1.12：Shuffle 下“下一首”是队列里随机一首（不等于当前曲）；
+        // 其余模式走 Media3 的顺序下一首（RepeatAll 到队尾自动回绕，
+        // 由 repeatMode 接管；顺序模式到队尾不动）。
+        if (_playMode.value == PlayMode.Shuffle) {
+            val idx = nextShuffleIndex(_state.value.queue.size, _state.value.index)
+            if (idx != null) jumpTo(idx)
+            return
+        }
+        mediaController?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
+    }
     fun previous() { mediaController?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() } }
     /** Jump the queue sheet's tap target: index change flows back through onMediaItemTransition. */
     fun jumpTo(index: Int) { mediaController?.let { if (index in 0 until it.mediaItemCount) { it.seekTo(index, 0); it.play() } } }
@@ -352,7 +429,7 @@ class PlaybackService : MediaSessionService() {
         val sessionActivity = PendingIntent.getActivity(
             this, 0,
             // 第六轮第 29 项：通知栏媒体卡片点进时直达播放器页（MainActivity
-            // 据此恢复 showPlayer / showLyrics / 沉浸态）。
+            // 据此恢复 showPlayer / 播放器视图 / 沉浸态）。
             Intent(this, MainActivity::class.java).apply { putExtra(MainActivity.EXTRA_OPEN_PLAYER, true) },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )

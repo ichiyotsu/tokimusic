@@ -96,6 +96,10 @@ import kotlin.math.roundToInt
     // 第五轮第 26 项：罗马音显示（默认关；有 romalrc 的行才显示罗马音行，
     // 无数据不显示；罗马音行不参与逐字高亮，只跟当前行的亮暗走）。
     showRomaji: Boolean = false,
+    // 0.1.12：卡拉 OK 逐字高亮开关（播放器歌词区右侧话筒按钮同步，
+    // 与设置里的 karaokeHighlight 同源）。关时当前行整行实色，
+    // 不逐字扫过（歌词逐字不存在时也整行实色，见 LyricLineRow）。
+    karaokeHighlight: Boolean = true,
     coverColors: CoverColors? = null,
     hazeState: HazeState? = null,
     backdropBlur: Boolean = true,
@@ -209,6 +213,7 @@ import kotlin.math.roundToInt
                 LyricLineRow(
                     line, isActive, distance, posState, showTranslation, showRomaji, textColor, dimColor,
                     fontFamily = fontFamily,
+                    karaokeHighlight = karaokeHighlight,
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
                     entranceDelayMs = minOf(distance, 6) * 40L,
@@ -326,6 +331,9 @@ private fun LyricLineRow(
     textColor: Color,
     dimColor: Color,
     fontFamily: FontFamily = InterFamily,
+    // 0.1.12：卡拉 OK 逐字高亮开关（关时当前行整行实色，不逐字扫过；
+    // 见 progress 处的 1f 强制）。
+    karaokeHighlight: Boolean = true,
     entranceWindow: Boolean = false,
     entranceDelayMs: Long = 0L,
     // 第六轮第 26 项：按屏上位置的（模糊 px，alpha），中间净区 (0f, 1f)。
@@ -379,7 +387,8 @@ private fun LyricLineRow(
                 BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     val widthPx = with(density) { maxWidth.toPx() }
                     // 第六轮第 16 项：弹簧期间进度保持 0，落定后才开始扫过。
-                    val progress = if (freezeProgress) 0f else YrcParser.lineProgress(line, pos)
+                    // 0.1.12：话筒关时进度恒 1f——整行实色，不逐字扫过。
+                    val progress = if (freezeProgress) 0f else if (!karaokeHighlight) 1f else YrcParser.lineProgress(line, pos)
                     // 第六轮第 31 项：折行按视觉行分段扫过——用 TextMeasurer
                     // 按 28sp 样式量出每段的字符范围，每段独立算进度、独立
                     // 画双层；不折行时只有一段，与原来完全一致。翻译/罗马音
