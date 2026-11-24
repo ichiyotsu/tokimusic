@@ -53,6 +53,17 @@ fun monetPalette(index: Int): MonetPalette =
     monetPalettes[index.coerceIn(0, monetPalettes.lastIndex)]
 
 /**
+ * 选中勾的颜色（纯函数，可单测）：色块浅时用深色勾、深时用白色勾。
+ * 大排查 S9：之前固定白色，日出（#E8A87C）/ 干草堆（#D9B36C）
+ * 两个浅色板上几乎看不见选中态。阈值 0.179 是黑白对比度的交叉点
+ * （高于它黑勾对比度更好，低于它白勾更好）；四组色板的首色亮度
+ * 都在 0.29 以上，所以四组都用黑勾。亮度用本仓已有的
+ * relativeLuminance（CoverColors.kt）。
+ */
+fun checkTintForSwatch(swatch: Color): Color =
+    if (swatch.relativeLuminance() > 0.179) Color.Black else Color.White
+
+/**
  * 歌单的莫奈色（纯函数，可单测）：按歌单 id 在选中色板里轮取，
  * 同一歌单永远同一颜色；虚拟歌单（-1/-2）也能取到。
  */

@@ -21,9 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
@@ -141,7 +145,9 @@ import com.tokimusic.app.ui.theme.monetColorForSource
 @Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
     Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
         Box(Modifier.size(140.dp)) {
-            AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(MaterialTheme.shapes.extraLarge), contentScale = ContentScale.Crop)
+            // 0.1.14 第 4 项：封面圆角改 20dp——与 28dp 源徽标（14dp
+            // 半径）+ 6dp 间距同心等圆角（14 + 6 = 20），视觉统一。
+            AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(RoundedCornerShape(20.dp)), contentScale = ContentScale.Crop)
             // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
             // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
             if (showSourceBadge) {
@@ -290,36 +296,43 @@ fun daysSince(firstMs: Long, nowMs: Long): Long = ((nowMs - firstMs) / 86_400_00
  * 边缘淡入淡出（0.1.13 第 16 / 17 项）：内容在上下或左右边缘做 alpha
  * 渐隐，滚动到边缘时不生硬截断。DstIn 把渐变当 alpha 蒙版乘在已画
  * 内容上；边缘带宽 [edge]，内容比两倍带宽还短时不画（免得整块变淡）。
- * 纯 Modifier，可单测的只有调用方逻辑，本身真机验。
+ * 0.1.14 第 11 条：DstIn 必须画在 saveLayer 里——之前没有 saveLayer，
+ * 渐变的透明区会把父级背景也擦掉，上下两端露出一整条黑带（歌词页 /
+ * 队列首行被盖、当前行深色带）。纯 Modifier，可单测的只有调用方逻辑，
+ * 本身真机验。
  */
 fun Modifier.fadingEdges(
     horizontal: Boolean = false,
     vertical: Boolean = false,
     edge: Dp = 32.dp,
 ): Modifier = this.drawWithContent {
-    drawContent()
-    val e = edge.toPx()
-    if (vertical && e > 0f && size.height > 2 * e) {
-        drawRect(
-            brush = Brush.verticalGradient(
-                0f to Color.Transparent,
-                e / size.height to Color.Black,
-                (size.height - e) / size.height to Color.Black,
-                1f to Color.Transparent,
-            ),
-            blendMode = BlendMode.DstIn,
-        )
-    }
-    if (horizontal && e > 0f && size.width > 2 * e) {
-        drawRect(
-            brush = Brush.horizontalGradient(
-                0f to Color.Transparent,
-                e / size.width to Color.Black,
-                (size.width - e) / size.width to Color.Black,
-                1f to Color.Transparent,
-            ),
-            blendMode = BlendMode.DstIn,
-        )
+    drawIntoCanvas { canvas ->
+        canvas.saveLayer(Rect(Offset.Zero, size), Paint())
+        drawContent()
+        val e = edge.toPx()
+        if (vertical && e > 0f && size.height > 2 * e) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    e / size.height to Color.Black,
+                    (size.height - e) / size.height to Color.Black,
+                    1f to Color.Transparent,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (horizontal && e > 0f && size.width > 2 * e) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    0f to Color.Transparent,
+                    e / size.width to Color.Black,
+                    (size.width - e) / size.width to Color.Black,
+                    1f to Color.Transparent,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        canvas.restore()
     }
 }
 fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }

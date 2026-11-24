@@ -41,6 +41,18 @@ class AppOptimizerTest {
         assertEquals("26.5 MB", AppOptimizer.formatBytes(27_832_027))
     }
 
+    @Test fun formatBytesUsesDotDecimalInCommaLocale() {
+        // 大排查 S11：逗号小数点地区（德语）之前会输出 "1,5 KB"。
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.GERMANY)
+            assertEquals("1.5 KB", AppOptimizer.formatBytes(1536))
+            assertEquals("26.5 MB", AppOptimizer.formatBytes(27_832_027))
+        } finally {
+            java.util.Locale.setDefault(previous)
+        }
+    }
+
     @Test fun estimatedCleanIsApkPlusCoilCache() {
         val snapshot = OptimizeSnapshot(cacheTotalBytes = 100, updateApkBytes = 30, coilDiskBytes = 20)
         assertEquals(50, snapshot.estimatedCleanBytes)

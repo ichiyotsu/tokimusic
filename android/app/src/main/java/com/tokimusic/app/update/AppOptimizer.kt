@@ -52,11 +52,13 @@ object AppOptimizer {
         return total
     }
 
-    /** 字节数 → 人读格式（B / KB / MB，保留一位小数）。 */
+    /** 字节数 → 人读格式（B / KB / MB，保留一位小数）。小数点固定用
+     * Locale.US——大排查 S11：之前用默认 locale，逗号小数点地区会
+     * 显示 "1,5 KB"。 */
     fun formatBytes(bytes: Long): String = when {
         bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
-        else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+        bytes < 1024 * 1024 -> "%.1f KB".format(java.util.Locale.US, bytes / 1024.0)
+        else -> "%.1f MB".format(java.util.Locale.US, bytes / (1024.0 * 1024.0))
     }
 
     /** 测一次优化前数值（IO 线程）。 */

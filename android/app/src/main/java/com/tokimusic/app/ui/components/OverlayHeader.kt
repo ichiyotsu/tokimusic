@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -190,6 +191,45 @@ fun TokiScrollBackChip(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",
                 tint = content,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 0.1.14 第 5 项：返回 chip 同款磨砂圆钮（56dp 圆 + TokiScrollChipBackdrop
+ * + pressScale + 24dp 图标），给顶栏右侧的操作按钮用（歌单收藏星星 /
+ * 歌手关注），与返回按钮同一视觉配方。头像入口不在此列（用户没要求）。
+ */
+@Composable
+fun TokiGlassIconButton(
+    icon: ImageVector,
+    label: String,
+    backdropBlur: Boolean,
+    hazeState: HazeState,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    TokiLongPressLabel(label) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
+                .pressScale(interaction),
+            contentAlignment = Alignment.Center,
+        ) {
+            TokiScrollChipBackdrop(
+                shape = CircleShape,
+                backdropBlur = backdropBlur,
+                hazeState = hazeState,
+                modifier = Modifier.matchParentSize(),
+            )
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(24.dp),
             )
         }

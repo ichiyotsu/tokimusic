@@ -1,5 +1,6 @@
 package com.tokimusic.app.ui.theme
 
+import androidx.compose.ui.graphics.Color
 import com.tokimusic.app.data.model.MusicSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -48,5 +49,16 @@ class MonetTest {
         assertEquals(monetPalettes[0].colors[1], monetColorForSource(MusicSource.QQ, 0))
         assertEquals(monetPalettes[0].colors[2], monetColorForSource(MusicSource.LOCAL, 0))
         assertEquals(monetPalettes[2].colors[1], monetColorForSource(MusicSource.QQ, 2))
+    }
+
+    @Test
+    fun checkTintIsDarkOnAllLightPalettes() {
+        // 大排查 S9：四组色板的首色亮度都在 0.29 以上，选中勾都应是
+        // 黑色（之前固定白色，日出/干草堆上几乎看不见）。
+        for (palette in monetPalettes) {
+            assertEquals(Color.Black, checkTintForSwatch(palette.colors[0]))
+        }
+        assertEquals(Color.White, checkTintForSwatch(Color(0xFF1C1C1E)))
+        assertEquals(Color.Black, checkTintForSwatch(Color.White))
     }
 }

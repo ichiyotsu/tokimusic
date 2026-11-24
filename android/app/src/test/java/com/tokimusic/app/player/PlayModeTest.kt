@@ -25,6 +25,16 @@ class PlayModeTest {
     }
 
     @Test
+    fun singleButtonTogglesSequentialAndShuffle() {
+        // 0.1.14 第 7 项：歌单页单按钮位是“随机开 / 关”——随机时回顺
+        // 序，其余（顺序 / 列表循环 / 单曲循环）都切到随机。
+        assertEquals(PlayMode.Shuffle, nextModeAfterSingleButtonTap(PlayMode.Sequential))
+        assertEquals(PlayMode.Sequential, nextModeAfterSingleButtonTap(PlayMode.Shuffle))
+        assertEquals(PlayMode.Shuffle, nextModeAfterSingleButtonTap(PlayMode.RepeatAll))
+        assertEquals(PlayMode.Shuffle, nextModeAfterSingleButtonTap(PlayMode.RepeatOne))
+    }
+
+    @Test
     fun tappingSequentialPillStaysSequential() {
         // 0.1.13 第 17 项：顺序播放 pill 是四个模式之一；点已激活的
         // 顺序 pill 回顺序（不变），点其他模式再点顺序切回顺序。

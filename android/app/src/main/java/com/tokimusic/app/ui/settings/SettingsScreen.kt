@@ -199,6 +199,12 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     val customUserId by vm.customUserId.collectAsState()
     var showLogin by remember { mutableStateOf(false) }
     var showQqLogin by remember { mutableStateOf(false) }
+    // 大排查 S3：音质偏好是 SharedPreferences 直值（不是 Compose
+    // 状态），音频页用这份本地 state 驱动单选——直接读偏好点选后不
+    // 触发重组，圆点看起来没动。放这里（SettingsSheet 的组合作用域），
+    // 因为 LazyColumn 的 content 构建块不是 @Composable 作用域，
+    // audioSection 里不能直接 remember。
+    var audioQuality by remember { mutableStateOf(vm.store.audioQuality) }
     // 第六轮第 19 项：开关 / 退出登录的二次确认（AlertDialog 弹窗，
     // Q12-2 定弹窗而非底部 sheet）。
     var sourceConfirm by remember { mutableStateOf<SourceConfirm?>(null) }
@@ -206,6 +212,10 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        // 0.1.14 第 3 条：遮罩不淡入淡出——原生 scrim 带
+        // ScrimAlphaAnimation，关不掉；这里改透明，静态遮罩由调用方
+        // 在应用窗口里画（见 TokiMusicApp 的 showSettings 处）。
+        scrimColor = Color.Transparent,
         // 0.1.13 第 19 项：只要顶边 + 两侧描边，不要底边（见 sheetTopOutline）。
         modifier = Modifier.sheetTopOutline(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -263,7 +273,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     ) { sub = it }
                     SettingsSub.General -> generalSection(vm, health)
                     SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
-                    SettingsSub.Audio -> audioSection(vm)
+                    SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
                     SettingsSub.Lyrics -> lyricsSection(vm)
                     SettingsSub.Achievements -> achievementsSection(vm, profile)
                 }
@@ -841,7 +851,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
                                     Icon(
                                         Icons.Rounded.Check,
                                         contentDescription = "已选",
-                                        tint = Color.White,
+                                        // 大排查 S9：浅色板上白色勾看不见，
+                                        // 按色块亮度取勾色（见 checkTintForSwatch）。
+                                        tint = com.tokimusic.app.ui.theme.checkTintForSwatch(palette.colors[0]),
                                         modifier = Modifier.size(24.dp),
                                     )
                                 }
@@ -854,8 +866,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppViewModel) {
-    val quality = vm.store.audioQuality
+private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
+    vm: AppViewModel,
+    quality: String,
+    onQualityChange: (String) -> Unit,
+) {
     val options = listOf(
         "standard" to "标准",
         "higher" to "较高",
@@ -874,10 +889,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppV
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
             SettingsSubCard {
                 Row(
-                    Modifier.fillMaxWidth().clickable { vm.store.audioQuality = key }.padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().clickable { onQualityChange(key) }.padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RadioButton(selected = quality == key, onClick = { vm.store.audioQuality = key })
+                    RadioButton(selected = quality == key, onClick = { onQualityChange(key) })
                     Spacer(Modifier.width(8.dp))
                     Text(label, style = MaterialTheme.typography.titleMedium)
                 }
@@ -921,14 +936,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(vm: AppV
 
 private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: AppViewModel) {
     // 逐字高亮开关已删（第二轮第 15 项）：逐字显示固定开启，无开关。
+    // 大排查 S4：翻译 / 罗马音两个开关直接读 SharedPreferences 直值
+    // 当 checked，点按只写偏好不触发重组——开关看起来没动（与音频页
+    // 音质单选同款问题）。改成本地 state 驱动。
     item {
+        var showTranslation by remember { mutableStateOf(vm.store.showTranslation) }
         // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("翻译显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
-                    checked = vm.store.showTranslation,
-                    onCheckedChange = { vm.store.showTranslation = it },
+                    checked = showTranslation,
+                    onCheckedChange = { showTranslation = it; vm.store.showTranslation = it },
                 )
             }
         }
@@ -936,12 +955,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
     // 第五轮第 26 项：罗马音显示（默认关；日语歌有服务端 romalrc 才显示，
     // 无数据不显示），与“翻译显示”同款 64dp 开关行。
     item {
+        var showRomaji by remember { mutableStateOf(vm.store.showRomaji) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("罗马音显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
-                    checked = vm.store.showRomaji,
-                    onCheckedChange = { vm.store.showRomaji = it },
+                    checked = showRomaji,
+                    onCheckedChange = { showRomaji = it; vm.store.showRomaji = it },
                 )
             }
         }
@@ -1324,6 +1344,9 @@ private fun CaptchaWebViewDialog(url: String, onDismiss: () -> Unit) {
                             loadUrl(url)
                         }
                     },
+                    // 大排查 S12：弹窗关闭时销毁 WebView——之前不销毁，
+                    // 反复打开人机验证会泄漏 WebView（进程内持渲染器）。
+                    onRelease = { it.destroy() },
                     modifier = Modifier.fillMaxWidth().height(420.dp),
                 )
             }

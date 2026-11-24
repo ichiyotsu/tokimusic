@@ -4,10 +4,12 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -82,6 +84,7 @@ import com.tokimusic.app.ui.components.FloatingNavBar
 import com.tokimusic.app.ui.components.OverlayTitleHeader
 import com.tokimusic.app.ui.components.SongActionsSheet
 import com.tokimusic.app.ui.components.SourceDropdownButton
+import com.tokimusic.app.ui.components.TokiGlassIconButton
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.TokiSideActionButton
 import com.tokimusic.app.ui.components.navEntries
@@ -468,34 +471,32 @@ fun TokiMusicApp(
                                         }
                                         // 0.1.13 第 25 项：歌单详情页顶栏右侧收藏星星
                                         // （单个 icon；详情未加载完时不显示）。
+                                        // 0.1.14 第 5 项：改成返回 chip 同款磨砂圆钮。
                                         playlistId != null && artistId == null && albumId == null && playlistFavAction != null -> {
                                             {
                                                 val (isFav, toggleFav) = playlistFavAction!!
-                                                TokiLongPressLabel(if (isFav) "取消收藏" else "收藏歌单") {
-                                                    IconButton(onClick = toggleFav, modifier = Modifier.size(48.dp)) {
-                                                        Icon(
-                                                            if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                                                            contentDescription = if (isFav) "取消收藏" else "收藏歌单",
-                                                            modifier = Modifier.size(24.dp),
-                                                        )
-                                                    }
-                                                }
+                                                TokiGlassIconButton(
+                                                    icon = if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                                                    label = if (isFav) "取消收藏" else "收藏歌单",
+                                                    backdropBlur = theme.backdropBlur,
+                                                    hazeState = hazeState,
+                                                    onClick = toggleFav,
+                                                )
                                             }
                                         }
                                         // 0.1.13 第 24 项：歌手页顶栏右侧关注按钮
                                         // （单个 icon；未关注是加号人形，已关注是对勾）。
+                                        // 0.1.14 第 5 项：改成返回 chip 同款磨砂圆钮。
                                         artistId != null && albumId == null && artistFollowAction != null -> {
                                             {
                                                 val (isFollowed, toggleFollow) = artistFollowAction!!
-                                                TokiLongPressLabel(if (isFollowed) "取消关注" else "关注") {
-                                                    IconButton(onClick = toggleFollow, modifier = Modifier.size(48.dp)) {
-                                                        Icon(
-                                                            if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
-                                                            contentDescription = if (isFollowed) "取消关注" else "关注",
-                                                            modifier = Modifier.size(24.dp),
-                                                        )
-                                                    }
-                                                }
+                                                TokiGlassIconButton(
+                                                    icon = if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
+                                                    label = if (isFollowed) "取消关注" else "关注",
+                                                    backdropBlur = theme.backdropBlur,
+                                                    hazeState = hazeState,
+                                                    onClick = toggleFollow,
+                                                )
                                             }
                                         }
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen -> {
@@ -694,6 +695,18 @@ fun TokiMusicApp(
                                 onSearch = { searchSheetOpen = true },
                                 onHeight = { if (chromeVisible) measuredChrome = it },
                             )
+                            // 0.1.14 第 3 条：设置弹窗的遮罩不淡入淡出——
+                            // 原生 ModalBottomSheet 的 scrim 带
+                            // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
+                            // 实测：sheet 本身不渐变，只有遮罩渐变），API
+                            // 关不掉。改成透明 scrim（见 SettingsSheet）
+                            // + 这里一层静态 32% 黑遮罩（与 M3 默认 scrim
+                            // 同色同透明度），开关瞬间出现 / 消失，只有
+                            // sheet 本身滑动；点遮罩关闭仍走原生 scrim
+                            // 的手势（Dialog 窗口在上层接手势）。
+                            if (showSettings) {
+                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
+                            }
                         }
                     }
                 }
@@ -776,13 +789,15 @@ private fun BottomChrome(
 ) {
     val density = LocalDensity.current
     val scheme = MaterialTheme.motionScheme
-    // 0.1.13 第 26 项：导航栏显隐不再参与布局——导航栏放在固定高度的占位槽
-    // 里，只做滑出 + 淡出；进二级页（歌单等）时 MiniPlayer 位置不动，底栏总
-    // 高度（measuredChrome）也不变，内容区底边距不跟着跳。槽高取导航栏实测
-    // 高度，首帧未量到前用 72dp（胶囊 56dp + 上下各 8dp 内边距）；宽屏没有
-    // 底栏，槽高为 0。
-    var navSlotHeightPx by remember { mutableIntStateOf(0) }
-    val navSlotHeight = if (wide) 0.dp else with(density) { navSlotHeightPx.toDp() }.takeIf { it > 0.dp } ?: 72.dp
+    // 0.1.14 第 12 项：0.1.13 第 26 项的固定槽走偏了——导航栏放在固定
+    // 高度的占位槽里，MiniPlayer 被冻住，进二级页底边留空槽。本轮拆掉
+    // 固定槽：NavBarSlot 回到 Column 的直接子项（MiniPlayer 之下），
+    // 导航栏退出时滑出 + 淡出 + 纵向收缩（布局高度跟着动画走），Column
+    // 底锚定，MiniPlayer 平滑滑下去贴底，回来时滑回来；内容区底边距
+    // （bottomPadding）由 onHeight 在收缩动画里逐帧跟随，不跳。
+    // 0.1.14 第 2 项：底栏偏左的根因也在这个槽——Box 默认 TopStart
+    // 对齐，wrap-content 的导航 Row 被顶到左边缘；直接子项走 Column
+    // 的 CenterHorizontally，恢复居中。
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
@@ -798,32 +813,28 @@ private fun BottomChrome(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
-            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来。0.1.13 第 26 项
-            // 起，进二级页时导航栏只在占位槽里滑出 + 淡出，MiniPlayer 位置
-            // 不动（二级页底边留空槽，不再贴底）。
+            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来。
             if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
-            Box(Modifier.fillMaxWidth().height(navSlotHeight)) {
-                NavBarSlot(
-                    navVisible = navVisible,
-                    wide = wide,
-                    dest = dest,
-                    glass = glass,
-                    solidStroke = solidStroke,
-                    onSelect = onSelect,
-                    onSearch = onSearch,
-                    // 只在导航栏显示时取最大实测高度；退出动画中不更新，槽高不动。
-                    onNavHeightPx = { if (navVisible && it > 0) navSlotHeightPx = maxOf(navSlotHeightPx, it) },
-                )
-            }
+            NavBarSlot(
+                navVisible = navVisible,
+                wide = wide,
+                dest = dest,
+                glass = glass,
+                solidStroke = solidStroke,
+                onSelect = onSelect,
+                onSearch = onSearch,
+            )
         }
     }
 }
 
 /**
- * 0.1.13 第 26 项：底部导航栏（3 tab 胶囊 + 搜索圆钮）——单独抽成顶层
- * composable，否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞
- * ColumnScope 的 DSL 作用域限制（编译失败）。显隐动画与原来一致（滑入 /
- * 滑出 + 淡入 / 淡出）；布局高度由调用方的占位槽固定，这里只管内容。
+ * 底部导航栏（3 tab 胶囊 + 搜索圆钮）——单独抽成顶层 composable，
+ * 否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞 ColumnScope
+ * 的 DSL 作用域限制（编译失败）。0.1.14 第 12 项：显隐动画加纵向
+ * 展开 / 收缩（布局高度跟着动画走），退出时导航栏滑出 + 淡出 +
+ * 收缩，底锚定的 Column 收短，MiniPlayer 平滑滑下去贴底；进入时
+ * 反向滑回来。0.1.13 第 26 项的固定槽已拆，不再需要 onNavHeightPx。
  */
 @Composable
 private fun NavBarSlot(
@@ -834,19 +845,17 @@ private fun NavBarSlot(
     solidStroke: Boolean,
     onSelect: (Dest) -> Unit,
     onSearch: () -> Unit,
-    onNavHeightPx: (Int) -> Unit,
 ) {
     val scheme = MaterialTheme.motionScheme
     AnimatedVisibility(
         visible = navVisible,
-        enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
-        exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+        enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()) + expandVertically(scheme.defaultSpatialSpec()),
+        exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()) + shrinkVertically(scheme.defaultSpatialSpec()),
     ) {
         if (!wide) {
             // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
             // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
             Row(
-                Modifier.onSizeChanged { onNavHeightPx(it.height) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {

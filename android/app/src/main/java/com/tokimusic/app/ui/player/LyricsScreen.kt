@@ -370,9 +370,11 @@ private fun LyricLineRow(
     val blurPx = fade.first
     val rowAlpha = fade.second
     // 0.1.13 第 6 项：当前行进出时的缩放过渡——当前行 1f、非当前行
-    // 约 0.8f（与字号差 28sp / 22sp 对应），300ms tween，锚点左中；
-    // 之前只有字号突变，进出时没有动画，看起来“跳”一下。上下 64dp
-    // 渐隐带 + 磨砂已存在，保留。
+    // 约 0.8f，300ms tween，锚点左中。
+    // 0.1.14 第 11 条：缩放只做视觉，行高（排版）两态必须一致——之前
+    // 非当前行用 22sp、当前行 28sp，行一激活整行行高变化，下面的行
+    // 全跟着上下跳（截图里的间距箭头）。现在两态都按 28sp 排版，
+    // 视觉大小差只由 graphicsLayer 的 0.8 缩放给，行距不再变。
     val rowScale by animateFloatAsState(
         targetValue = if (isActive) 1f else 0.8f,
         animationSpec = tween(300),
@@ -450,10 +452,13 @@ private fun LyricLineRow(
                     }
                 }
             } else {
+                // 0.1.14 第 11 条：非当前行也按 28sp 排版（与当前行同
+                // 高），视觉缩小只靠外层 graphicsLayer 的 0.8 缩放，
+                // 这样行激活时行高不变，下面的行不跳。颜色仍是 dim 色。
                 Text(
                     line.text,
                     textAlign = TextAlign.Start,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp),
                     fontWeight = FontWeight.Bold,
                     fontFamily = fontFamily,
                     // 第六轮第 26 项：中间净区非当前行固定 0.85（不再按距离变淡），
