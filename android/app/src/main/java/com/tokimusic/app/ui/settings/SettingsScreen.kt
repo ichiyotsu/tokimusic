@@ -111,6 +111,8 @@ private enum class SettingsSub(val title: String) { General("通用"), Personali
  * 第六轮第 7 项：容器改极淡磨砂——surfaceContainerLow 85% 透明度 +
  * 1dp 描边（scrim 保持现有，不加深）；标题行去磨砂（纯文字标题 +
  * 纯色圆形关闭钮），内容区上下 24dp 淡出保留（淡出色跟随容器色）。
+ * 0.1.11 修复轮（用户反馈“账户与安全页底色不要模糊”）：容器与淡出色
+ * 都改回不透明实色，弹窗不再透出背后内容。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,7 +133,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.85f),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.border(
             1.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -140,9 +142,10 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             // 第 8 项（第六轮第 7 项改）：标题不再进磨砂 chip——纯文字标题
-            // （headlineMedium Bold）+ 纯色圆形关闭钮；模糊只属于整个弹窗
-            // 容器。返回键的图标一律是关闭（X），位置（标题行右侧、36dp）
-            // 不变；子页里点 X 回主列表，主列表点 X 关弹窗。
+            // （headlineMedium Bold）+ 纯色圆形关闭钮；0.1.11 起弹窗容器
+            // 也是不透明实色，不再透出背后内容。返回键的图标一律是关闭
+            // （X），位置（标题行右侧、36dp）不变；子页里点 X 回主列表，
+            // 主列表点 X 关弹窗。
             Row(
                 Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -170,9 +173,9 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 }
             }
             // 第三轮第 14 项：弹窗内容区上下边缘 24dp 淡出（淡出色取
-            // 弹窗底色——第六轮第 7 项起与容器同为 85% 透明度的
-            // surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
-            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.85f)
+            // 弹窗底色——0.1.11 起与容器同为不透明的 surfaceContainerLow；
+            // 淡出层不处理触摸，不挡滚动）。
+            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
             Box(Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize(),
