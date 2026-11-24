@@ -39,15 +39,36 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 播放音质偏好：standard / higher / exhigh / lossless。 */
     override var audioQuality: String get() = prefs.getString("audio_quality", "standard") ?: "standard"
         set(v) { prefs.edit().putString("audio_quality", v).apply() }
-    /** 歌词逐字高亮开关（与播放器内的麦克风按钮同步）。 */
-    var karaokeHighlight: Boolean get() = prefs.getBoolean("karaoke_highlight", true)
-        set(v) { prefs.edit().putBoolean("karaoke_highlight", v).apply() }
-    /** 歌词翻译显示开关。 */
-    var showTranslation: Boolean get() = prefs.getBoolean("show_translation", true)
-        set(v) { prefs.edit().putBoolean("show_translation", v).apply() }
-    /** 罗马音显示开关（第五轮第 26 项；默认关——只有服务端有 romalrc 的歌才显示）。 */
-    var showRomaji: Boolean get() = prefs.getBoolean("show_romaji", false)
-        set(v) { prefs.edit().putBoolean("show_romaji", v).apply() }
+    /** 歌词逐字高亮开关（与播放器内的麦克风按钮同步）。0.1.15 第 5/6 项：
+     * 改成 Compose 状态驱动——之前是 SharedPreferences 直值，播放器
+     * 更多页里翻动后歌词视图不重组（与 0.1.14 大排查 S13 同根因）。 */
+    var karaokeHighlight: Boolean
+        get() = karaokeHighlightState.value
+        set(v) { karaokeHighlightState.value = v; prefs.edit().putBoolean("karaoke_highlight", v).apply() }
+    private val karaokeHighlightState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("karaoke_highlight", true))
+    /** 歌词翻译显示开关（0.1.15 第 5/6 项：同上，状态驱动）。 */
+    var showTranslation: Boolean
+        get() = showTranslationState.value
+        set(v) { showTranslationState.value = v; prefs.edit().putBoolean("show_translation", v).apply() }
+    private val showTranslationState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("show_translation", true))
+    /** 罗马音显示开关（第五轮第 26 项；默认关——只有服务端有 romalrc 的歌才显示）。
+     * 0.1.15 第 5/6 项：同上，状态驱动。 */
+    var showRomaji: Boolean
+        get() = showRomajiState.value
+        set(v) { showRomajiState.value = v; prefs.edit().putBoolean("show_romaji", v).apply() }
+    private val showRomajiState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("show_romaji", false))
+    /** 歌词逐字时序偏移（毫秒，0.1.15 第 6 项）：逐字高亮与播放之间的时间
+     * 偏移，正值让高亮延后（字比声音晚出现）、负值提前；0 = 跟随原时间轴。
+     * 范围 -500..+500，步进 50；状态驱动，与 monetPaletteIndex 同款。 */
+    var lyricTimingOffsetMs: Int
+        get() = lyricTimingOffsetMsState.intValue
+        set(v) {
+            lyricTimingOffsetMsState.intValue = v.coerceIn(-500, 500)
+            prefs.edit().putInt("lyric_timing_offset_ms", lyricTimingOffsetMsState.intValue).apply()
+        }
+    private val lyricTimingOffsetMsState = androidx.compose.runtime.mutableIntStateOf(
+        prefs.getInt("lyric_timing_offset_ms", 0),
+    )
     /** 实时通知（媒体通知）开关（默认开）。 */
     var liveUpdatesEnabled: Boolean get() = prefs.getBoolean(LIVE_UPDATES_KEY, true)
         set(v) { prefs.edit().putBoolean(LIVE_UPDATES_KEY, v).apply() }

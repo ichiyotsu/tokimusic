@@ -63,6 +63,7 @@ import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.monetColorForPlaylist
+import com.tokimusic.app.ui.theme.monetPalette
 
 // Round 3 item 2: lifted to TokiMusicApp (with playlistId) so second-level
 // pages get the floating OverlayTitleHeader; was private + internal state.
@@ -107,10 +108,9 @@ fun LibraryScreen(
     // the album detail page; song-row artist names are artist entries too.
     onOpenArtist: (Long) -> Unit = {},
     onOpenAlbum: (Long) -> Unit = {},
-    // 0.1.13 第 23 项：等级 / 听歌时长的显示源（两源都开时由标题栏右侧
-    // 下拉框切换，见 TokiMusicApp 的 LibraryStatsDropdown）。
-    statsSource: LibraryStatsSource = LibraryStatsSource.NETEASE,
-    onStatsSourceChange: (LibraryStatsSource) -> Unit = {},
+    // 0.1.13 第 23 项：等级 / 听歌时长的显示源。0.1.15 第 17 项：头像左侧
+    // 的统计源下拉框已删，统计固定显示“全部”（两源都开时同时显示；单源时
+    // 按源开关强制，见 resolveLibraryStatsSource）。
 ) {
     val profile by vm.profile.collectAsState()
     val mine by vm.mine.collectAsState()
@@ -126,7 +126,7 @@ fun LibraryScreen(
     val paletteIndex = vm.store.monetPaletteIndex
     // 0.1.13 第 23 项：按源开关解析实际显示的统计源；两源都开时
     // 歌单 / 歌曲行显示源徽标。
-    val effectiveStats = resolveLibraryStatsSource(neteaseEnabled, qqEnabled, statsSource)
+    val effectiveStats = resolveLibraryStatsSource(neteaseEnabled, qqEnabled, LibraryStatsSource.BOTH)
     val showSourceBadge = effectiveStats == LibraryStatsSource.BOTH
     // 0.1.13 第 23 项：本地模式下刷新本地时长。
     LaunchedEffect(effectiveStats) { if (effectiveStats == LibraryStatsSource.LOCAL) vm.refreshLocalStats() }
@@ -213,15 +213,19 @@ fun LibraryScreen(
         }
         item {
             Spacer(Modifier.height(8.dp))
+            // 0.1.15 第 11 项：五个分区卡按色板取色（每卡一色，16% 透明，
+            // 与歌单行同款配方），换色板后五卡一起变色。
             CirroCardRow(
                 Icons.Rounded.Star, "收藏",
                 if (loggedIn) "${mine.likeCount} 首" else "登录后查看",
+                backgroundColor = monetPalette(paletteIndex).colors[0].copy(alpha = 0.16f),
             ) { if (loggedIn) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Rounded.QueueMusic, "歌单",
                 if (loggedIn) "${mine.playlistCount} 个歌单" else "登录后查看",
+                backgroundColor = monetPalette(paletteIndex).colors[1].copy(alpha = 0.16f),
             ) { if (loggedIn) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
@@ -229,18 +233,21 @@ fun LibraryScreen(
                 // 0.1.13 第 24 项：“艺人”改名“歌手”。
                 Icons.Rounded.Mic, "歌手",
                 if (loggedIn) "我关注的歌手" else "登录后查看",
+                backgroundColor = monetPalette(paletteIndex).colors[2].copy(alpha = 0.16f),
             ) { if (loggedIn) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Rounded.Album, "专辑",
                 if (loggedIn) "我收藏的专辑" else "登录后查看",
+                backgroundColor = monetPalette(paletteIndex).colors[3].copy(alpha = 0.16f),
             ) { if (loggedIn) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
             CirroCardRow(
                 Icons.Rounded.MusicNote, "歌曲",
                 if (loggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
+                backgroundColor = monetPalette(paletteIndex).colors[4].copy(alpha = 0.16f),
             ) { if (loggedIn) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         if (loggedIn) {
@@ -533,52 +540,3 @@ private fun StatCard(
     }
 }
 
-/**
- * 0.1.13 第 23 项：资料库标题栏右侧的统计源下拉框（两源都开时才显示）——
- * 48dp 圆形触发器，显示当前选择的源图标（全部时两个图标重叠，与源切换
- * 下拉框同款）；菜单里网易云 / Q音 / 全部三项。
- */
-@Composable
-fun LibraryStatsDropdown(
-    statsSource: LibraryStatsSource,
-    onStatsSourceChange: (LibraryStatsSource) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp)) {
-            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                when (statsSource) {
-                    LibraryStatsSource.NETEASE -> Icon(painterResource(R.drawable.ic_source_netease), contentDescription = "网易云", tint = Color.Unspecified, modifier = Modifier.size(28.dp))
-                    LibraryStatsSource.QQ -> Icon(painterResource(R.drawable.ic_source_qq), contentDescription = "Q音", tint = Color.Unspecified, modifier = Modifier.size(28.dp))
-                    LibraryStatsSource.LOCAL -> Icon(painterResource(R.drawable.ic_local_music), contentDescription = "本地", tint = Color.Unspecified, modifier = Modifier.size(28.dp))
-                    LibraryStatsSource.BOTH -> {
-                        Icon(painterResource(R.drawable.ic_source_netease), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(20.dp).align(Alignment.TopStart))
-                        Icon(painterResource(R.drawable.ic_source_qq), contentDescription = "全部", tint = Color.Unspecified, modifier = Modifier.size(20.dp).align(Alignment.BottomEnd))
-                    }
-                }
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("网易云") },
-                leadingIcon = { Icon(painterResource(R.drawable.ic_source_netease), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(24.dp)) },
-                onClick = { onStatsSourceChange(LibraryStatsSource.NETEASE); expanded = false },
-            )
-            DropdownMenuItem(
-                text = { Text("Q音") },
-                leadingIcon = { Icon(painterResource(R.drawable.ic_source_qq), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(24.dp)) },
-                onClick = { onStatsSourceChange(LibraryStatsSource.QQ); expanded = false },
-            )
-            DropdownMenuItem(
-                text = { Text("全部") },
-                leadingIcon = {
-                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                        Icon(painterResource(R.drawable.ic_source_netease), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(16.dp).align(Alignment.TopStart))
-                        Icon(painterResource(R.drawable.ic_source_qq), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(16.dp).align(Alignment.BottomEnd))
-                    }
-                },
-                onClick = { onStatsSourceChange(LibraryStatsSource.BOTH); expanded = false },
-            )
-        }
-    }
-}

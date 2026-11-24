@@ -47,7 +47,7 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
  * dead service shows an error + retry, login-gated sections (daily / radar /
  * recent) show a login prompt until the user signs in.
  */
-data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — no QQ artist detail this round, tap shows a toast). */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), val searchSource: MusicSource = MusicSource.NETEASE, /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList())
+data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — 0.1.15 第 2 项起可点进 QQ 歌手页）。 */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), /** 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（每日需登录，雷达匿名可用；空时主页不显示对应卡片）。 */ val qqDaily: List<Song> = emptyList(), val qqRadar: List<Song> = emptyList(), /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList())
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
 /** 单个来源的资料库统计（0.1.13 第 23 项）：等级 + 听歌分钟数；minutes 为 null 表示该源没有时长数据（QQ 暂无时长接口），显示 "—"。 */
@@ -87,12 +87,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // The toggled source's sections must appear / vanish immediately.
         refreshHome()
     }
-    /** Search source, remembered across launches (sixth round, batch 2). */
-    private val _searchSource = MutableStateFlow(
-        runCatching { MusicSource.valueOf(store.lastSearchSource) }.getOrDefault(MusicSource.NETEASE)
-            .let { if (it == MusicSource.LOCAL) MusicSource.NETEASE else it },
-    )
-    val searchSource: StateFlow<MusicSource> = _searchSource
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList()); val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
     private val _mine = MutableStateFlow(MineUiState()); val mine: StateFlow<MineUiState> = _mine
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList()); val lyrics: StateFlow<List<LyricLine>> = _lyrics
@@ -327,6 +321,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val qqTopD = async { if (qqEnabledNow) runCatching { qqClient.toplist() }.getOrNull() else emptyList() }
             val qqPlsD = async { if (qqEnabledNow) runCatching { qqClient.recommendPlaylists() }.getOrNull() else emptyList() }
             val qqNewsD = async { if (qqEnabledNow) runCatching { qqClient.recommendNewSongs() }.getOrNull() else emptyList() }
+            // 0.1.15 第 15 项：QQ 每日推荐（需登录，未登录为空）与私人雷达
+            // （匿名可用）并行加入；失败只留空，不影响其他区。
+            val qqDailyD = async { if (qqEnabledNow) runCatching { qqClient.recommendDaily() }.getOrDefault(emptyList()) else emptyList() }
+            val qqRadarD = async { if (qqEnabledNow) runCatching { qqClient.recommendRadar() }.getOrDefault(emptyList()) else emptyList() }
             val pls = plsD.await()
             val news = newsD.await()
             val failed = neEnabled && pls == null && news == null
@@ -340,6 +338,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 qqToplist = qqTopD.await() ?: emptyList(),
                 qqPlaylists = qqPlsD.await() ?: emptyList(),
                 qqNewSongs = qqNewsD.await() ?: emptyList(),
+                qqDaily = qqDailyD.await(),
+                qqRadar = qqRadarD.await(),
             )
             _home.value = _home.value.copy(
                 daily = dailyD.await(), radar = radarD.await(), recent = recentD.await(),
@@ -366,37 +366,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return api.playlistDetail(id)
     }
 
-    /** Sixth round, batch 2: search is source-aware (order 歌曲/歌手/歌单); the source is remembered (lastSearchSource). LOCAL searches the scanned on-device files. */
-    fun search(keywords: String, source: MusicSource? = null) {
+    /** 0.1.15 第 3 项：搜索不再分源——所有启用的源并行搜，结果合并
+     * （歌曲 / 歌单两源合并成一列，歌手分网易云 / QQ 两区）；源开关
+     * 只在设置里调。LOCAL 模式下搜索框不可用（§2.6.3），这里不留本地分支。 */
+    fun search(keywords: String) {
         searchJob?.cancel()
         if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searching = false); return }
-        val src = source ?: _searchSource.value
-        _searchSource.value = src
-        store.lastSearchSource = src.name
         searchJob = viewModelScope.launch {
-            _home.value = _home.value.copy(searching = true, searchSource = src)
-            when (src) {
-                MusicSource.QQ -> {
-                    // A failed search is an empty result with a retry, never Demo data.
-                    val songs = runCatching { qqClient.searchSongs(keywords) }.getOrDefault(emptyList())
-                    val artists = runCatching { qqClient.searchArtists(keywords) }.getOrDefault(emptyList())
-                    val playlists = runCatching { qqClient.searchPlaylists(keywords) }.getOrDefault(emptyList())
-                    // 大排查 S1：切源时清掉另一源的歌手列表——之前只写本源
-                    // 的列表，旧源歌手区一直残留（两个“歌手”标题并列）。
-                    _home.value = _home.value.copy(searchResults = songs, searchArtists = emptyList(), searchQqArtists = artists, searchPlaylists = playlists, searching = false)
-                }
-                MusicSource.NETEASE -> {
-                    val songs = runCatching { api.search(keywords) }.getOrDefault(emptyList())
-                    val artists = runCatching { api.searchArtists(keywords) }.getOrDefault(emptyList())
-                    val playlists = runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList())
-                    // 大排查 S1：同上，清掉 QQ 歌手残留。
-                    _home.value = _home.value.copy(searchResults = songs, searchArtists = artists, searchQqArtists = emptyList(), searchPlaylists = playlists, searching = false)
-                }
-                // LOCAL: the search box is disabled in local mode (§2.6.3) —
-                // the VM keeps no local-search branch; local songs are browsed from Home.
-                MusicSource.LOCAL -> {
-                    _home.value = _home.value.copy(searchResults = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchPlaylists = emptyList(), searching = false)
-                }
+            _home.value = _home.value.copy(searching = true)
+            coroutineScope {
+                val neEnabled = _neteaseEnabled.value
+                val qqEnabledNow = _qqEnabled.value
+                // A failed search is an empty result with a retry, never Demo data.
+                val neSongsD = async { if (neEnabled) runCatching { api.search(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                val neArtistsD = async { if (neEnabled) runCatching { api.searchArtists(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                val nePlsD = async { if (neEnabled) runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                val qqSongsD = async { if (qqEnabledNow) runCatching { qqClient.searchSongs(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                val qqArtistsD = async { if (qqEnabledNow) runCatching { qqClient.searchArtists(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                val qqPlsD = async { if (qqEnabledNow) runCatching { qqClient.searchPlaylists(keywords) }.getOrDefault(emptyList()) else emptyList() }
+                _home.value = _home.value.copy(
+                    searchResults = neSongsD.await() + qqSongsD.await(),
+                    searchArtists = neArtistsD.await(),
+                    searchQqArtists = qqArtistsD.await(),
+                    searchPlaylists = nePlsD.await() + qqPlsD.await(),
+                    searching = false,
+                )
             }
         }
     }

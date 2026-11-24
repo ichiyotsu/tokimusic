@@ -46,9 +46,11 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.data.model.qqAlbumId
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.formatTotalDurationMs
+import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.CirroPlayKey
 import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
@@ -69,18 +71,36 @@ fun AlbumDetailScreen(
     onTitle: (String) -> Unit,
     onHeaderVisible: (Boolean) -> Unit = {},
     onOpenArtist: (Long) -> Unit,
+    // 0.1.15 第 2 项：QQ 专辑页（qqMid 非空时走 QQ 分支：详情与
+    // 歌曲都从 QqClient 取；QQ 模式下 albumId 传 0L 占位）。
+    qqMid: String? = null,
+    onOpenQqArtist: (String) -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<Pair<Album, List<Song>>?>(null) }
     var loadError by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
-    LaunchedEffect(albumId, reloadKey) {
+    // QQ 专辑的歌手 mid（专辑头返回，供歌手名点进 QQ 歌手页）。
+    var qqSingerMid by remember { mutableStateOf("") }
+    val isQq = qqMid != null
+    LaunchedEffect(albumId, qqMid, reloadKey) {
         loadError = false
-        // A failed load is an error page with a retry, never Demo data.
-        detail = runCatching { vm.api.albumDetail(albumId) }.onFailure { loadError = true }.getOrNull()
+        if (isQq) {
+            val qqDetail = runCatching { vm.qqClient.qqAlbumDetail(qqMid!!) }
+                .onFailure { loadError = true }.getOrNull()
+            if (qqDetail != null) {
+                detail = qqDetail.album to qqDetail.songs
+                qqSingerMid = qqDetail.singerMid
+            } else {
+                loadError = true
+            }
+        } else {
+            // A failed load is an error page with a retry, never Demo data.
+            detail = runCatching { vm.api.albumDetail(albumId) }.onFailure { loadError = true }.getOrNull()
+        }
     }
     val (album, tracks) = detail ?: (Album(albumId, "加载中…") to emptyList())
     LaunchedEffect(album.name) { onTitle(album.name) }
-    val coverColors = rememberCoverColors(albumId, album.coverUrl)
+    val coverColors = rememberCoverColors(if (isQq) qqAlbumId(qqMid!!) else albumId, album.coverUrl)
     val listState = rememberLazyListState()
     // 标题行（第 0 项）滑出可视区后，通知外层显示悬浮标题。
     val showFloatingTitle by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
@@ -121,7 +141,15 @@ fun AlbumDetailScreen(
                                 // （文档一直这么写，但之前是纯文本、点按无反
                                 // 应）。Album 本身不带歌手 id，用首曲的首位
                                 // 歌手（通常就是专辑歌手）；无曲目时保持纯文本。
+                                // 0.1.15 第 2 项：QQ 模式优先用专辑头返回的
+                                // 歌手 mid（qqSingerMid），没有时按首曲首位
+                                // 歌手的 id 查 mid；都没有则不可点。
                                 val albumArtistId = tracks.firstOrNull()?.artists?.firstOrNull()?.id
+                                val qqArtistMidForTap = if (isQq) {
+                                    qqSingerMid.takeIf { it.isNotBlank() }
+                                        ?: tracks.firstOrNull()?.artists?.firstOrNull()?.mid?.takeIf { it.isNotBlank() }
+                                } else null
+                                val artistClickable = if (isQq) qqArtistMidForTap != null else albumArtistId != null
                                 if (album.artistText.isNotBlank()) {
                                     Text(
                                         album.artistText,
@@ -129,11 +157,14 @@ fun AlbumDetailScreen(
                                         color = coverColors.onCoverTextDim(),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = if (albumArtistId != null) {
+                                        modifier = if (artistClickable) {
                                             Modifier.clickable(
                                                 interactionSource = remember { MutableInteractionSource() },
                                                 indication = null,
-                                            ) { onOpenArtist(albumArtistId) }
+                                            ) {
+                                                if (isQq) onOpenQqArtist(qqArtistMidForTap!!)
+                                                else onOpenArtist(albumArtistId!!)
+                                            }
                                         } else Modifier,
                                     )
                                     Spacer(Modifier.height(4.dp))
@@ -173,7 +204,10 @@ fun AlbumDetailScreen(
                                 }
                             }
                         }
-                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i, album.name) } }
+                        // QQ 模式：行内歌手名点按按 Long id 标注，查本页
+                        // 曲目的歌手 mid 后进 QQ 歌手页（0.1.15 第 2 项）。
+                        val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }
+                        itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = openArtistForRows, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i, album.name) } }
                     }
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(

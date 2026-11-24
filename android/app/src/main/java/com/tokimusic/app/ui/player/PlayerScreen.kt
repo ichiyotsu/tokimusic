@@ -77,6 +77,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -131,6 +132,7 @@ import com.tokimusic.app.ui.theme.LocalCirroAppearance
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.lyricFontFamily
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
  * Cirro 迷你播放器：深灰胶囊（#2C2C2E），16dp 边距，小封面 + 歌名/歌手 +
@@ -176,23 +178,23 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                 TokiLongPressLabel(playLabel) {
                     val playInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50))
+                        Modifier.size(48.dp).clip(RoundedCornerShape(percent = 50))
                             .clickable(interactionSource = playInteraction, indication = null) { vm.player.toggle() }
                             .pressRebound(playInteraction),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = playLabel)
+                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = playLabel, modifier = Modifier.size(28.dp))
                     }
                 }
                 TokiLongPressLabel("下一首") {
                     val nextInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(percent = 50))
+                        Modifier.size(48.dp).clip(RoundedCornerShape(percent = 50))
                             .clickable(interactionSource = nextInteraction, indication = null) { vm.player.next() }
                             .pressRebound(nextInteraction),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = "下一首")
+                        Icon(Icons.Rounded.SkipNext, contentDescription = "下一首", modifier = Modifier.size(28.dp))
                     }
                 }
             }
@@ -230,7 +232,7 @@ private enum class PlayerView { Cover, Lyrics, Queue }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}, onOpenQqArtist: (String) -> Unit = {}) {
     val state by vm.player.state.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
@@ -308,12 +310,15 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     // 一个无操作点击屏蔽，点它们不返回（按钮/滑块/歌词滚动照常）。
     val blankBack = remember { MutableInteractionSource() }
     val shield = remember { MutableInteractionSource() }
-    // 第六轮第 36 项：播放器页歌手名可点进歌手页；QQ 歌的歌手 id 是 QQ 侧
-    // 的数字 id（与网易云 id 不是同一空间），点它不进网易云歌手页，给提示
-    //（与搜索页 QQ 歌手结果同款处理）。
+    // 第六轮第 36 项：播放器页歌手名可点进歌手页；QQ 歌的歌手按 mid
+    // 进 QQ 歌手页（0.1.15 第 2 项，之前是“暂不支持”提示）；QQ 歌
+    // 没有歌手 mid 时仍提示（不进网易云页，id 不是同一空间）。
     val openPlayerArtist: (Long) -> Unit = { artistId ->
         if (song.source == MusicSource.QQ) {
-            Toast.makeText(context, "QQ 歌手详情暂不支持", Toast.LENGTH_SHORT).show()
+            val mid = song.artists.firstOrNull { it.id == artistId }?.mid?.takeIf { it.isNotBlank() }
+                ?: song.artists.firstOrNull()?.mid?.takeIf { it.isNotBlank() }
+            if (mid != null) onOpenQqArtist(mid)
+            else Toast.makeText(context, "QQ 歌手详情暂不支持", Toast.LENGTH_SHORT).show()
         } else {
             onOpenArtist(artistId)
         }
@@ -404,6 +409,9 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 // 0.1.13 第 5 项：逐字高亮默认开（设置里的
                                 // karaokeHighlight），话筒开关按钮已删。
                                 karaokeHighlight = vm.store.karaokeHighlight,
+                                // 0.1.15 第 6 项：逐字时序偏移（更多页可调，
+                                // -500..+500ms，0 = 跟随原时间轴）。
+                                timingOffsetMs = vm.store.lyricTimingOffsetMs,
                                 // 0.1.13 第 3 项：暂停时逐字轮询降频。
                                 isPlaying = state.isPlaying,
                                 coverColors = coverColors,
@@ -626,6 +634,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     }
     if (showMore) MoreSheet(
         song = song,
+        vm = vm,
         liked = liked,
         castActive = castActive,
         onToggleLike = { vm.toggleLike(song.id); showMore = false },
@@ -891,6 +900,7 @@ private fun EqualizerBars(active: Boolean) {
 @Composable
 private fun MoreSheet(
     song: Song,
+    vm: AppViewModel,
     liked: Boolean,
     castActive: Boolean,
     onToggleLike: () -> Unit,
@@ -935,7 +945,61 @@ private fun MoreSheet(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
+            // 0.1.15 第 5 项：歌词设置放进更多页（与设置 → 歌词同一开关，
+            // 改完立即生效）；第 6 项：逐字时序偏移滑杆。
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "歌词",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            MoreSwitch("翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
+            MoreSwitch("罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
+            MoreSwitch("逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(
+                    formatTimingOffset(vm.store.lyricTimingOffsetMs),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Slider(
+                value = vm.store.lyricTimingOffsetMs.toFloat(),
+                onValueChange = { vm.store.lyricTimingOffsetMs = ((it / 50f).roundToInt() * 50).coerceIn(-500, 500) },
+                valueRange = -500f..500f,
+                steps = 19,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            )
+            Text(
+                "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
         }
+    }
+}
+
+/** 歌词时序偏移的显示值（纯函数，JVM 单测覆盖）：0 显示“0ms”，其余带正负号。 */
+fun formatTimingOffset(offsetMs: Int): String =
+    if (offsetMs == 0) "0ms" else "${if (offsetMs > 0) "+" else ""}$offsetMs" + "ms"
+
+@Composable
+private fun MoreSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCheckedChange(!checked) }.padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

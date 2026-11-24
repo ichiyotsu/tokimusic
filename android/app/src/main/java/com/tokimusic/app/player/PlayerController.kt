@@ -202,7 +202,7 @@ class PlayerController(context: Context) {
 
     private fun createListener(player: Player) = object : Player.Listener {
         override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p); notePlayingChanged(p) }
-        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); ensureUrlForCurrent(player) }
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); ensureUrlForCurrent(player, autoPlay = player.isPlaying) }
         override fun onPlaybackStateChanged(playbackState: Int) {
             // Shuffle 模式：自然播完一首（REPEAT_MODE_OFF 时 STATE_ENDED）
             // 后随机跳一首；顺序模式下播完即停（原行为，不动）。

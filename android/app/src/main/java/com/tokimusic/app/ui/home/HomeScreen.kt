@@ -79,6 +79,7 @@ import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
+import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.tokiGlassFade
 
@@ -109,6 +110,8 @@ fun HomeScreen(
     onOpenPlaylist: (Long) -> Unit,
     // Round 3 item 12: song-row artist names open the artist page.
     onOpenArtist: (Long) -> Unit = {},
+    // 0.1.15 第 2 项：QQ 歌曲的歌手按 mid 进 QQ 歌手页。
+    onOpenQqArtist: (String) -> Unit = {},
     // Round 3 item 20: reports the section whose in-page title has scrolled
     // under the top bar ("主页" / "排行榜" / "推荐歌单" / "推荐新歌"); TokiMusicApp swaps
     // the floating title chip to match.
@@ -273,6 +276,51 @@ fun HomeScreen(
                 }
             }
         }
+        // 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（与网易云双列同款
+        // 布局，单独一行；只在对应列表非空时出现。每日需 QQ 登录，
+        // 未登录时 qqDaily 为空所以不显示；雷达匿名可用。标题与网易
+        // 云卡片相同，源徽标固定显示（QQ），与网易云卡片区分；
+        // 点开走虚拟歌单 -3（QQ 每日）/ -4（QQ 雷达）。）
+        val showQqDaily = qqEnabled && home.qqDaily.isNotEmpty()
+        val showQqRadar = qqEnabled && home.qqRadar.isNotEmpty()
+        if (showQqDaily || showQqRadar) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (showQqDaily) {
+                        RecommendCard(
+                            title = "每日推荐",
+                            songs = home.qqDaily,
+                            loggedIn = true,
+                            onLogin = onOpenLogin,
+                            onOpen = { onOpenPlaylist(-3L) },
+                            hazeState = hazeState,
+                            backdropBlur = backdropBlur,
+                            showSourceBadge = true,
+                            paletteIndex = paletteIndex,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (showQqRadar) {
+                        RecommendCard(
+                            title = "私人雷达",
+                            songs = home.qqRadar,
+                            loggedIn = true,
+                            onLogin = onOpenLogin,
+                            onOpen = { onOpenPlaylist(-4L) },
+                            hazeState = hazeState,
+                            backdropBlur = backdropBlur,
+                            showSourceBadge = true,
+                            paletteIndex = paletteIndex,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (!showQqDaily || !showQqRadar) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
         if (neteaseEnabled && (!home.loggedIn || home.recent.isNotEmpty())) {
             item {
                 Text("最近播放", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
@@ -385,7 +433,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Spacer(Modifier.height(8.dp))
-                NewSongsGrid(allNewSongs, bothEnabled, paletteIndex, vm, onOpenArtist)
+                NewSongsGrid(allNewSongs, bothEnabled, paletteIndex, vm, onOpenArtist, onOpenQqArtist)
             }
         }
     }
@@ -419,16 +467,19 @@ private fun ToplistGrid(playlists: List<Playlist>, paletteIndex: Int = 0, onOpen
     }
 }
 
-/** Recommended new songs: 2-row horizontally scrolling grid of SongRows. */
+/** Recommended new songs: 6-row horizontally scrolling grid of SongRows (0.1.15 第 16 项：2 行 → 6 行）。 */
 @Composable
-private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, paletteIndex: Int = 0, vm: AppViewModel, onOpenArtist: (Long) -> Unit) {
+private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, paletteIndex: Int = 0, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
     // One column is one full-width song row (screen width minus the 24dp
     // page margins); SongRow's own horizontal padding is 0 here because
     // the grid's contentPadding already provides the margins.
+    // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（混源列表，
+    // 用 resolveArtistTap 分流）。
+    val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(songs, id, onOpenArtist, onOpenQqArtist) }
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxWidth().height(144.dp),
+        rows = GridCells.Fixed(6),
+        modifier = Modifier.fillMaxWidth().height(448.dp),
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -437,7 +488,7 @@ private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, paletteIndex: 
             Box(Modifier.width(screenWidth - 48.dp)) {
                 SongRow(
                     song,
-                    onOpenArtist = onOpenArtist,
+                    onOpenArtist = openArtistForRows,
                     onLongPress = { vm.openSongActions(it) },
                     horizontalPadding = 0.dp,
                     trailingAction = {
