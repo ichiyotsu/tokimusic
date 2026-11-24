@@ -111,11 +111,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
             id
         }
         set(v) { prefs.edit().putString("qq_android_id", v).apply() }
-    /** 用户手动填写的 QQ 注册日期（本地日期起点毫秒；0 = 未设置）。
-     * 0.1.13 第 12 条返工：QQ 接口不返回注册时间，首次登录时间被用户
-     * 否决，改由用户自己填；退出 QQ 不清除。 */
-    override var qqRegisterDateMs: Long get() = prefs.getLong("qq_register_date_ms", 0L)
-        set(v) { prefs.edit().putLong("qq_register_date_ms", v).apply() }
     /** 源启用开关（第六轮第 19 项）：网易云默认开，QQ 默认关；QQ 登录成功
      * 时自动打开 QQ。设置里的开关与主页/资料库下拉菜单翻同一个标志。 */
     override var neteaseEnabled: Boolean get() = prefs.getBoolean("netease_enabled", true)

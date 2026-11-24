@@ -43,8 +43,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,11 +53,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,9 +65,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZoneOffset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -271,7 +264,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
                     SettingsSub.Audio -> audioSection(vm)
                     SettingsSub.Lyrics -> lyricsSection(vm)
-                    SettingsSub.Achievements -> achievementsSection(vm, profile, qqProfile, qqLoggedIn)
+                    SettingsSub.Achievements -> achievementsSection(vm, profile)
                 }
             }
             Box(
@@ -536,46 +529,19 @@ private fun SubRow(title: String, onClick: () -> Unit) {
     }
 }
 
-/** 0.1.13 第 12 项：加入天数的一行（label + 天数；days 为 null 时显示“—”；editable 的行可点开改日期）。 */
-data class JoinedDayEntry(val label: String, val iconRes: Int, val days: Int?, val editable: Boolean = false)
-
-/** QQ 注册日期的最早有效值：1999-01-01T00:00:00Z（QQ 1999 年 2 月上线，取 1 月 1 日为安全下限）。 */
-const val QQ_REGISTER_EARLIEST_MS: Long = 915_148_800_000L
-
-/** 把任意毫秒时间戳归一化为本地日期起点（纯函数，可单测）。 */
-fun normalizeToLocalStartOfDay(ms: Long): Long {
-    val zone = ZoneId.systemDefault()
-    return Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
-}
-
-/** DatePicker 选中的 UTC 日起点 → 本地日期起点（纯函数，可单测；DatePicker 的毫秒是 UTC 日）。 */
-fun utcDayStartToLocalStartOfDay(utcMs: Long): Long {
-    val date = Instant.ofEpochMilli(utcMs).atZone(ZoneOffset.UTC).toLocalDate()
-    return date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-}
-
-/** 本地日期起点 → DatePicker 用的 UTC 日起点（纯函数，可单测）。 */
-fun localStartOfDayToUtcDayStart(localMs: Long): Long {
-    val date = Instant.ofEpochMilli(localMs).atZone(ZoneId.systemDefault()).toLocalDate()
-    return date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-}
-
-/** QQ 注册日期是否有效（纯函数，可单测）：在 [1999-01-01, 今天] 之间。 */
-fun isValidQqRegisterDate(dateMs: Long, nowMs: Long): Boolean =
-    dateMs >= QQ_REGISTER_EARLIEST_MS && dateMs <= normalizeToLocalStartOfDay(nowMs)
+/** 0.1.13 第 12 项：加入天数的一行（label + 天数；days 为 null 时显示“—”）。 */
+data class JoinedDayEntry(val label: String, val iconRes: Int, val days: Int?)
 
 /**
  * 0.1.13 第 12 项：成就页的加入天数行（纯函数，可单测）——
  * TokiMusic（首次登录时间起算，需 > 0 才显示）、NeteaseMusic
- * （createDays，< 0 时 days 为 null）、QQMusic（用户手动填写的
- * 注册日期起算——QQ 接口不返回注册时间，首次登录时间已被用户否决，
- * 见 NOTES；未填时 days 为 null，行可点开填日期）。未登录的源不显示。
+ * （createDays，< 0 时 days 为 null）。QQMusic 不显示：QQ 接口不返回
+ * 注册时间，首次登录与手动填写两种替代均已被用户否决（2026-11-24），
+ * 见 NOTES。未登录的源不显示。
  */
 fun joinedDaysEntries(
     firstLoginMs: Long,
     neteaseCreateDays: Int?,
-    qqRegisterDateMs: Long,
-    qqLoggedIn: Boolean,
     nowMs: Long,
 ): List<JoinedDayEntry> {
     val entries = mutableListOf<JoinedDayEntry>()
@@ -589,23 +555,13 @@ fun joinedDaysEntries(
             if (neteaseCreateDays >= 0) neteaseCreateDays else null,
         )
     }
-    if (qqLoggedIn) {
-        entries += JoinedDayEntry(
-            "QQMusic",
-            R.drawable.ic_source_qq,
-            if (qqRegisterDateMs > 0L) daysSince(qqRegisterDateMs, nowMs).toInt() else null,
-            editable = true,
-        )
-    }
     return entries
 }
 
-/** 0.1.13 第 12 项：成就页——加入天数三行（TokiMusic / NeteaseMusic / QQMusic），未登录任何源时显示空态；以后更多成就（等级、听歌时长里程碑等）也放这里。 */
+/** 0.1.13 第 12 项：成就页——加入天数两行（TokiMusic / NeteaseMusic），未登录任何源时显示空态；以后更多成就（等级、听歌时长里程碑等）也放这里。QQMusic 不显示（见 joinedDaysEntries）。 */
 private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
     vm: AppViewModel,
     profile: com.tokimusic.app.data.model.UserProfile?,
-    qqProfile: com.tokimusic.app.data.api.QqProfile?,
-    qqLoggedIn: Boolean,
 ) {
     item {
         Text("加入天数", Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
@@ -614,12 +570,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
         val entries = joinedDaysEntries(
             vm.store.firstLoginMs,
             profile?.createDays,
-            vm.store.qqRegisterDateMs,
-            qqLoggedIn,
             System.currentTimeMillis(),
         )
-        // 0.1.13 第 12 条返工：QQMusic 行可点开日期选择器，填注册日期。
-        var showQqDatePicker by remember { mutableStateOf(false) }
         SettingsSubCard {
             if (entries.isEmpty()) {
                 Text(
@@ -631,8 +583,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (entry in entries) {
                         Row(
-                            Modifier.fillMaxWidth().height(56.dp)
-                                .then(if (entry.editable) Modifier.clickable { showQqDatePicker = true } else Modifier),
+                            Modifier.fillMaxWidth().height(56.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
@@ -652,53 +603,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
                                 Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
-                            if (entry.editable && entry.days == null) {
-                                Text(
-                                    "设置日期",
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                            } else {
-                                Text(
-                                    entry.days?.let { "$it 天" } ?: "— 天",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                            }
-                            if (entry.editable) {
-                                Spacer(Modifier.width(8.dp))
-                                Icon(
-                                    Icons.Rounded.Edit,
-                                    contentDescription = "设置 QQ 注册日期",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            Text(
+                                entry.days?.let { "$it 天" } ?: "— 天",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
                         }
                     }
                 }
             }
-        }
-        if (showQqDatePicker) {
-            QqRegisterDatePicker(
-                initialMs = vm.store.qqRegisterDateMs.takeIf { it > 0L },
-                onDismiss = { showQqDatePicker = false },
-                onConfirm = { pickedMs ->
-                    vm.store.qqRegisterDateMs = pickedMs
-                    showQqDatePicker = false
-                },
-            )
-        }
-    }
-    // 0.1.13 第 12 条返工：QQ 未填注册日期时说明原因（QQ 官方没有提供查询接口）。
-    if (qqLoggedIn && vm.store.qqRegisterDateMs <= 0L) {
-        item {
-            Text(
-                "QQMusic 的加入天数需要手动填写注册日期（QQ 官方没有提供查询接口）",
-                Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
         }
     }
     item {
@@ -708,43 +621,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-    }
-}
-
-/**
- * 0.1.13 第 12 条返工：QQ 注册日期选择器（Material3 DatePickerDialog）。
- * DatePicker 的毫秒是 UTC 日：可选范围 [1999-01-01, 今天]，选中的 UTC 日
- * 转本地日期起点后交给 onConfirm；非法选择（正常点不到）直接忽略。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun QqRegisterDatePicker(
-    initialMs: Long?,
-    onDismiss: () -> Unit,
-    onConfirm: (Long) -> Unit,
-) {
-    val nowMs = System.currentTimeMillis()
-    val todayUtcMs = Instant.ofEpochMilli(nowMs).atZone(ZoneOffset.UTC).toLocalDate()
-        .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = initialMs?.let { localStartOfDayToUtcDayStart(it) } ?: todayUtcMs,
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                utcTimeMillis in QQ_REGISTER_EARLIEST_MS..todayUtcMs
-        },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val picked = state.selectedDateMillis ?: return@TextButton
-                val normalized = utcDayStartToLocalStartOfDay(picked)
-                if (isValidQqRegisterDate(normalized, nowMs)) onConfirm(normalized)
-            }) { Text("确定") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    ) {
-        DatePicker(state = state)
     }
 }
 

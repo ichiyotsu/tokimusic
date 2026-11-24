@@ -41,10 +41,6 @@ interface QqSettings {
     var qqDeviceId2: String
     /** Stable 16-hex Android id (CGI comm aid), generated once. */
     var qqAndroidId: String
-    /** 用户手动填写的 QQ 注册日期（本地日期起点毫秒；0 = 未设置）。
-     * 0.1.13 第 12 条返工：QQ 接口不返回注册时间，首次登录时间已被用户
-     * 否决，改由用户自己填（成就页 QQMusic 行点开日期选择器）。 */
-    var qqRegisterDateMs: Long
     var neteaseEnabled: Boolean
     var qqEnabled: Boolean
 }
