@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.viewinterop.AndroidView
 import com.tokimusic.app.R
@@ -558,7 +559,7 @@ fun joinedDaysEntries(
     return entries
 }
 
-/** 0.1.13 第 12 项：成就页——加入天数两行（TokiMusic / NeteaseMusic），未登录任何源时显示空态；以后更多成就（等级、听歌时长里程碑等）也放这里。QQMusic 不显示（见 joinedDaysEntries）。 */
+/** 0.1.13 第 12 项：成就页——加入天数两列勋章卡片（TokiMusic / NeteaseMusic 各一张，图标当勋章，标题源名，副标题“已加入 X 天”），未登录任何源时显示空态；以后更多成就（等级、听歌时长里程碑等）也放这里。QQMusic 不显示（见 joinedDaysEntries）。 */
 private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
     vm: AppViewModel,
     profile: com.tokimusic.app.data.model.UserProfile?,
@@ -580,35 +581,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // 两列勋章卡片：每项一张卡，图标当勋章放上方，标题源名，副标题“已加入 X 天”。
+                // 只有一项时右侧补一个等宽 Spacer，保持单卡半宽、两列节奏不变。
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     for (entry in entries) {
-                        Row(
-                            Modifier.fillMaxWidth().height(56.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier.size(32.dp).clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    painterResource(entry.iconRes),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            Text(
-                                "已加入${entry.label}",
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                entry.days?.let { "$it 天" } ?: "— 天",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
+                        JoinedDayMedalCard(entry, Modifier.weight(1f))
+                    }
+                    if (entries.size == 1) {
+                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -621,6 +601,47 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/** 0.1.13 第 12 项（成就页两列勋章设计，2026-11-24）：加入天数的一张勋章卡——图标当勋章放上方，标题源名，副标题“已加入 X 天”（天数为 null 时显示“已加入 — 天”）。 */
+@Composable
+private fun JoinedDayMedalCard(entry: JoinedDayEntry, modifier: Modifier = Modifier) {
+    Card(
+        modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painterResource(entry.iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                entry.label,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
 }
 

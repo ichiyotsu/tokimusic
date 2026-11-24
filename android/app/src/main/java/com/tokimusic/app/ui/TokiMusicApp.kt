@@ -52,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -775,6 +776,13 @@ private fun BottomChrome(
 ) {
     val density = LocalDensity.current
     val scheme = MaterialTheme.motionScheme
+    // 0.1.13 第 26 项：导航栏显隐不再参与布局——导航栏放在固定高度的占位槽
+    // 里，只做滑出 + 淡出；进二级页（歌单等）时 MiniPlayer 位置不动，底栏总
+    // 高度（measuredChrome）也不变，内容区底边距不跟着跳。槽高取导航栏实测
+    // 高度，首帧未量到前用 72dp（胶囊 56dp + 上下各 8dp 内边距）；宽屏没有
+    // 底栏，槽高为 0。
+    var navSlotHeightPx by remember { mutableIntStateOf(0) }
+    val navSlotHeight = if (wide) 0.dp else with(density) { navSlotHeightPx.toDp() }.takeIf { it > 0.dp } ?: 72.dp
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
@@ -790,31 +798,66 @@ private fun BottomChrome(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
-            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来——进二级页时导航
-            // 弹走，MiniPlayer 留在底边（贴底，只留手势导航条间距）。
+            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来。0.1.13 第 26 项
+            // 起，进二级页时导航栏只在占位槽里滑出 + 淡出，MiniPlayer 位置
+            // 不动（二级页底边留空槽，不再贴底）。
             if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
-            AnimatedVisibility(
-                visible = navVisible,
-                enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
-                exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+            Box(Modifier.fillMaxWidth().height(navSlotHeight)) {
+                NavBarSlot(
+                    navVisible = navVisible,
+                    wide = wide,
+                    dest = dest,
+                    glass = glass,
+                    solidStroke = solidStroke,
+                    onSelect = onSelect,
+                    onSearch = onSearch,
+                    // 只在导航栏显示时取最大实测高度；退出动画中不更新，槽高不动。
+                    onNavHeightPx = { if (navVisible && it > 0) navSlotHeightPx = maxOf(navSlotHeightPx, it) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 0.1.13 第 26 项：底部导航栏（3 tab 胶囊 + 搜索圆钮）——单独抽成顶层
+ * composable，否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞
+ * ColumnScope 的 DSL 作用域限制（编译失败）。显隐动画与原来一致（滑入 /
+ * 滑出 + 淡入 / 淡出）；布局高度由调用方的占位槽固定，这里只管内容。
+ */
+@Composable
+private fun NavBarSlot(
+    navVisible: Boolean,
+    wide: Boolean,
+    dest: Dest,
+    glass: Modifier,
+    solidStroke: Boolean,
+    onSelect: (Dest) -> Unit,
+    onSearch: () -> Unit,
+    onNavHeightPx: (Int) -> Unit,
+) {
+    val scheme = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = navVisible,
+        enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
+        exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+    ) {
+        if (!wide) {
+            // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
+            // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
+            Row(
+                Modifier.onSizeChanged { onNavHeightPx(it.height) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (!wide) {
-                    // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
-                    // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
-                        TokiSideActionButton(
-                            Icons.Rounded.Search,
-                            stringResource(R.string.nav_search),
-                            onClick = onSearch,
-                            glass = glass,
-                            solidFill = solidStroke,
-                        )
-                    }
-                }
+                FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+                TokiSideActionButton(
+                    Icons.Rounded.Search,
+                    stringResource(R.string.nav_search),
+                    onClick = onSearch,
+                    glass = glass,
+                    solidFill = solidStroke,
+                )
             }
         }
     }
