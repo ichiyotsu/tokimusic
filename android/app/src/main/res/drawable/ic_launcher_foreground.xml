@@ -1,1 +1,10 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><group android:scaleX="2.0" android:scaleY="2.0" android:translateX="30" android:translateY="30"><path android:fillColor="#000000" android:pathData="M11.175 18.825Q10 17.65 10 16t1.175-2.825T14 12q.575 0 1.063.138t.937.412V4h6v3h-4v9q0 1.65-1.175 2.825T14 20t-2.825-1.175M2 16q0-2.475.95-4.663t2.575-3.812T9.338 4.95T14 4v2q-2.05 0-3.875.788t-3.187 2.15t-2.15 3.174T4 16zm4 0q0-1.65.638-3.113t1.725-2.55T10.9 8.625T14 8v2q-2.5 0-4.25 1.75T8 16z" /></group></vector>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Font Awesome Free 7.3.1 music (CC BY 4.0) — launcher icon, 0.1.13 item 11. Same 48dp glyph size / 30dp margins as the old note. -->
+    <group android:scaleX="0.1" android:scaleY="0.1" android:translateX="30" android:translateY="30"><path
+        android:fillColor="#000000"
+        android:pathData="M468 7c7.6 6.1 12 15.3 12 25l0 304c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6l0-116.7-224 49.8 0 206.3c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6L128 96c0-15 10.4-28 25.1-31.2l288-64c9.5-2.1 19.4 .2 27 6.3z" /></group>
+</vector>

@@ -30,11 +30,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PriorityHigh
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +88,8 @@ import com.tokimusic.app.ui.components.navEntries
 import com.tokimusic.app.ui.home.HomeScreen
 import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.library.LibrarySection
+import com.tokimusic.app.ui.library.LibraryStatsDropdown
+import com.tokimusic.app.ui.library.LibraryStatsSource
 import com.tokimusic.app.ui.stats.ListeningStatsScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
@@ -246,6 +254,16 @@ fun TokiMusicApp(
         LaunchedEffect(artistId) { artistHeaderVisible = false }
         var albumHeaderVisible by remember { mutableStateOf(false) }
         LaunchedEffect(albumId) { albumHeaderVisible = false }
+        // 0.1.13 第 24 / 25 项：顶栏右侧的收藏 / 关注按钮态——歌单详情与
+        // 歌手页通过 onFavoriteAction / onFollowAction 上报 (是否已选, 切换)；
+        // 进新歌单 / 歌手时先复位（详情未加载完之前不显示旧按钮）。
+        var playlistFavAction by remember { mutableStateOf<Pair<Boolean, () -> Unit>?>(null) }
+        var artistFollowAction by remember { mutableStateOf<Pair<Boolean, () -> Unit>?>(null) }
+        LaunchedEffect(playlistId) { playlistFavAction = null }
+        LaunchedEffect(artistId) { artistFollowAction = null }
+        // 0.1.13 第 23 项：资料库等级 / 听歌时长的显示源（两源都开时由
+        // 标题栏右侧下拉框切换；单源时 LibraryScreen 按源开关强制）。
+        var libraryStatsSource by remember { mutableStateOf(LibraryStatsSource.BOTH) }
         val topDetailHeaderVisible = when {
             albumId != null -> albumHeaderVisible
             artistId != null -> artistHeaderVisible
@@ -263,6 +281,8 @@ fun TokiMusicApp(
             label = "detailHeaderOffset",
         )
         val profile by vm.profile.collectAsState()
+        // 0.1.13 第 18 项：自定义头像（头像入口也显示自定义头像）。
+        val customAvatarPath by vm.customAvatarPath.collectAsState()
         // 第六轮第 1 项：源启用开关（主页左上角下拉入口只在双源都启用时出现）。
         val neteaseEnabled by vm.neteaseEnabled.collectAsState()
         val qqEnabled by vm.qqEnabled.collectAsState()
@@ -390,7 +410,7 @@ fun TokiMusicApp(
                             NavigationRailItem(
                                 selected = false,
                                 onClick = { searchSheetOpen = true },
-                                icon = { Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.nav_search)) },
+                                icon = { Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.nav_search)) },
                                 label = { Text(stringResource(R.string.nav_search)) },
                             )
                         }
@@ -432,8 +452,9 @@ fun TokiMusicApp(
                                             )
                                         }
                                     } else null,
-                                    // Tab 页：头像入口放标题行右侧（第 3 项）；第二级页面
-                                    // （歌单/歌手/专辑详情 / 资料库分段 / 听歌时长）不放，只留返回 chip。
+                                    // Tab 页：头像入口放标题行右侧（第 3 项）；资料库分段 /
+                                    // 听歌时长不放，只留返回 chip；歌单详情页放收藏星星
+                                    // （0.1.13 第 25 项），歌手页放关注按钮（第 24 项）。
                                     // 搜索是底部弹窗，不占标题位。
                                     // 第六轮第二批第 10 项：听歌时长页标题栏右侧放一个〈!〉，
                                     // 点开在 icon 下方显示悬浮注释（Netease x h）。
@@ -441,15 +462,57 @@ fun TokiMusicApp(
                                         statsOpen && playlistId == null && artistId == null && albumId == null && librarySection == null -> {
                                             {
                                                 IconButton(onClick = { statsNoteVisible = !statsNoteVisible }) {
-                                                    Icon(Icons.Filled.PriorityHigh, contentDescription = "查看网易云统计估算")
+                                                    Icon(Icons.Rounded.PriorityHigh, contentDescription = "查看网易云统计估算")
+                                                }
+                                            }
+                                        }
+                                        // 0.1.13 第 25 项：歌单详情页顶栏右侧收藏星星
+                                        // （单个 icon；详情未加载完时不显示）。
+                                        playlistId != null && artistId == null && albumId == null && playlistFavAction != null -> {
+                                            {
+                                                val (isFav, toggleFav) = playlistFavAction!!
+                                                TokiLongPressLabel(if (isFav) "取消收藏" else "收藏歌单") {
+                                                    IconButton(onClick = toggleFav, modifier = Modifier.size(48.dp)) {
+                                                        Icon(
+                                                            if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                                                            contentDescription = if (isFav) "取消收藏" else "收藏歌单",
+                                                            modifier = Modifier.size(24.dp),
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // 0.1.13 第 24 项：歌手页顶栏右侧关注按钮
+                                        // （单个 icon；未关注是加号人形，已关注是对勾）。
+                                        artistId != null && albumId == null && artistFollowAction != null -> {
+                                            {
+                                                val (isFollowed, toggleFollow) = artistFollowAction!!
+                                                TokiLongPressLabel(if (isFollowed) "取消关注" else "关注") {
+                                                    IconButton(onClick = toggleFollow, modifier = Modifier.size(48.dp)) {
+                                                        Icon(
+                                                            if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
+                                                            contentDescription = if (isFollowed) "取消关注" else "关注",
+                                                            modifier = Modifier.size(24.dp),
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen -> {
                                             {
-                                                TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
-                                                    IconButton(onClick = { showSettings = true }) {
-                                                        Avatar(profile?.avatarUrl ?: "", 48)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    // 0.1.13 第 23 项：资料库页两源都开时，标题栏
+                                                    // 右侧放统计源下拉框（头像左边）。
+                                                    if (dest == Dest.Library && neteaseEnabled && qqEnabled) {
+                                                        LibraryStatsDropdown(
+                                                            statsSource = libraryStatsSource,
+                                                            onStatsSourceChange = { libraryStatsSource = it },
+                                                        )
+                                                    }
+                                                    TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
+                                                        IconButton(onClick = { showSettings = true }) {
+                                                            Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 48)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -553,12 +616,16 @@ fun TokiMusicApp(
                                             // 第六轮第 36 项：歌手页内再点歌手是歌手→歌手，不再
                                             // 经过播放器，返回时按原来的路走（回 tab，不回播放器）。
                                             onOpenArtist = { artistId = it; artistFromPlayer = false },
+                                            // 0.1.13 第 24 项：关注态上报给顶栏右侧按钮。
+                                            onFollowAction = { artistFollowAction = it },
                                         )
                                         (key as? String)?.startsWith("playlist:") == true -> PlaylistDetailScreen(
                                             vm, (key as String).removePrefix("playlist:").toLong(), bottomPadding,
                                             onTitle = { playlistTitle = it },
                                             onHeaderVisible = { detailHeaderVisible = it },
                                             onOpenArtist = { artistId = it },
+                                            // 0.1.13 第 25 项：收藏态上报给顶栏右侧按钮。
+                                            onFavoriteAction = { playlistFavAction = it },
                                         )
                                         key == "stats" -> ListeningStatsScreen(
                                             vm, topPadding, bottomPadding,
@@ -583,6 +650,9 @@ fun TokiMusicApp(
                                             onOpenListeningStats = { statsOpen = true },
                                             onOpenArtist = { artistId = it },
                                             onOpenAlbum = { albumId = it },
+                                            // 0.1.13 第 23 项：等级 / 听歌时长的显示源。
+                                            statsSource = libraryStatsSource,
+                                            onStatsSourceChange = { libraryStatsSource = it },
                                         )
                                     }
                                 }
@@ -706,6 +776,13 @@ private fun BottomChrome(
 ) {
     val density = LocalDensity.current
     val scheme = MaterialTheme.motionScheme
+    // 0.1.13 第 26 项：导航栏显隐不再参与布局——导航栏放在固定高度的占位槽
+    // 里，只做滑出 + 淡出；进二级页（歌单等）时 MiniPlayer 位置不动，底栏总
+    // 高度（measuredChrome）也不变，内容区底边距不跟着跳。槽高取导航栏实测
+    // 高度，首帧未量到前用 72dp（胶囊 56dp + 上下各 8dp 内边距）；宽屏没有
+    // 底栏，槽高为 0。
+    var navSlotHeightPx by remember { mutableIntStateOf(0) }
+    val navSlotHeight = if (wide) 0.dp else with(density) { navSlotHeightPx.toDp() }.takeIf { it > 0.dp } ?: 72.dp
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
@@ -721,31 +798,66 @@ private fun BottomChrome(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
-            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来——进二级页时导航
-            // 弹走，MiniPlayer 留在底边（贴底，只留手势导航条间距）。
+            // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来。0.1.13 第 26 项
+            // 起，进二级页时导航栏只在占位槽里滑出 + 淡出，MiniPlayer 位置
+            // 不动（二级页底边留空槽，不再贴底）。
             if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
-            AnimatedVisibility(
-                visible = navVisible,
-                enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
-                exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+            Box(Modifier.fillMaxWidth().height(navSlotHeight)) {
+                NavBarSlot(
+                    navVisible = navVisible,
+                    wide = wide,
+                    dest = dest,
+                    glass = glass,
+                    solidStroke = solidStroke,
+                    onSelect = onSelect,
+                    onSearch = onSearch,
+                    // 只在导航栏显示时取最大实测高度；退出动画中不更新，槽高不动。
+                    onNavHeightPx = { if (navVisible && it > 0) navSlotHeightPx = maxOf(navSlotHeightPx, it) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 0.1.13 第 26 项：底部导航栏（3 tab 胶囊 + 搜索圆钮）——单独抽成顶层
+ * composable，否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞
+ * ColumnScope 的 DSL 作用域限制（编译失败）。显隐动画与原来一致（滑入 /
+ * 滑出 + 淡入 / 淡出）；布局高度由调用方的占位槽固定，这里只管内容。
+ */
+@Composable
+private fun NavBarSlot(
+    navVisible: Boolean,
+    wide: Boolean,
+    dest: Dest,
+    glass: Modifier,
+    solidStroke: Boolean,
+    onSelect: (Dest) -> Unit,
+    onSearch: () -> Unit,
+    onNavHeightPx: (Int) -> Unit,
+) {
+    val scheme = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = navVisible,
+        enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
+        exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+    ) {
+        if (!wide) {
+            // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
+            // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
+            Row(
+                Modifier.onSizeChanged { onNavHeightPx(it.height) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (!wide) {
-                    // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
-                    // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
-                        TokiSideActionButton(
-                            Icons.Filled.Search,
-                            stringResource(R.string.nav_search),
-                            onClick = onSearch,
-                            glass = glass,
-                            solidFill = solidStroke,
-                        )
-                    }
-                }
+                FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+                TokiSideActionButton(
+                    Icons.Rounded.Search,
+                    stringResource(R.string.nav_search),
+                    onClick = onSearch,
+                    glass = glass,
+                    solidFill = solidStroke,
+                )
             }
         }
     }

@@ -21,10 +21,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +42,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import com.tokimusic.app.R
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -132,7 +133,7 @@ fun SearchSheet(
                         modifier = Modifier.matchParentSize(),
                     )
                     Icon(
-                        Icons.Filled.Close,
+                        Icons.Rounded.Close,
                         contentDescription = "关闭",
                         modifier = Modifier.size(24.dp),
                     )
@@ -153,8 +154,9 @@ private fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: 
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        // 0.1.13 第 1 / 2 项：搜索源钮换各源专属矢量。
         Icon(
-            Icons.Filled.MusicNote,
+            painterResource(if (source == MusicSource.NETEASE) R.drawable.ic_source_netease else R.drawable.ic_source_qq),
             contentDescription = if (source == MusicSource.NETEASE) "用网易云搜索" else "用 QQ 搜索",
             tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
             modifier = Modifier.size(24.dp),
@@ -184,7 +186,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
             // Sixth round, batch 2, item 24 / §2.6.3: both sources off →
             // local mode, the search box is disabled with a hint.
             placeholder = { Text(if (home.localMode) "本地模式下搜索不可用" else "搜索歌曲、歌手、歌单") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             singleLine = true,
             shape = RoundedCornerShape(percent = 50),
             enabled = !home.localMode,
@@ -215,7 +217,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                             .clickable { vm.play(home.searchResults, i, "搜索结果") },
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Filled.PlayArrow, contentDescription = "播放", modifier = Modifier.size(24.dp))
+                                        Icon(Icons.Rounded.PlayArrow, contentDescription = "播放", modifier = Modifier.size(24.dp))
                                     }
                                 },
                             ) { vm.play(home.searchResults, i, "搜索结果") }

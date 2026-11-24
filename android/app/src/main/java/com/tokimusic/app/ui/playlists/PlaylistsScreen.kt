@@ -5,10 +5,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.rounded.FormatListNumbered
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +29,7 @@ import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.collapsingCoverItem
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.isTitleScrolledOut
+import com.tokimusic.app.ui.theme.monetColorForPlaylist
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 /**
@@ -48,6 +48,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
  *   上下淡出色跟随渐变。
  * - 0.1.12：播放控制行 = 随机播放 squircle + 大号白色播放 pill +
  *   收藏星星；曲目统计移到控制行下方做描述行；歌曲行包进半透明圆角卡片。
+ * - 0.1.13 第 25 项：播放控制行 = 白色大播放 pill（左）+ 顺序播放 /
+ *   随机播放（右）；收藏星星移到顶栏右侧（onFavoriteAction 上报）。
+ * - 0.1.13 第 12 项：歌曲行底色改莫奈色系（按歌单 id 稳定取色）。
  */
 @Composable fun PlaylistDetailScreen(
     vm: AppViewModel,
@@ -57,6 +60,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     onHeaderVisible: (Boolean) -> Unit = {},
     // Round 3 item 12: song-row artist names open the artist page.
     onOpenArtist: (Long) -> Unit = {},
+    // 0.1.13 第 25 项：向外层报告收藏态（顶栏右侧显示星星图标按钮）——
+    // (是否已收藏, 切换)；无详情时报告 null。
+    onFavoriteAction: (Pair<Boolean, () -> Unit>?) -> Unit = {},
 ) {
     var detail by remember { mutableStateOf<Pair<Playlist, List<Song>>?>(null) }
     var loadError by remember { mutableStateOf(false) }
@@ -100,6 +106,12 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     // 0.1.12：收藏态与播放模式（控制行用）。
     val favoriteIds by vm.favoritePlaylistIds.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
+    // 0.1.13 第 25 项：收藏移到顶栏——详情 / 收藏态变化时向外层报告
+    // (是否已收藏, 切换)，顶栏右侧显示星星图标按钮（见 TokiMusicApp）。
+    val isFavDetail = detail?.let { playlistFavoriteKey(it.first.source, it.first.id) in favoriteIds } ?: false
+    LaunchedEffect(detail, isFavDetail) {
+        onFavoriteAction(if (detail == null) null else isFavDetail to { vm.toggleFavoritePlaylist(pl) })
+    }
     // 0.1.12：页面背景渐变底部改封面下端色（深色主题色，不再是纯黑，
     // 与参考图的“渐变到底部变暗”同款；封面缺失时 rememberCoverColors
     // 已回退默认底色）。
@@ -155,24 +167,18 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.height(16.dp))
-                        // 0.1.12：播放控制行按网易云歌单页排法——随机播放
-                        // squircle、中间大号白色播放 pill、右边收藏星星。
+                        // 0.1.13 第 25 项：播放控制行——白色大播放 pill
+                        // 居左（0.1.12 外观不动，176×64 白底黑图标），
+                        // 右边 顺序播放 / 随机播放 两个 48dp squircle；
+                        // 收藏星星移到顶栏右侧（见 onFavoriteAction）。
+                        // 顺序 / 随机与第 17 条的播放模式互斥单选打通
+                        // （playPlaylist 按 shuffle 同步设置播放模式，
+                        // 点已激活的模式 pill 回顺序播放见 nextModeAfterTap）。
                         if (tracks.isNotEmpty()) {
-                            val isFav = playlistFavoriteKey(pl.source, pl.id) in favoriteIds
+                            val sequentialActive = playMode == PlayMode.Sequential
                             val shuffleActive = playMode == PlayMode.Shuffle
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                // 随机播放：64dp squircle（24dp 圆角），封面衍生底
-                                // 色；已是随机模式时白底黑图标（与播放 pill 同款高亮）。
-                                Box(
-                                    Modifier.size(64.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(if (shuffleActive) Color.White else coverColors.onCoverButtonBg())
-                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = true) },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Filled.Shuffle, contentDescription = "随机播放", tint = if (shuffleActive) Color.Black else coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(28.dp))
-                                }
-                                // 大号白色播放 pill：176×64dp，白底黑图标。
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // 大号白色播放 pill：176×64dp，白底黑图标（0.1.12 外观不动）。
                                 Box(
                                     Modifier.size(176.dp, 64.dp)
                                         .clip(RoundedCornerShape(percent = 50))
@@ -180,17 +186,28 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                                         .clickable { vm.playPlaylist(tracks, pl, shuffle = false) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = Color.Black, modifier = Modifier.size(32.dp))
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = Color.Black, modifier = Modifier.size(32.dp))
                                 }
-                                // 收藏星星：64dp squircle，已收藏实心星。
+                                // 顺序播放：48dp squircle（16dp 圆角），封面衍生底色；
+                                // 已是顺序模式时白底黑图标。
                                 Box(
-                                    Modifier.size(64.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(coverColors.onCoverButtonBg())
-                                        .clickable { vm.toggleFavoritePlaylist(pl) },
+                                    Modifier.size(48.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(if (sequentialActive) Color.White else coverColors.onCoverButtonBg())
+                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = false) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(if (isFav) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = if (isFav) "取消收藏" else "收藏歌单", tint = coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(28.dp))
+                                    Icon(Icons.Rounded.FormatListNumbered, contentDescription = "顺序播放", tint = if (sequentialActive) Color.Black else coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(24.dp))
+                                }
+                                // 随机播放：48dp squircle；已是随机模式时白底黑图标。
+                                Box(
+                                    Modifier.size(48.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(if (shuffleActive) Color.White else coverColors.onCoverButtonBg())
+                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = true) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Rounded.Shuffle, contentDescription = "随机播放", tint = if (shuffleActive) Color.Black else coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(24.dp))
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -215,14 +232,14 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                         }
                     }
                 }
-                // 0.1.12：歌曲行包进半透明圆角卡片（参考图同款）——封面
-                // 上端色 16% 透明底，20dp 圆角，行间 4dp、页边 16dp。
+                // 0.1.13 第 12 项：歌曲行底色改莫奈色系（按歌单 id 稳定取色，
+                // 16% 透明底，20dp 圆角，行间 4dp、页边 16dp）。
                 itemsIndexed(tracks) { i, song ->
                     Box(
                         Modifier.fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                             .clip(RoundedCornerShape(20.dp))
-                            .background(coverColors.top.copy(alpha = 0.16f)),
+                            .background(monetColorForPlaylist(pl.id, vm.store.monetPaletteIndex).copy(alpha = 0.16f)),
                     ) {
                         SongRow(song, i, onOpenArtist = onOpenArtist, horizontalPadding = 12.dp, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) }
                     }

@@ -22,7 +22,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +83,9 @@ fun ArtistScreen(
     onHeaderVisible: (Boolean) -> Unit = {},
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
+    // 0.1.13 第 24 项：向外层报告关注态（顶栏右侧显示关注图标按钮）——
+    // (是否已关注, 切换)；歌手未加载时报告 null。
+    onFollowAction: (Pair<Boolean, () -> Unit>?) -> Unit = {},
 ) {
     var artist by remember { mutableStateOf<Artist?>(null) }
     var allSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
@@ -102,6 +105,15 @@ fun ArtistScreen(
     }
     val a = artist
     LaunchedEffect(a?.name) { onTitle(a?.name ?: "歌手") }
+    // 0.1.13 第 24 项：关注态——进页时同步已关注列表，歌手加载后
+    // 向外层报告 (是否已关注, 切换)，顶栏右侧显示关注图标按钮
+    // （见 TokiMusicApp）。
+    val followedArtistIds by vm.followedArtistIds.collectAsState()
+    LaunchedEffect(Unit) { vm.ensureFollowedArtistsLoaded() }
+    val isFollowed = a?.let { it.id in followedArtistIds } ?: false
+    LaunchedEffect(a, isFollowed) {
+        onFollowAction(if (a == null) null else isFollowed to { vm.toggleFollowArtist(artistId) })
+    }
     val coverColors = rememberCoverColors(artistId, a?.picUrl ?: "")
     val listState = rememberLazyListState()
     // 第五轮第 25 项（结构性根治，与歌单页同款）：歌手照片移进 LazyColumn
@@ -206,7 +218,7 @@ fun ArtistScreen(
                                             .padding(horizontal = 20.dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
+                                        Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = if (coverColors.isLight()) Color.White else Color.Black, modifier = Modifier.size(28.dp))
                                     }
                                     Spacer(Modifier.width(16.dp))
                                 }

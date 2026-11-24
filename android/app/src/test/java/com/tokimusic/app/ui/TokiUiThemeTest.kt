@@ -44,7 +44,12 @@ class TokiUiThemeTest {
         // 预设里（LyricFontGoogleSansNotoBold / R.font.google_sans_bold /
         // 用户可见的预设名 "GoogleSans Bold"），其余位置仍按旧 Matcha
         // 退役规则禁用——应用其余字体仍是 Inter + 思源黑体。
-        val lyricPresetAllowlist = listOf("LyricFontGoogleSansNotoBold", "R.font.google_sans_bold", "GoogleSans Bold")
+        val lyricPresetAllowlist = listOf(
+            "LyricFontGoogleSansNotoBold", "R.font.google_sans_bold", "GoogleSans Bold",
+            // 0.1.13 第 22 项：歌词字体下拉框的 "GoogleSans" 选项（同款预设，
+            // 预设名按用户要求写 "GoogleSans"）。
+            "\"google_noto\" to \"GoogleSans\"",
+        )
         val hits = buildList {
             for (root in roots) {
                 if (!root.isDirectory) continue

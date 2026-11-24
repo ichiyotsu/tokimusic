@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -47,8 +47,8 @@ data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: 
 
 /** Cirro：底部悬浮胶囊 2 tab，纯图标无文字（主页 / 资料库）。第六轮第 33 项删发现页；搜索不在 tab 里，改走胶囊旁的独立搜索按钮（第二轮第 23 项）。 */
 val navEntries = listOf(
-    NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Filled.Home, R.string.nav_home),
-    NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Filled.LibraryMusic, R.string.nav_library),
+    NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Rounded.Home, R.string.nav_home),
+    NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, R.string.nav_library),
 )
 
 /**

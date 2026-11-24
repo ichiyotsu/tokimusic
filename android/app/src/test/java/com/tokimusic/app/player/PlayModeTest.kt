@@ -25,6 +25,31 @@ class PlayModeTest {
     }
 
     @Test
+    fun tappingSequentialPillStaysSequential() {
+        // 0.1.13 第 17 项：顺序播放 pill 是四个模式之一；点已激活的
+        // 顺序 pill 回顺序（不变），点其他模式再点顺序切回顺序。
+        assertEquals(PlayMode.Sequential, nextModeAfterTap(PlayMode.Sequential, PlayMode.Sequential))
+        assertEquals(PlayMode.Sequential, nextModeAfterTap(PlayMode.Shuffle, PlayMode.Sequential))
+        assertEquals(PlayMode.Sequential, nextModeAfterTap(PlayMode.RepeatAll, PlayMode.Sequential))
+        assertEquals(PlayMode.Sequential, nextModeAfterTap(PlayMode.RepeatOne, PlayMode.Sequential))
+    }
+
+    @Test
+    fun allFourModesAreMutuallyExclusive() {
+        // 0.1.13 第 17 / 25 项：四个模式同一时间只能选一个——点任一
+        // pill 得到且只得到该模式（单一 playMode 状态保证）。
+        val modes = listOf(PlayMode.Sequential, PlayMode.Shuffle, PlayMode.RepeatAll, PlayMode.RepeatOne)
+        for (current in modes) {
+            for (tapped in modes) {
+                val next = nextModeAfterTap(current, tapped)
+                assertTrue(next in modes)
+                if (current == tapped) assertEquals(PlayMode.Sequential, next)
+                else assertEquals(tapped, next)
+            }
+        }
+    }
+
+    @Test
     fun shuffleNextNeverRepeatsCurrent() {
         val random = Random(42)
         repeat(200) {

@@ -111,10 +111,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
             id
         }
         set(v) { prefs.edit().putString("qq_android_id", v).apply() }
-    /** 首次 QQ 登录时间戳（毫秒，第六轮第 6 项：QQ 加入天数从它起算；
-     * 0 = 未记录；退出 QQ 不清除——“第一次登录”只记一次）。 */
-    override var qqFirstLoginMs: Long get() = prefs.getLong("qq_first_login_ms", 0L)
-        set(v) { prefs.edit().putLong("qq_first_login_ms", v).apply() }
     /** 源启用开关（第六轮第 19 项）：网易云默认开，QQ 默认关；QQ 登录成功
      * 时自动打开 QQ。设置里的开关与主页/资料库下拉菜单翻同一个标志。 */
     override var neteaseEnabled: Boolean get() = prefs.getBoolean("netease_enabled", true)
@@ -135,6 +131,20 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     var favoritePlaylistIds: Set<String>
         get() = prefs.getStringSet("favorite_playlist_ids", emptySet()) ?: emptySet()
         set(v) { prefs.edit().putStringSet("favorite_playlist_ids", v).apply() }
+    /** 莫奈色板序号（0.1.13 第 12 / 21 项）：个性化里选中的色板，
+     * 歌单显示背景与图标 tile 底色用它；0 = 睡莲。 */
+    var monetPaletteIndex: Int get() = prefs.getInt("monet_palette_index", 0)
+        set(v) { prefs.edit().putInt("monet_palette_index", v).apply() }
+    /** 自定义头像的本地文件路径（0.1.13 第 18 项，Tokinote 方案：
+     * 图片选择器挑图后拷进应用私有目录）；空 = 用服务端头像。 */
+    var profileAvatarPath: String get() = prefs.getString("profile_avatar_path", "") ?: ""
+        set(v) { prefs.edit().putString("profile_avatar_path", v).apply() }
+    /** 自定义显示名（0.1.13 第 18 项）；空 = 用服务端昵称。 */
+    var profileDisplayName: String get() = prefs.getString("profile_display_name", "") ?: ""
+        set(v) { prefs.edit().putString("profile_display_name", v).apply() }
+    /** 自定义 ID（0.1.13 第 18 项）；空 = 用 UID。 */
+    var profileCustomId: String get() = prefs.getString("profile_custom_id", "") ?: ""
+        set(v) { prefs.edit().putString("profile_custom_id", v).apply() }
 }
 
 /** 歌单收藏的存储键（纯函数，JVM 单测覆盖）：源 + id，避免跨源 id 撞号。 */

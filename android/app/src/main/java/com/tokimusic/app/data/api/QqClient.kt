@@ -41,7 +41,6 @@ interface QqSettings {
     var qqDeviceId2: String
     /** Stable 16-hex Android id (CGI comm aid), generated once. */
     var qqAndroidId: String
-    var qqFirstLoginMs: Long
     var neteaseEnabled: Boolean
     var qqEnabled: Boolean
 }
@@ -264,7 +263,7 @@ class QqClient(
      * graph authorize (code) → anonymous GetSession (uid/sid for the
      * QQLogin comm, best effort) → QQLogin CGI (musicid/musickey).
      * Persists the credential into [QqSettings]; the caller sets
-     * qqEnabled / qqFirstLoginMs.
+     * qqEnabled.
      */
     suspend fun exchangeQrLogin(uin: String, sigx: String): QqCredential = withContext(Dispatchers.IO) {
         val checkSigResult = checkSig(uin, sigx)
