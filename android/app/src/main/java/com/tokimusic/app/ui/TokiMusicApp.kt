@@ -83,7 +83,6 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.FloatingNavBar
 import com.tokimusic.app.ui.components.OverlayTitleHeader
 import com.tokimusic.app.ui.components.SongActionsSheet
-import com.tokimusic.app.ui.components.SourceDropdownButton
 import com.tokimusic.app.ui.components.TokiGlassIconButton
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.TokiSideActionButton
@@ -91,8 +90,6 @@ import com.tokimusic.app.ui.components.navEntries
 import com.tokimusic.app.ui.home.HomeScreen
 import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.library.LibrarySection
-import com.tokimusic.app.ui.library.LibraryStatsDropdown
-import com.tokimusic.app.ui.library.LibraryStatsSource
 import com.tokimusic.app.ui.stats.ListeningStatsScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
@@ -104,6 +101,7 @@ import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
 import com.tokimusic.app.ui.theme.chromeBlurActive
+import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiGlassFade
@@ -217,6 +215,11 @@ fun TokiMusicApp(
         var artistTitle by remember { mutableStateOf("歌手") }
         var albumId by remember { mutableStateOf<Long?>(null) }
         var albumTitle by remember { mutableStateOf("专辑") }
+        // 0.1.15 第 2 项：QQ 歌手 / 专辑页按 mid 路由（与网易云
+        // 的 Long id 不是同一空间，另起两个导航状态；QQ 歌手与
+        // 网易云歌手互斥——打开一个时清掉另一个，下同专辑）。
+        var qqArtistMid by remember { mutableStateOf<String?>(null) }
+        var qqAlbumMid by remember { mutableStateOf<String?>(null) }
         // Round 3 item 2: the open Library section lives here (with
         // playlistId) so second-level pages get the floating title + back.
         var librarySection by remember { mutableStateOf<LibrarySection?>(null) }
@@ -240,6 +243,12 @@ fun TokiMusicApp(
             artistId = null
             if (artistFromPlayer) { artistFromPlayer = false; showPlayer = true }
         }
+        // 0.1.15 第 2 项：QQ 歌手页的返回（与 closeArtist 同款：
+        // 从播放器点开时返回播放器页）。
+        val closeQqArtist: () -> Unit = {
+            qqArtistMid = null
+            if (artistFromPlayer) { artistFromPlayer = false; showPlayer = true }
+        }
         // 设置页：底部弹窗（第二轮第 4 项，TokiNote SheetContainer 配方），
         // 不再是独立全屏页；搜索自第五轮第 16 项起改回底部弹窗（推翻第三轮
         // 第 11 项的独立页），状态与 playlistId 同级，弹窗浮在页面与底栏之上。
@@ -257,6 +266,9 @@ fun TokiMusicApp(
         LaunchedEffect(artistId) { artistHeaderVisible = false }
         var albumHeaderVisible by remember { mutableStateOf(false) }
         LaunchedEffect(albumId) { albumHeaderVisible = false }
+        // 0.1.15 第 2 项：QQ 歌手 / 专辑页的悬浮标题复位（与网易云同款）。
+        LaunchedEffect(qqArtistMid) { artistHeaderVisible = false }
+        LaunchedEffect(qqAlbumMid) { albumHeaderVisible = false }
         // 0.1.13 第 24 / 25 项：顶栏右侧的收藏 / 关注按钮态——歌单详情与
         // 歌手页通过 onFavoriteAction / onFollowAction 上报 (是否已选, 切换)；
         // 进新歌单 / 歌手时先复位（详情未加载完之前不显示旧按钮）。
@@ -264,22 +276,22 @@ fun TokiMusicApp(
         var artistFollowAction by remember { mutableStateOf<Pair<Boolean, () -> Unit>?>(null) }
         LaunchedEffect(playlistId) { playlistFavAction = null }
         LaunchedEffect(artistId) { artistFollowAction = null }
-        // 0.1.13 第 23 项：资料库等级 / 听歌时长的显示源（两源都开时由
-        // 标题栏右侧下拉框切换；单源时 LibraryScreen 按源开关强制）。
-        var libraryStatsSource by remember { mutableStateOf(LibraryStatsSource.BOTH) }
+        LaunchedEffect(qqArtistMid) { artistFollowAction = null }
         val topDetailHeaderVisible = when {
             albumId != null -> albumHeaderVisible
+            qqAlbumMid != null -> albumHeaderVisible
             artistId != null -> artistHeaderVisible
+            qqArtistMid != null -> artistHeaderVisible
             playlistId != null -> detailHeaderVisible
             else -> true
         }
         val headerAlpha by animateFloatAsState(
-            targetValue = if (albumId == null && artistId == null && playlistId == null || topDetailHeaderVisible) 1f else 0f,
+            targetValue = if (albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null || topDetailHeaderVisible) 1f else 0f,
             animationSpec = tween(300),
             label = "detailHeaderAlpha",
         )
         val headerOffsetY by animateFloatAsState(
-            targetValue = if (albumId == null && artistId == null && playlistId == null || topDetailHeaderVisible) 0f else with(density) { -8.dp.toPx() },
+            targetValue = if (albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null || topDetailHeaderVisible) 0f else with(density) { -8.dp.toPx() },
             animationSpec = tween(300),
             label = "detailHeaderOffset",
         )
@@ -310,7 +322,9 @@ fun TokiMusicApp(
         val pageTitle = when {
             showPlayer -> "正在播放"
             albumId != null -> albumTitle
+            qqAlbumMid != null -> albumTitle
             artistId != null -> artistTitle
+            qqArtistMid != null -> artistTitle
             playlistId != null -> playlistTitle
             statsOpen -> "听歌时长"
             librarySection != null -> librarySection!!.title
@@ -327,13 +341,15 @@ fun TokiMusicApp(
         val headerVisible = chromeVisible
         // 第五轮第 9 项（用户确认）：底栏隐藏所有二级页都一样做——导航胶囊
         // 只在三个 tab 页显示；MiniPlayer 仍留在底边（见 BottomChrome）。
-        val isSecondLevel = albumId != null || artistId != null || playlistId != null ||
+        val isSecondLevel = albumId != null || qqAlbumMid != null || artistId != null || qqArtistMid != null || playlistId != null ||
             statsOpen || librarySection != null
         val bottomNavVisible = !showPlayer && !isSecondLevel
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
             albumId != null -> ({ albumId = null })
+            qqAlbumMid != null -> ({ qqAlbumMid = null })
             artistId != null -> closeArtist
+            qqArtistMid != null -> closeQqArtist
             playlistId != null -> ({ playlistId = null })
             statsOpen -> ({ statsOpen = false })
             librarySection != null -> ({ librarySection = null })
@@ -341,10 +357,12 @@ fun TokiMusicApp(
         }
         BackHandler(enabled = showPlayer) { showPlayer = false }
         BackHandler(enabled = !showPlayer && albumId != null) { albumId = null }
-        BackHandler(enabled = !showPlayer && albumId == null && artistId != null) { closeArtist() }
-        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId != null) { playlistId = null }
-        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && statsOpen) { statsOpen = false }
-        BackHandler(enabled = !showPlayer && albumId == null && artistId == null && playlistId == null && !statsOpen && librarySection != null) { librarySection = null }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid != null) { qqAlbumMid = null }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId != null) { closeArtist() }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid != null) { closeQqArtist() }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId != null) { playlistId = null }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && statsOpen) { statsOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && librarySection != null) { librarySection = null }
 
         val contentGap = tokiSpace("lg")
         val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -363,7 +381,9 @@ fun TokiMusicApp(
         val pageKey: Any = when {
             showPlayer -> "player"
             albumId != null -> "album:$albumId"
+            qqAlbumMid != null -> "qqalbum:$qqAlbumMid"
             artistId != null -> "artist:$artistId"
+            qqArtistMid != null -> "qqartist:$qqArtistMid"
             playlistId != null -> "playlist:$playlistId"
             statsOpen -> "stats"
             librarySection != null -> "section:$librarySection"
@@ -442,19 +462,9 @@ fun TokiMusicApp(
                                     // tab 页不传（标题常显，磨砂是设计的一部分）。
                                     // chip 本身随 titleAlpha 淡入，进页时看不到这层底。
                                     titleSolidColor = if (albumId != null || artistId != null || playlistId != null) CirroBlack else null,
-                                    // 第六轮第 1/20 项：主页与资料库左上角的源切换入口——
-                                    // 只在 tab 页且双源都启用时出现；点开下拉，网易云在上、
-                                    // QQ 在下，点行切换（两处共用同一组件、同一状态）。
-                                    leading = if (playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && neteaseEnabled && qqEnabled && (dest == Dest.Home || dest == Dest.Library)) {
-                                        {
-                                            SourceDropdownButton(
-                                                neteaseEnabled = neteaseEnabled,
-                                                qqEnabled = qqEnabled,
-                                                onToggleNetease = { vm.setSourceEnabled(MusicSource.NETEASE, !neteaseEnabled) },
-                                                onToggleQq = { vm.setSourceEnabled(MusicSource.QQ, !qqEnabled) },
-                                            )
-                                        }
-                                    } else null,
+                                    // 0.1.15 第 3 项：主页 / 资料库左上角的源切换
+                                    // 入口已删——源开关只在设置里调。
+                                    leading = null,
                                     // Tab 页：头像入口放标题行右侧（第 3 项）；资料库分段 /
                                     // 听歌时长不放，只留返回 chip；歌单详情页放收藏星星
                                     // （0.1.13 第 25 项），歌手页放关注按钮（第 24 项）。
@@ -502,14 +512,6 @@ fun TokiMusicApp(
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen -> {
                                             {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    // 0.1.13 第 23 项：资料库页两源都开时，标题栏
-                                                    // 右侧放统计源下拉框（头像左边）。
-                                                    if (dest == Dest.Library && neteaseEnabled && qqEnabled) {
-                                                        LibraryStatsDropdown(
-                                                            statsSource = libraryStatsSource,
-                                                            onStatsSourceChange = { libraryStatsSource = it },
-                                                        )
-                                                    }
                                                     TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
                                                         IconButton(onClick = { showSettings = true }) {
                                                             Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 48)
@@ -541,7 +543,7 @@ fun TokiMusicApp(
                                         // 之间互切（如歌单 → 歌手）方向不明，走淡入淡出。
                                         fun isDetailKey(key: Any): Boolean {
                                             val s = key as? String ?: return false
-                                            return s.startsWith("album:") || s.startsWith("artist:") ||
+                                            return s.startsWith("album:") || s.startsWith("qqalbum:") || s.startsWith("artist:") || s.startsWith("qqartist:") ||
                                                 s.startsWith("playlist:") || s.startsWith("section:") ||
                                                 s == "stats"
                                         }
@@ -599,6 +601,8 @@ fun TokiMusicApp(
                                                     // 第六轮第 36 项：播放器页歌手名可点进歌手页，
                                                     // 返回时回到播放器页。
                                                     onOpenArtist = { artistId = it; showPlayer = false; artistFromPlayer = true },
+                                                    // 0.1.15 第 2 项：QQ 歌的歌手按 mid 进 QQ 歌手页。
+                                                    onOpenQqArtist = { qqArtistMid = it; showPlayer = false; artistFromPlayer = true },
                                                 )
                                             }
                                         }
@@ -608,6 +612,15 @@ fun TokiMusicApp(
                                             onHeaderVisible = { albumHeaderVisible = it },
                                             // 专辑页上点歌手名：专辑页让位给歌手页。
                                             onOpenArtist = { artistId = it; albumId = null },
+                                        )
+                                        // 0.1.15 第 2 项：QQ 专辑页（按 mid 路由）。
+                                        (key as? String)?.startsWith("qqalbum:") == true -> AlbumDetailScreen(
+                                            vm, 0L, bottomPadding,
+                                            onTitle = { albumTitle = it },
+                                            onHeaderVisible = { albumHeaderVisible = it },
+                                            onOpenArtist = { artistId = it; albumId = null; qqAlbumMid = null },
+                                            qqMid = (key as String).removePrefix("qqalbum:"),
+                                            onOpenQqArtist = { qqArtistMid = it; qqAlbumMid = null },
                                         )
                                         (key as? String)?.startsWith("artist:") == true -> ArtistScreen(
                                             vm, (key as String).removePrefix("artist:").toLong(), bottomPadding,
@@ -620,11 +633,25 @@ fun TokiMusicApp(
                                             // 0.1.13 第 24 项：关注态上报给顶栏右侧按钮。
                                             onFollowAction = { artistFollowAction = it },
                                         )
+                                        // 0.1.15 第 2 项：QQ 歌手页（按 mid 路由）。
+                                        (key as? String)?.startsWith("qqartist:") == true -> ArtistScreen(
+                                            vm, 0L, bottomPadding,
+                                            onTitle = { artistTitle = it },
+                                            onHeaderVisible = { artistHeaderVisible = it },
+                                            onOpenAlbum = { albumId = it; qqArtistMid = null },
+                                            onOpenArtist = { artistId = it; artistFromPlayer = false; qqArtistMid = null },
+                                            onFollowAction = { artistFollowAction = it },
+                                            qqMid = (key as String).removePrefix("qqartist:"),
+                                            onOpenQqAlbum = { qqAlbumMid = it },
+                                            onOpenQqArtist = { qqArtistMid = it; artistFromPlayer = false },
+                                        )
                                         (key as? String)?.startsWith("playlist:") == true -> PlaylistDetailScreen(
                                             vm, (key as String).removePrefix("playlist:").toLong(), bottomPadding,
                                             onTitle = { playlistTitle = it },
                                             onHeaderVisible = { detailHeaderVisible = it },
                                             onOpenArtist = { artistId = it },
+                                            // 0.1.15 第 2 项：QQ 歌单里歌曲的歌手按 mid 进 QQ 歌手页。
+                                            onOpenQqArtist = { qqArtistMid = it },
                                             // 0.1.13 第 25 项：收藏态上报给顶栏右侧按钮。
                                             onFavoriteAction = { playlistFavAction = it },
                                         )
@@ -639,6 +666,8 @@ fun TokiMusicApp(
                                             onOpenLogin = { showSettings = true },
                                             onOpenPlaylist = { playlistId = it },
                                             onOpenArtist = { artistId = it },
+                                            // 0.1.15 第 2 项：QQ 新歌的歌手按 mid 进 QQ 歌手页。
+                                            onOpenQqArtist = { qqArtistMid = it },
                                             onSectionTitle = { homeSectionTitle = it },
                                         )
                                         else -> LibraryScreen(
@@ -651,9 +680,8 @@ fun TokiMusicApp(
                                             onOpenListeningStats = { statsOpen = true },
                                             onOpenArtist = { artistId = it },
                                             onOpenAlbum = { albumId = it },
-                                            // 0.1.13 第 23 项：等级 / 听歌时长的显示源。
-                                            statsSource = libraryStatsSource,
-                                            onStatsSourceChange = { libraryStatsSource = it },
+                                            // 0.1.15 资料库同步：QQ 关注歌手按 mid 进 QQ 歌手页。
+                                            onOpenQqArtist = { qqArtistMid = it },
                                         )
                                     }
                                 }
@@ -687,6 +715,9 @@ fun TokiMusicApp(
                                     artistId = null
                                     artistFromPlayer = false
                                     albumId = null
+                                    // 0.1.15 第 2 项：切 tab 时 QQ 歌手 / 专辑页同清。
+                                    qqArtistMid = null
+                                    qqAlbumMid = null
                                     librarySection = null
                                     statsOpen = false
                                     searchSheetOpen = false
@@ -705,6 +736,14 @@ fun TokiMusicApp(
                             // sheet 本身滑动；点遮罩关闭仍走原生 scrim
                             // 的手势（Dialog 窗口在上层接手势）。
                             if (showSettings) {
+                                // 0.1.15 第 13 项：设置打开时背景加磨砂模糊
+                                // （与底栏 / 标题同款 tokiGlass 配方；玻璃
+                                // 关闭时 chromeBlurActive 关掉不画），让设置
+                                // 页更突出。0.1.14 第 3 条的静态 32% 黑遮罩
+                                // 不动，模糊层在遮罩之下（先模糊、再压暗）。
+                                if (chromeBlurActive(theme.backdropBlur)) {
+                                    Box(Modifier.fillMaxSize().tokiGlass(hazeState))
+                                }
                                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
                             }
                         }
@@ -722,6 +761,8 @@ fun TokiMusicApp(
             onClose = { searchSheetOpen = false },
             onOpenPlaylist = { playlistId = it; playlistTitle = ""; searchSheetOpen = false },
             onOpenArtist = { artistId = it; searchSheetOpen = false },
+            // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页。
+            onOpenQqArtist = { qqArtistMid = it; searchSheetOpen = false },
         )
         // 第 6 项：长按歌曲的底部弹窗；“添加”只列我创建的歌单。
         val songActions by vm.songActions.collectAsState()

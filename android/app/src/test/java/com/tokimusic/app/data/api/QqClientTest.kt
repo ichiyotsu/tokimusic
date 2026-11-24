@@ -33,6 +33,7 @@ class QqClientTest {
     private class FakeQqSettings : QqSettings {
         override var qqMusicId: String = ""
         override var qqMusicKey: String = ""
+        override var qqEncryptUin: String = ""
         override var qqDeviceId: String = "0123456789abcdef0123456789abcdef"
         override var qqDeviceId2: String = "fedcba9876543210fedcba9876543210"
         override var qqAndroidId: String = "a1b2c3d4e5f6a1b2"
@@ -437,13 +438,86 @@ class QqClientTest {
     }
 
     @Test
+    fun lyricCgiDecryptsLyricTransRoma() = runBlocking {
+        // 0.1.15, item 5: CGI 首选，lyric/trans/roma 三个加密 hex 字段
+        // 各自解密进 lrc/tlyric/romalrc。手头只有晴天 qrc=0 这一份
+        // 真实密文，trans/roma 也用同一份密文，只为证明三字段都走了
+        // 解密 + 路由（中文歌的 trans/roma 本来就是空串）。
+        val hex = javaClass.classLoader!!.getResourceAsStream("qq-lyric-qrc0-hex.txt")!!
+            .bufferedReader(Charsets.UTF_8).readText().trim()
+        val cgiBody = JSONObject().put("code", 0).put(
+            "req_0",
+            JSONObject().put("code", 0).put(
+                "data",
+                JSONObject().put("lyric", hex).put("trans", hex).put("roma", hex),
+            ),
+        ).toString()
+        server.enqueue(json(cgiBody))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertTrue(payload.lrc!!.startsWith("[ti:晴天]"))
+        assertEquals(1388, payload.lrc!!.length)
+        assertEquals(payload.lrc, payload.tlyric)
+        assertEquals(payload.lrc, payload.romalrc)
+        assertEquals(1, server.requestCount) // CGI 命中，不走网页回退
+        val req = server.takeRequest()
+        assertTrue(req.path!!.startsWith("/cgi-bin/musicu.fcg"))
+        val req0 = JSONObject(req.body.readUtf8()).getJSONObject("req_0")
+        assertEquals("music.musichallSong.PlayLyricInfo", req0.getString("module"))
+        assertEquals("GetPlayLyricInfo", req0.getString("method"))
+        val param = req0.getJSONObject("param")
+        assertEquals(1, param.getInt("crypt"))
+        assertEquals(0, param.getInt("qrc"))
+        assertEquals(1, param.getInt("roma"))
+        assertEquals(1, param.getInt("trans"))
+        assertEquals(1, param.getInt("type"))
+        assertEquals("0039MnYb0qxYhV", param.getString("songMid"))
+    }
+
+    @Test
+    fun lyricFallsBackToWebGetWhenCgiFails() = runBlocking {
+        // CGI 业务码非 0 → 回退网页 GET（明文 base64 LRC + trans 进 tlyric）。
+        server.enqueue(json("""{"code":0,"req_0":{"code":1000,"data":{}}}"""))
+        val lrc = "[00:00.00]晴天 - 周杰伦\n[00:02.25]词：周杰伦\n"
+        val tr = "[00:00.00]Sunny Day\n"
+        val b64 = java.util.Base64.getEncoder().encodeToString(lrc.toByteArray(Charsets.UTF_8))
+        val b64tr = java.util.Base64.getEncoder().encodeToString(tr.toByteArray(Charsets.UTF_8))
+        server.enqueue(json("""{"retcode":0,"code":0,"subcode":0,"lyric":"$b64","trans":"$b64tr"}"""))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertEquals(lrc, payload.lrc)
+        assertEquals(tr, payload.tlyric)
+        assertNull(payload.yrc)
+        assertEquals(2, server.requestCount)
+        val cgiReq = server.takeRequest()
+        assertTrue(cgiReq.path!!.startsWith("/cgi-bin/musicu.fcg"))
+        val webReq = server.takeRequest()
+        assertTrue(webReq.path!!.startsWith("/lyric/fcgi-bin/fcg_query_lyric_new.fcg?"))
+        assertTrue(webReq.path!!.contains("songmid=0039MnYb0qxYhV"))
+        assertTrue(webReq.path!!.contains("format=json"))
+        assertTrue(webReq.path!!.contains("nobase64=0"))
+    }
+
+    @Test
+    fun lyricFallsBackToWebGetWhenCgiLyricEmpty() = runBlocking {
+        // CGI code 0 但 lyric 字段为空 → 回退网页 GET；网页也无歌词 → 空 payload。
+        server.enqueue(json("""{"code":0,"req_0":{"code":0,"data":{"lyric":"","trans":"","roma":""}}}"""))
+        server.enqueue(json("""{"retcode":-1,"code":0,"subcode":0,"lyric":"","trans":""}"""))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertNull(payload.lrc)
+        assertNull(payload.yrc)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
     fun lyricDecodesBase64Lrc() = runBlocking {
+        // 0.1.15 前的行为仍在：CGI 失败时网页 GET 的 base64 LRC 照常解码。
+        server.enqueue(json("""{"code":0,"req_0":{"code":1000,"data":{}}}"""))
         val lrc = "[00:00.00]晴天 - 周杰伦\n[00:02.25]词：周杰伦\n"
         val b64 = java.util.Base64.getEncoder().encodeToString(lrc.toByteArray(Charsets.UTF_8))
         server.enqueue(json("""{"retcode":0,"code":0,"subcode":0,"lyric":"$b64","trans":""}"""))
         val payload = client.lyric("0039MnYb0qxYhV")
         assertEquals(lrc, payload.lrc)
         assertNull(payload.yrc)
+        server.takeRequest() // CGI
         val req = server.takeRequest()
         assertTrue(req.path!!.startsWith("/lyric/fcgi-bin/fcg_query_lyric_new.fcg?"))
         assertTrue(req.path!!.contains("songmid=0039MnYb0qxYhV"))
@@ -453,6 +527,7 @@ class QqClientTest {
 
     @Test
     fun lyricReturnsEmptyPayloadWhenNoLyric() = runBlocking {
+        server.enqueue(json("""{"code":0,"req_0":{"code":0,"data":{"lyric":"","trans":"","roma":""}}}"""))
         server.enqueue(json("""{"retcode":-1,"code":0,"subcode":0,"lyric":"","trans":""}"""))
         val payload = client.lyric("0039MnYb0qxYhV")
         assertNull(payload.lrc)
@@ -461,8 +536,8 @@ class QqClientTest {
 
     // ---- read APIs (sixth round, batch 2: dual-source display) ----
 
-    private fun qqSongJson(mid: String = "0039MnYb0qxYhV", name: String = "晴天"): String =
-        """{"songmid":"$mid","songname":"$name","singer":[{"id":4721,"name":"周杰伦"}],"album":{"mid":"002eFUFm2XYZ7z","name":"叶惠美"},"interval":269}"""
+    private fun qqSongJson(mid: String = "0039MnYb0qxYhV", name: String = "晴天", singerMid: String = "0025NhlN2yWrP4"): String =
+        """{"songmid":"$mid","songname":"$name","singer":[{"id":4721,"mid":"$singerMid","name":"周杰伦"}],"album":{"mid":"002eFUFm2XYZ7z","name":"叶惠美"},"interval":269}"""
 
     /** Routes musicu.fcg calls by module/method to canned responses; records the last req_0. */
     private fun readDispatcher(responses: Map<String, String>, seen: MutableList<JSONObject> = mutableListOf()): Dispatcher =
@@ -905,5 +980,432 @@ class QqClientTest {
         assertEquals("QRID123", param.getString("qrCodeID"))
         assertEquals("TOKENABC", param.getString("token"))
         assertEquals(6, seenComms.single().getInt("tmeLoginType"))
+    }
+
+    // 0.1.15 第 15 项：QQ 私人雷达（GetRadarSong）——VecSongs 里的
+    // Track 与 parseQqSong 同形（mid / name / singer[含 mid] /
+    // album / interval），歌手 mid 要存进 Artist.mid（歌手页路由用）。
+    @Test
+    fun recommendRadarParsesVecSongsTracks() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.recommend.TrackRelationServer/GetRadarSong" to cgiOk(
+                    """{"VecSongs":[{"Track":{"id":1,"mid":"001Qu4I30eVFYb","name":"演员","singer":[{"id":5062,"mid":"002J4UUk29y8BY","name":"薛之谦"}],"album":{"id":989994,"mid":"003y8dsH2wBHlo","name":"绅士"},"interval":261}},{"Track":{"id":2,"mid":"0027oMO61wWi55","name":"发如雪","singer":[{"id":4558,"mid":"0025NhlN2yWrP4","name":"周杰伦"}],"album":{"id":60671,"mid":"0024bjiL2aocxT","name":"十一月的萧邦"},"interval":312}}]}""",
+                ),
+            ),
+        )
+        val songs = client.recommendRadar()
+        assertEquals(2, songs.size)
+        assertEquals("演员", songs[0].name)
+        assertEquals("001Qu4I30eVFYb", songs[0].sourceId)
+        assertEquals(261_000L, songs[0].durationMs)
+        assertEquals("002J4UUk29y8BY", songs[0].artists[0].mid)
+        assertEquals("绅士", songs[0].albumName)
+        assertEquals("0025NhlN2yWrP4", songs[1].artists[0].mid)
+    }
+
+    @Test
+    fun recommendRadarReturnsEmptyOnNonZeroCode() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.recommend.TrackRelationServer/GetRadarSong" to
+                    """{"code":0,"req_0":{"code":2000,"data":{}}}""",
+            ),
+        )
+        assertTrue(client.recommendRadar().isEmpty())
+    }
+
+    // 0.1.15 第 15 项：QQ 每日推荐（get_radio_track）——data.tracks
+    // 是 Song 列表（L-1124 GuessRecommendResponse：songs 别名 tracks）；
+    // 匿名态 code 1000 时返回空列表（主页不显示该卡片）。
+    @Test
+    fun recommendDailyParsesTracks() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.radioProxy.MbTrackRadioSvr/get_radio_track" to cgiOk(
+                    """{"id":99,"name":"猜你喜欢","tracks":[${qqSongJson("0039MnYb0qxYhV", "晴天")}]}""",
+                ),
+            ),
+        )
+        val songs = client.recommendDaily()
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+    }
+
+    @Test
+    fun recommendDailyReturnsEmptyOnCode1000() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.radioProxy.MbTrackRadioSvr/get_radio_track" to
+                    """{"code":0,"req_0":{"code":1000,"data":{"id":99,"name":"猜你喜欢","tracks":null}}}""",
+            ),
+        )
+        assertTrue(client.recommendDaily().isEmpty())
+    }
+
+    // 0.1.15 第 2 项：QQ 歌手详情——歌手头（Info.Singer.Name /
+    // BaseInfo.Avatar / FansNum.Num）+ 歌曲列表（songList 元素的歌在
+    // songInfo 子对象里，totalNum 是全部歌曲数）+ 专辑列表。
+    @Test
+    fun qqSingerDetailParsesHeaderSongsAndAlbums() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"Singer":{"SingerID":4558,"SingerMid":"0025NhlN2yWrP4","Name":"周杰伦"},"BaseInfo":{"Name":"周杰伦","Avatar":"https://y.qq.com/music/photo_new/T001R300x300M0000025NhlN2yWrP4_10.jpg"},"FansNum":{"Num":51056470}}}""",
+                ),
+                "musichall.song_list_server/GetSingerSongList" to cgiOk(
+                    """{"singerMid":"0025NhlN2yWrP4","totalNum":1012,"songList":[{"songInfo":${qqSongJson("0027oMO61wWi55", "发如雪")}},{"songInfo":${qqSongJson("0039MnYb0qxYhV", "晴天")}}]}""",
+                ),
+                "music.musichallAlbum.AlbumListServer/GetAlbumList" to cgiOk(
+                    """{"singerMid":"0025NhlN2yWrP4","total":5,"albumList":[{"albumID":60671,"albumMid":"0024bjiL2aocxT","albumName":"十一月的萧邦","total_num":12}]}""",
+                ),
+            ),
+        )
+        val detail = client.qqSingerDetail("0025NhlN2yWrP4")
+        assertEquals("周杰伦", detail?.name)
+        assertEquals("https://y.qq.com/music/photo_new/T001R300x300M0000025NhlN2yWrP4_10.jpg", detail?.picUrl)
+        assertEquals(51056470L, detail?.fans)
+        assertEquals(1012, detail?.totalSongs)
+        assertEquals(2, detail?.songs?.size)
+        assertEquals("发如雪", detail?.songs?.get(0)?.name)
+        assertEquals("0025NhlN2yWrP4", detail?.songs?.get(0)?.artists?.get(0)?.mid)
+        assertEquals(1, detail?.albums?.size)
+        assertEquals("十一月的萧邦", detail?.albums?.get(0)?.name)
+        assertEquals("0024bjiL2aocxT", detail?.albums?.get(0)?.mid)
+        assertEquals(12, detail?.albums?.get(0)?.trackCount)
+    }
+
+    // 0.1.15 第 2 项：专辑列表匿名态报 104403（推测需登录凭证）时，
+    // 歌手详情仍返回，专辑列表为空（不影响歌曲与歌手头）。
+    @Test
+    fun qqSingerDetailAlbumsEmptyOn104403() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"Singer":{"Name":"周杰伦"},"BaseInfo":{"Avatar":"https://example.com/a.jpg"},"FansNum":{"Num":1}}}""",
+                ),
+                "musichall.song_list_server/GetSingerSongList" to cgiOk(
+                    """{"singerMid":"0025NhlN2yWrP4","totalNum":1,"songList":[{"songInfo":${qqSongJson()}}]}""",
+                ),
+                "music.musichallAlbum.AlbumListServer/GetAlbumList" to
+                    """{"code":0,"req_0":{"code":104403,"data":{"singerMid":"0025NhlN2yWrP4","albumList":[],"total":0}}}""",
+            ),
+        )
+        val detail = client.qqSingerDetail("0025NhlN2yWrP4")
+        assertEquals("周杰伦", detail?.name)
+        assertEquals(1, detail?.songs?.size)
+        assertTrue(detail?.albums.isNullOrEmpty())
+    }
+
+    @Test
+    fun qqSingerDetailReturnsNullOnHeaderFailure() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to
+                    """{"code":0,"req_0":{"code":500003,"data":{}}}""",
+            ),
+        )
+        assertNull(client.qqSingerDetail("0025NhlN2yWrP4"))
+    }
+
+    // 0.1.15 第 2 项：QQ 专辑详情——专辑头（basicInfo.albumName /
+    // albumID + singer.singerList[0]）+ 歌曲列表（songInfo 子对象）。
+    @Test
+    fun qqAlbumDetailParsesDetailAndSongs() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musichallAlbum.AlbumInfoServer/GetAlbumDetail" to cgiOk(
+                    """{"basicInfo":{"albumMid":"003y8dsH2wBHlo","albumName":"绅士","albumID":989994,"publishDate":"2015-06-05"},"singer":{"singerList":[{"mid":"002J4UUk29y8BY","name":"薛之谦"}]}}""",
+                ),
+                "music.musichallAlbum.AlbumSongList/GetAlbumSongList" to cgiOk(
+                    """{"albumMid":"003y8dsH2wBHlo","totalNum":3,"songList":[{"songInfo":{"songmid":"001Qu4I30eVFYb","songname":"演员","singer":[{"id":5062,"mid":"002J4UUk29y8BY","name":"薛之谦"}],"album":{"mid":"003y8dsH2wBHlo","name":"绅士"},"interval":261}}]}""",
+                ),
+            ),
+        )
+        val detail = client.qqAlbumDetail("003y8dsH2wBHlo")
+        assertEquals("绅士", detail?.album?.name)
+        assertEquals(989994L, detail?.album?.id)
+        assertEquals("薛之谦", detail?.album?.artistText)
+        assertEquals("003y8dsH2wBHlo", detail?.album?.mid)
+        assertTrue(detail?.album?.coverUrl?.contains("003y8dsH2wBHlo") == true)
+        assertEquals("002J4UUk29y8BY", detail?.singerMid)
+        assertEquals(3, detail?.album?.trackCount)
+        assertEquals(1, detail?.songs?.size)
+        assertEquals("演员", detail?.songs?.get(0)?.name)
+    }
+
+    // 0.1.15 第 2 项：专辑歌曲列表匿名态报 104403 时，专辑头仍返回，
+    // 歌曲列表为空（登录态是否出歌待真机验证）。
+    @Test
+    fun qqAlbumDetailSongsEmptyOn104403() = runBlocking {
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musichallAlbum.AlbumInfoServer/GetAlbumDetail" to cgiOk(
+                    """{"basicInfo":{"albumMid":"003y8dsH2wBHlo","albumName":"绅士","albumID":989994},"singer":{"singerList":[]}}""",
+                ),
+                "music.musichallAlbum.AlbumSongList/GetAlbumSongList" to
+                    """{"code":0,"req_0":{"code":104403,"data":{"albumMid":"003y8dsH2wBHlo","totalNum":0,"songList":[]}}}""",
+            ),
+        )
+        val detail = client.qqAlbumDetail("003y8dsH2wBHlo")
+        assertEquals("绅士", detail?.album?.name)
+        assertTrue(detail?.songs.isNullOrEmpty())
+        assertEquals("", detail?.singerMid)
+    }
+
+    // ---- QQ library sync (0.1.15 第 2 项补做) ----
+    //
+    // Mock 形状只采信 L-1124 源码能佐证的部分：
+    // - GetPlaylistByUin: modules/user.py get_created_songlist，
+    //   param {uin}，data.v_playlist[*]（UserPlaylistSummary extends
+    //   SongList：id/tid/dissid、title、picurl、songnum、uin、nick）。
+    // - CgiGetPlaylistFavInfo: get_fav_songlist，param {uin: euin,
+    //   offset, size}，data.v_list（UserFavSonglistItem extends SongList）。
+    // - CgiGetDiss（喜欢的歌曲）: get_fav_song，param {disstid 0,
+    //   dirid 201, tag, song_begin, song_num, userinfo, orderlist,
+    //   enc_host_uin}，data.songlist + total_song_num（同
+    //   GetSonglistDetailResponse）。
+    // - GetFollowSingerList: get_follow_singers，param {HostUin: euin,
+    //   From, Size}，data.List[*]（RelationUser：MID/EncUin/Name/
+    //   Desc/AvatarUrl/FanNum/IsFollow）+ Total/HasMore。
+    // - euin 来源：L-1124 本版没有 get_euin 方法，测试夹具直接注入
+    //   ENCRYPT_UIN；本实现从 QQLogin / GetLoginUserInfo 响应里
+    //   抓 encryptUin，抓不到再用明文 UIN 探 GetHomepageHeader
+    //   （data.Info.BaseInfo.EncryptedUin，见 UserHomepageBaseInfo）。
+
+    @Test
+    fun createdPlaylistsUsePlainUin() = runBlocking {
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我","createTime":1700000000,"updateTime":1700000001}],"v_delTid":[],"bFinish":true}""",
+                ),
+            ),
+            seen,
+        )
+        val playlists = client.qqLibraryPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("我建的歌单", playlists[0].name)
+        assertEquals(12, playlists[0].trackCount)
+        assertEquals("https://example.com/p.jpg", playlists[0].coverUrl)
+        assertEquals("我", playlists[0].creatorName)
+        assertEquals(123456L, playlists[0].creatorId)
+        assertEquals(false, playlists[0].subscribed)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, playlists[0].source)
+        assertEquals("8812345678", playlists[0].sourceId)
+        // 自建歌单只用明文 UIN，不等 euin；euin 拿不到时不调收藏接口。
+        val methods = seen.map { it.getString("method") }
+        assertTrue(methods.contains("GetPlaylistByUin"))
+        assertTrue(!methods.contains("CgiGetPlaylistFavInfo"))
+        val param = seen.first { it.getString("method") == "GetPlaylistByUin" }.getJSONObject("param")
+        assertEquals("123456", param.getString("uin"))
+    }
+
+    @Test
+    fun favPlaylistsUseEuin() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":0,"v_playlist":[],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.musicasset.PlaylistFavRead/CgiGetPlaylistFavInfo" to cgiOk(
+                    """{"number":1,"total":1,"hasmore":0,"hide":false,"v_list":[{"id":7123456789,"title":"收藏的歌单","picurl":"https://example.com/f.jpg","songnum":30,"uin":"999888","nickname":"别人","createtime":1700000000,"updateTime":1700000001}],"v_delTids":[],"v_failTids":[]}""",
+                ),
+            ),
+            seen,
+        )
+        val playlists = client.qqLibraryPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("收藏的歌单", playlists[0].name)
+        assertEquals(30, playlists[0].trackCount)
+        assertEquals("别人", playlists[0].creatorName)
+        assertEquals(999888L, playlists[0].creatorId)
+        assertEquals(true, playlists[0].subscribed)
+        assertEquals("7123456789", playlists[0].sourceId)
+        val param = seen.first { it.getString("method") == "CgiGetPlaylistFavInfo" }.getJSONObject("param")
+        assertEquals("EUIN123", param.getString("uin"))
+        assertEquals(0, param.getInt("offset"))
+        assertEquals(50, param.getInt("size"))
+    }
+
+    @Test
+    fun favSongsUseEncHostUin() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.srfDissInfo.DissInfo/CgiGetDiss" to cgiOk(
+                    """{"dirinfo":{"dissname":"我喜欢的音乐"},"songlist":[${qqSongJson()}],"total_song_num":1,"songlist_size":1,"hasmore":0}""",
+                ),
+            ),
+            seen,
+        )
+        val songs = client.qqFavSongs()
+        assertEquals(1, songs.size)
+        assertEquals("晴天", songs[0].name)
+        assertEquals(com.tokimusic.app.data.model.MusicSource.QQ, songs[0].source)
+        val param = seen.single().getJSONObject("param")
+        assertEquals(0, param.getInt("disstid"))
+        assertEquals(201, param.getInt("dirid"))
+        assertEquals("EUIN123", param.getString("enc_host_uin"))
+        assertEquals(100, param.getInt("song_num"))
+    }
+
+    @Test
+    fun followSingersParseList() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.concern.RelationList/GetFollowSingerList" to cgiOk(
+                    """{"Total":1,"List":[{"MID":"0025NhlN2yWrP4","EncUin":"E2","Name":"周杰伦","Desc":"华语流行","AvatarUrl":"https://example.com/a.jpg","FanNum":123456,"IsFollow":true}],"HasMore":false,"LastPos":""}""",
+                ),
+            ),
+            seen,
+        )
+        val artists = client.qqFollowSingers()
+        assertEquals(1, artists.size)
+        assertEquals("周杰伦", artists[0].name)
+        assertEquals("0025NhlN2yWrP4", artists[0].mid)
+        assertEquals(com.tokimusic.app.data.model.qqArtistId("0025NhlN2yWrP4"), artists[0].id)
+        assertEquals("https://example.com/a.jpg", artists[0].picUrl)
+        val param = seen.single().getJSONObject("param")
+        assertEquals("EUIN123", param.getString("HostUin"))
+        assertEquals(0, param.getInt("From"))
+        assertEquals(50, param.getInt("Size"))
+    }
+
+    @Test
+    fun libraryReturnsEmptyWhenLoggedOut() = runBlocking {
+        val library = client.qqLibrary()
+        assertTrue(library.playlists.isEmpty())
+        assertTrue(library.favSongs.isEmpty())
+        assertTrue(library.followedArtists.isEmpty())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun libraryCreatedOnlyWhenNoEuin() = runBlocking {
+        // euin 三路都落空：GetLoginUserInfo 报 1000、主页探针回包里
+        // 没有 EncryptedUin——自建歌单仍能同步，喜欢的歌曲与关注
+        // 歌手为空，且不调那两个 euin 接口。
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我"}],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to
+                    """{"code":0,"req_0":{"code":1000,"data":{}}}""",
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"BaseInfo":{"Name":"我","Avatar":"https://example.com/a.jpg"}}}""",
+                ),
+            ),
+            seen,
+        )
+        val library = client.qqLibrary()
+        assertEquals(1, library.playlists.size)
+        assertEquals("我建的歌单", library.playlists[0].name)
+        assertTrue(library.favSongs.isEmpty())
+        assertTrue(library.followedArtists.isEmpty())
+        val methods = seen.map { it.getString("method") }
+        assertTrue(!methods.contains("CgiGetDiss"))
+        assertTrue(!methods.contains("GetFollowSingerList"))
+    }
+
+    @Test
+    fun phoneAuthorizeCapturesEncryptUin() = runBlocking {
+        server.dispatcher = musicuDispatcher { _ ->
+            json("""{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456","encryptUin":"EUIN_LOGIN"}}}""")
+        }
+        val credential = client.phoneAuthorize("13812345678", "123456")
+        assertEquals("123456", credential.musicId)
+        assertEquals("EUIN_LOGIN", settings.qqEncryptUin)
+    }
+
+    @Test
+    fun getLoginUserInfoCapturesEncryptUin() = runBlocking {
+        loggedIn()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to cgiOk(
+                    """{"NickName":"测试","EncryptUin":"EUIN_PROFILE"}""",
+                ),
+            ),
+        )
+        val profile = client.getLoginUserInfo()
+        assertEquals("测试", profile?.nickname)
+        assertEquals("EUIN_PROFILE", settings.qqEncryptUin)
+    }
+
+    @Test
+    fun resolveEuinPrefersStoredValue() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN_STORED"
+        assertEquals("EUIN_STORED", client.resolveEuin())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun resolveEuinProbesHomepageWithPlainUin() = runBlocking {
+        // 前两路落空（GetLoginUserInfo 回包无 euin），主页探针用明文
+        // UIN 当 uin 参数、回包里带 EncryptedUin——该行为未经真机证实，
+        // 单测只锁定“探针确实这么发、回包确实这么读”。
+        loggedIn()
+        val seen = mutableListOf<JSONObject>()
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.UserInfo.userInfoServer/GetLoginUserInfo" to cgiOk(
+                    """{"NickName":"测试"}""",
+                ),
+                "music.UnifiedHomepage.UnifiedHomepageSrv/GetHomepageHeader" to cgiOk(
+                    """{"Info":{"BaseInfo":{"EncryptedUin":"EUIN_PROBE","Name":"我","Avatar":"https://example.com/a.jpg"}}}""",
+                ),
+            ),
+            seen,
+        )
+        assertEquals("EUIN_PROBE", client.resolveEuin())
+        assertEquals("EUIN_PROBE", settings.qqEncryptUin)
+        val probe = seen.first { it.getString("method") == "GetHomepageHeader" }.getJSONObject("param")
+        assertEquals("123456", probe.getString("uin"))
+        assertEquals(1, probe.getInt("IsQueryTabDetail"))
+    }
+
+    @Test
+    fun qqLibraryCombinesAllThree() = runBlocking {
+        loggedIn()
+        settings.qqEncryptUin = "EUIN123"
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.musicasset.PlaylistBaseRead/GetPlaylistByUin" to cgiOk(
+                    """{"total":1,"v_playlist":[{"tid":8812345678,"title":"我建的歌单","picurl":"https://example.com/p.jpg","songnum":12,"uin":"123456","nick":"我"}],"v_delTid":[],"bFinish":true}""",
+                ),
+                "music.musicasset.PlaylistFavRead/CgiGetPlaylistFavInfo" to cgiOk(
+                    """{"number":1,"total":1,"hasmore":0,"hide":false,"v_list":[{"id":7123456789,"title":"收藏的歌单","picurl":"https://example.com/f.jpg","songnum":30,"uin":"999888","nickname":"别人"}],"v_delTids":[],"v_failTids":[]}""",
+                ),
+                "music.srfDissInfo.DissInfo/CgiGetDiss" to cgiOk(
+                    """{"dirinfo":{"dissname":"我喜欢的音乐"},"songlist":[${qqSongJson()}],"total_song_num":1,"songlist_size":1,"hasmore":0}""",
+                ),
+                "music.concern.RelationList/GetFollowSingerList" to cgiOk(
+                    """{"Total":1,"List":[{"MID":"0025NhlN2yWrP4","EncUin":"E2","Name":"周杰伦","Desc":"","AvatarUrl":"https://example.com/a.jpg","FanNum":1,"IsFollow":true}],"HasMore":false,"LastPos":""}""",
+                ),
+            ),
+        )
+        val library = client.qqLibrary()
+        assertEquals(2, library.playlists.size)
+        assertEquals("我建的歌单", library.playlists[0].name)
+        assertEquals("收藏的歌单", library.playlists[1].name)
+        assertEquals(1, library.favSongs.size)
+        assertEquals("晴天", library.favSongs[0].name)
+        assertEquals(1, library.followedArtists.size)
+        assertEquals("周杰伦", library.followedArtists[0].name)
     }
 }

@@ -22,8 +22,28 @@ fun localSongId(contentUri: String): Long {
     return h
 }
 
-data class Artist(val id: Long, val name: String, val picUrl: String = "", val briefDesc: String = "", val musicSize: Int = 0, val albumSize: Int = 0)
-data class Album(val id: Long, val name: String, val coverUrl: String = "", val artistText: String = "", val trackCount: Int = 0)
+/** Stable 64-bit id for a QQ singer: same FNV-1a 64 family as [qqSongId], different "qqartist:" prefix so the namespaces never collide. */
+fun qqArtistId(singerMid: String): Long {
+    var h = -3750763034362895579L
+    for (b in "qqartist:$singerMid".toByteArray(Charsets.UTF_8)) {
+        h = h xor (b.toLong() and 0xFF)
+        h *= 1099511628211L
+    }
+    return h
+}
+
+/** Stable 64-bit id for a QQ album: same FNV-1a 64 family, "qqalbum:" prefix (cover-color cache key for QQ album pages). */
+fun qqAlbumId(albumMid: String): Long {
+    var h = -3750763034362895579L
+    for (b in "qqalbum:$albumMid".toByteArray(Charsets.UTF_8)) {
+        h = h xor (b.toLong() and 0xFF)
+        h *= 1099511628211L
+    }
+    return h
+}
+
+data class Artist(val id: Long, val name: String, val picUrl: String = "", val briefDesc: String = "", val musicSize: Int = 0, val albumSize: Int = 0, /** QQ singer mid (0.1.15 第 2 项：QQ 歌手页按 mid 路由；网易云歌手留空）。 */ val mid: String = "")
+data class Album(val id: Long, val name: String, val coverUrl: String = "", val artistText: String = "", val trackCount: Int = 0, /** QQ album mid (0.1.15 第 2 项：QQ 专辑页按 mid 路由；网易云专辑留空）。 */ val mid: String = "")
 data class Song(val id: Long, val name: String, val artists: List<Artist>, val albumName: String = "", val picUrl: String = "", val durationMs: Long = 0, val fee: Int = 0, /** Which backend serves this song (sixth round, QQ playback). NetEase songs keep their real numeric id; QQ songs carry a synthetic id from [qqSongId] and the real songmid in [sourceId]. */ val source: MusicSource = MusicSource.NETEASE, val sourceId: String = "") {
     val artistText: String get() = artists.joinToString(" / ") { it.name }
 }
@@ -52,7 +72,9 @@ data class RecordItem(val song: Song, val playCount: Int, val score: Int = 0)
 enum class PlaylistGroup(val title: String) { Liked("我喜欢的音乐"), Created("我创建的歌单"), Subscribed("我收藏的歌单") }
 fun groupPlaylists(all: List<Playlist>, myUid: Long): Map<PlaylistGroup, List<Playlist>> {
     val liked = all.filter { it.name.contains("喜欢的音乐") }
-    val created = all.filter { it !in liked && !it.subscribed && (myUid == 0L || it.creatorId == myUid) }
+    // 0.1.15 资料库同步：QQ 自建歌单的 creatorId 是 QQ musicid，永远
+    // 不等于网易云 uid——不特殊处理会在双登录时从三个分组全漏掉。
+    val created = all.filter { it !in liked && !it.subscribed && (it.source == MusicSource.QQ || myUid == 0L || it.creatorId == myUid) }
     val sub = all.filter { it !in liked && it.subscribed }
     return linkedMapOf(PlaylistGroup.Liked to liked, PlaylistGroup.Created to created, PlaylistGroup.Subscribed to sub)
 }

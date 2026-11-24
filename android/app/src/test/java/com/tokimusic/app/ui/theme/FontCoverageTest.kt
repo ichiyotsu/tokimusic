@@ -9,8 +9,13 @@ import org.junit.Test
 
 /**
  * 日 / 韩 / 繁中必须走思源黑体 Bold：直接读 res/font 里的字体文件，解析
- * cmap 与 fvar 表，断言覆盖与 wght 轴。有人把完整版换回子集、或子集漏了
+ * cmap 与 OS/2 表，断言覆盖与静态 Bold 字重。有人把完整版换回子集、或子集漏了
  * 谚文，这里会立刻失败（0.1.7 的 noto_sans_sc 只有 7,630 个字形、0 个谚文）。
+ *
+ * 0.1.15 第 8 项：三个 CJK 文件已由可变字体在 wght 700 处实例化为静态
+ * Bold（usWeightClass 700，无 fvar/gvar）——Compose 资源字体加载不走
+ * FontVariation，旧的“fvar 里 wght 最大值 ≥700”断言随之作废，改断
+ * usWeightClass == 700 且无 fvar 表。
  */
 class FontCoverageTest {
     private fun fontFile(name: String): File {
@@ -68,22 +73,17 @@ class FontCoverageTest {
         }.filter { it.first <= it.last && it.last != 0xFFFF }
     }
 
-    /** fvar 表里 wght 轴的最大值（Bold 靠 variationSettings 取 700）。 */
-    private fun maxWght(bytes: ByteArray): Float {
+    /** OS/2 表的 usWeightClass（0.1.15 第 8 项：静态 Bold 应为 700；同时断言无 fvar 表）。 */
+    private fun usWeightClass(bytes: ByteArray): Int {
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        val off = tableOffset(bytes, "fvar")
-        require(off >= 0) { "没有 fvar 表" }
-        val axisCount = buf.getShort(off + 8).toInt()
-        val axisSize = buf.getShort(off + 10).toInt()
-        val axesBase = off + buf.getShort(off + 4)
-        for (a in 0 until axisCount) {
-            val base = axesBase + a * axisSize
-            val axisTag = ByteArray(4).also { buf.position(base); buf.get(it) }.toString(Charsets.US_ASCII)
-            // fvar 的值是 Fixed 16.16 定点数，不是 IEEE 754 浮点：
-            // getFloat 会把 900.0 的定点位模式读成 ~5e-38。
-            if (axisTag == "wght") return buf.getInt(base + 12) / 65536f
-        }
-        throw IllegalStateException("没有 wght 轴")
+        val off = tableOffset(bytes, "OS/2")
+        require(off >= 0) { "没有 OS/2 表" }
+        return buf.getShort(off + 4).toInt() and 0xFFFF
+    }
+
+    private fun assertStaticBold(bytes: ByteArray) {
+        assertTrue("应为静态 Bold 文件（无 fvar 表）", tableOffset(bytes, "fvar") < 0)
+        assertEquals(700, usWeightClass(bytes))
     }
 
     private fun covers(ranges: List<IntRange>, cp: Int): Boolean = ranges.any { cp in it }
@@ -99,7 +99,7 @@ class FontCoverageTest {
         assertTrue(covers(ranges, 0x8FBB)) // 辻
         assertTrue(covers(ranges, 0x51EA)) // 凪
         assertTrue(covers(ranges, 0x4E2D)) // 中
-        assertTrue(maxWght(bytes) >= 700f)
+        assertStaticBold(bytes)
     }
 
     @Test
@@ -110,7 +110,7 @@ class FontCoverageTest {
             assertTrue("U+%04X".format(cp), covers(ranges, cp))
         }
         assertTrue(covers(ranges, 0x1100)) // 谚文字母 ᄀ
-        assertTrue(maxWght(bytes) >= 700f)
+        assertStaticBold(bytes)
     }
 
     @Test
@@ -122,8 +122,8 @@ class FontCoverageTest {
 
     @Test
     fun notoSansJpSubsetCoversCompatibilityIdeographsScLacks() {
-        // 第六轮第 4 项：JP 子集（假名 + F900–FAFF + 2F800–2FA1F，566KB）
-        // 补 SC 所缺的兼容表意字；wght 轴保留，Bold 靠 variationSettings 取 700。
+        // 第六轮第 4 项：JP 子集（假名 + F900–FAFF + 2F800–2FA1F，1,074 字形）
+        // 补 SC 所缺的兼容表意字；0.1.15 第 8 项起为静态 Bold（无 fvar）。
         val bytes = fontFile("noto_sans_jp_bold.ttf").readBytes()
         val ranges = cmapRanges(bytes)
         assertTrue(covers(ranges, 0x3042)) // あ
@@ -131,7 +131,7 @@ class FontCoverageTest {
         assertTrue(covers(ranges, 0xFF76)) // ｶ 半角片假名
         assertTrue(covers(ranges, 0xFA10)) // 塚：SC 没有，JP 有
         assertTrue(covers(ranges, 0xFA6D)) // 舘：SC 没有，JP 有
-        assertTrue(maxWght(bytes) >= 700f)
+        assertStaticBold(bytes)
         // SC 的缺口对照：这两个兼容字确实不在 SC 里，JP 子集就是为它们补的。
         val scRanges = cmapRanges(fontFile("noto_sans_sc.ttf").readBytes())
         assertTrue(!covers(scRanges, 0xFA10))

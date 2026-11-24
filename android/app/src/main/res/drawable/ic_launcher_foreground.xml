@@ -4,12 +4,13 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!-- Font Awesome Free 7.3.1 music (CC BY 4.0) — launcher icon.
-         0.1.14 第 1 条：图标在启动器上看着太小——旧版 glyph 只有 48dp
-         （108dp 视口里的 44%，30dp 边距），白底上一小块黑音符。改成
-         60dp glyph / 24dp 边距（scale 0.125、translate 24；glyph 实宽
-         480，60 = 480 × 0.125），占视口 56%、安全区（66dp）的 91%，
-         仍在安全区内，任何遮罩下不裁切。 -->
-    <group android:scaleX="0.125" android:scaleY="0.125" android:translateX="24" android:translateY="24"><path
+         0.1.15 第 10 条纠错：用户说图标太大、不是太小；0.1.14 的 60dp
+         和本轮初版的 68dp 都是误读，已改小。按 TokiStudio 的做法留
+         白边：glyph 实测边界 480×480（左音符头底到 y=480，横梁顶到
+         y≈0，不是 416），scale 0.0875 → 42dp glyph，translate 33 →
+         四边各留 33dp 白边，与 TokiStudio 前景（42dp 菱形 / 33dp
+         边）一致。渲染量测见 NOTES.md。 -->
+    <group android:scaleX="0.0875" android:scaleY="0.0875" android:translateX="33" android:translateY="33"><path
         android:fillColor="#000000"
         android:pathData="M468 7c7.6 6.1 12 15.3 12 25l0 304c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6l0-116.7-224 49.8 0 206.3c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6L128 96c0-15 10.4-28 25.1-31.2l288-64c9.5-2.1 19.4 .2 27 6.3z" /></group>
 </vector>

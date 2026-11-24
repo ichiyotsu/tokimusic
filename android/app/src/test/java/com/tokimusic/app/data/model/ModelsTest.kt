@@ -67,4 +67,32 @@ class ModelsTest {
         assertEquals(MusicSource.LOCAL, song.source)
         assertEquals(uri, song.sourceId)
     }
+
+    @Test
+    fun groupPlaylistsKeepsQqCreatedWhenNeteaseLoggedIn() {
+        // 0.1.15 资料库同步：QQ 自建歌单 creatorId 是 QQ musicid，
+        // 与网易云 uid 不同——双登录时也不能从三个分组漏掉。
+        val qqCreated = Playlist(QqPlaylistIds.dissPlaylistId(8812345678L), "我建的歌单", creatorId = 123456, source = MusicSource.QQ)
+        val groups = groupPlaylists(listOf(qqCreated), myUid = 999)
+        assertEquals(listOf(qqCreated), groups[PlaylistGroup.Created])
+        assertTrue(groups[PlaylistGroup.Subscribed].isNullOrEmpty())
+        assertTrue(groups[PlaylistGroup.Liked].isNullOrEmpty())
+    }
+
+    @Test
+    fun groupPlaylistsPutsQqFavInSubscribed() {
+        val qqFav = Playlist(QqPlaylistIds.dissPlaylistId(7123456789L), "收藏的歌单", creatorId = 999888, subscribed = true, source = MusicSource.QQ)
+        val groups = groupPlaylists(listOf(qqFav), myUid = 999)
+        assertEquals(listOf(qqFav), groups[PlaylistGroup.Subscribed])
+        assertTrue(groups[PlaylistGroup.Created].isNullOrEmpty())
+    }
+
+    @Test
+    fun groupPlaylistsNeteaseRulesUnchanged() {
+        val neCreated = Playlist(1001, "我的歌单", creatorId = 999)
+        val neFav = Playlist(1002, "别人的歌单", creatorId = 888, subscribed = true)
+        val groups = groupPlaylists(listOf(neCreated, neFav), myUid = 999)
+        assertEquals(listOf(neCreated), groups[PlaylistGroup.Created])
+        assertEquals(listOf(neFav), groups[PlaylistGroup.Subscribed])
+    }
 }

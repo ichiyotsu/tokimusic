@@ -122,6 +122,10 @@ import kotlin.math.roundToInt
     immersive: Boolean = false,
     // 0.1.13 第 3 项（发热）：暂停时逐字轮询降频用。
     isPlaying: Boolean = true,
+    // 0.1.15 第 6 项：逐字时序偏移（毫秒）——逐字高亮与播放之间的时间
+    // 偏移，正值延后、负值提前，0 = 跟随原时间轴。作用在行进度与当前
+    // 行判定共用的位置上（activeLineIndex + lineProgress 同源）。
+    timingOffsetMs: Int = 0,
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
@@ -151,7 +155,11 @@ import kotlin.math.roundToInt
         delay(700)
         entranceWindow = false
     }
-    val active by remember(lines) { derivedStateOf { YrcParser.activeLineIndex(lines, posState.longValue) } }
+    // 0.1.15 第 6 项：偏移后的位置（行进度与当前行判定共用）——
+    // timingOffsetMs 是普通参数，derivedStateOf 不会追踪它，remember
+    // 键里带上它，滑杆一动就重建。
+    val effPosState = remember(timingOffsetMs) { derivedStateOf { posState.longValue + timingOffsetMs } }
+    val active by remember(lines) { derivedStateOf { YrcParser.activeLineIndex(lines, effPosState.value) } }
     val listState = rememberLazyListState()
     var viewportH by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -178,6 +186,11 @@ import kotlin.math.roundToInt
     // 的（模糊，alpha），量化后才变，减少滚动时的重组；distance 只留给
     // 入场 stagger（见下）。
     val fadeBandPx = with(density) { 64.dp.toPx() }
+    // 0.1.15 第 1 项：下半段淡出与上半段同强度——结构上上下带本就对称，
+    // 但面板背景越往下越暗，白字在下半段对比度更高、看起来淡得弱；
+    // 下带加宽到 96dp（行淡化 + 渐变层 + 磨砂层同宽），让下半段看起来
+    // 与上半段一样淡。顶带保持 64dp。
+    val bottomFadeBandPx = with(density) { 96.dp.toPx() }
     val rowFade by remember {
         derivedStateOf {
             val vh = viewportH
@@ -186,7 +199,7 @@ import kotlin.math.roundToInt
             for (item in listState.layoutInfo.visibleItemsInfo) {
                 val center = (item.offset + item.size / 2).toFloat()
                 val topF = ((fadeBandPx - center) / fadeBandPx).coerceIn(0f, 1f)
-                val bottomF = ((center - (vh - fadeBandPx)) / fadeBandPx).coerceIn(0f, 1f)
+                val bottomF = ((center - (vh - bottomFadeBandPx)) / bottomFadeBandPx).coerceIn(0f, 1f)
                 val f = maxOf(topF, bottomF)
                 val blur = ((f * 8f).roundToInt().coerceIn(0, 8) / 2 * 2).toFloat()
                 val alpha = ((1f - f * 0.82f) * 10).roundToInt() / 10f
@@ -222,9 +235,12 @@ import kotlin.math.roundToInt
                 val isActive = i == active
                 val distance = if (active < 0) i + 1 else abs(i - active)
                 LyricLineRow(
-                    line, isActive, distance, posState, showTranslation, showRomaji, textColor, dimColor,
+                    line, isActive, distance, effPosState, showTranslation, showRomaji, textColor, dimColor,
                     fontFamily = fontFamily,
                     karaokeHighlight = karaokeHighlight,
+                    // 0.1.15 第 1 项：已播放过的行（当前行之前）透明度 75%，
+                    // 未播放的行保持 0.85，当前行 1.0。
+                    isPlayed = active >= 0 && i < active,
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
                     entranceDelayMs = minOf(distance, 6) * 40L,
@@ -247,7 +263,7 @@ import kotlin.math.roundToInt
                 ),
             )
             Box(
-                Modifier.fillMaxWidth().height(64.dp).align(Alignment.BottomCenter).background(
+                Modifier.fillMaxWidth().height(96.dp).align(Alignment.BottomCenter).background(
                     Brush.verticalGradient(listOf(Color.Transparent, bottomFadeColor ?: coverColors.bottom)),
                 ),
             )
@@ -259,7 +275,7 @@ import kotlin.math.roundToInt
                         .tokiGlassFade(hazeState, fadeFromTop = true),
                 )
                 Box(
-                    Modifier.fillMaxWidth().height(64.dp).align(Alignment.BottomCenter)
+                    Modifier.fillMaxWidth().height(96.dp).align(Alignment.BottomCenter)
                         .tokiGlassFade(hazeState, fadeFromTop = false),
                 )
             }
@@ -293,23 +309,28 @@ import kotlin.math.roundToInt
                     }
                 }
             }
-            TokiLongPressLabel(
-                "回到当前行",
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = backToCurrentBottom),
+            // 0.1.15 第 9 项：对齐必须落在普通 Box 上——TokiLongPressLabel
+            // （TooltipBox）会把调用方的 BoxScope.align 吃掉（外层锚 Box
+            // 是 TopStart），按钮实际落在左上角；现在 align + padding
+            // 放在作为歌词区直接子元素的普通 Box 上，TooltipBox 只包按钮本身。
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = backToCurrentBottom),
             ) {
-                Box(
-                    Modifier.size(48.dp)
-                        .clip(RoundedCornerShape(percent = 50))
-                        .background(textColor.copy(alpha = 0.14f))
-                        .clickable { userBrowsing = false },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (arrowUp) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = "回到当前行",
-                        tint = textColor,
-                        modifier = Modifier.size(24.dp),
-                    )
+                TokiLongPressLabel("回到当前行") {
+                    Box(
+                        Modifier.size(48.dp)
+                            .clip(RoundedCornerShape(percent = 50))
+                            .background(textColor.copy(alpha = 0.14f))
+                            .clickable { userBrowsing = false },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (arrowUp) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "回到当前行",
+                            tint = textColor,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                 }
             }
         }
@@ -348,6 +369,9 @@ private fun LyricLineRow(
     // 0.1.12：卡拉 OK 逐字高亮开关（关时当前行整行实色，不逐字扫过；
     // 见 progress 处的 1f 强制）。
     karaokeHighlight: Boolean = true,
+    // 0.1.15 第 1 项：是否已播放过的行（当前行之前）——非当前行时
+    // 透明度 0.75（未播放的行 0.85）；当前行不受影响。
+    isPlayed: Boolean = false,
     entranceWindow: Boolean = false,
     entranceDelayMs: Long = 0L,
     // 第六轮第 26 项：按屏上位置的（模糊 px，alpha），中间净区 (0f, 1f)。
@@ -422,21 +446,31 @@ private fun LyricLineRow(
                     // 画双层；不折行时只有一段，与原来完全一致。翻译/罗马音
                     // 行不参与逐字高亮（不走这段）。
                     val measurer = rememberTextMeasurer()
-                    val segments = remember(line.text, widthPx, fontFamily) {
+                    // 0.1.15 第 6 项：逐字扫过宽度——之前 SungSegmentText 的
+                    // 渐变按容器宽（BoxWithConstraints maxWidth）算，短行
+                    // （如 6 字日文行约占容器一半）在进度约 0.5 时就看起来
+                    // 扫完了（视觉上快约 2 倍）。现在每段用实测的文本宽
+                    // （TextLayoutResult.getLineRight - getLineLeft）做渐变宽，扫过边界
+                    // 落在文本末端；同一量测顺带给出各段字符范围。
+                    val segmentsWithWidths: List<Pair<VisualLineSegment, Float>> = remember(line.text, widthPx, fontFamily) {
                         if (widthPx <= 0f || line.text.isEmpty()) {
-                            listOf(VisualLineSegment(0, line.text.length))
+                            listOf(VisualLineSegment(0, line.text.length) to widthPx)
                         } else {
                             val result = measurer.measure(
                                 text = line.text,
                                 style = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = fontFamily),
                                 constraints = Constraints(maxWidth = widthPx.toInt()),
                             )
-                            (0 until result.lineCount).map { k ->
-                                VisualLineSegment(result.getLineStart(k), result.getLineEnd(k))
-                            }.filter { it.endChar > it.startChar }
-                                .ifEmpty { listOf(VisualLineSegment(0, line.text.length)) }
+                            // 中间结果显式定型：ifEmpty / let 的 R 在 remember 的 if 两分支间
+                            // 推不出（R 与 C 无约束），直接用显式分支 + 显式类型代替。
+                            val mapped: List<Pair<VisualLineSegment, Float>> = (0 until result.lineCount).map { k ->
+                                VisualLineSegment(result.getLineStart(k), result.getLineEnd(k)) to (result.getLineRight(k) - result.getLineLeft(k))
+                            }.filter { it.first.endChar > it.first.startChar }
+                            if (mapped.isEmpty()) listOf(VisualLineSegment(0, line.text.length) to widthPx) else mapped
                         }
                     }
+                    val segments = segmentsWithWidths.map { it.first }
+                    val segmentWidths = segmentsWithWidths.map { it.second }
                     val sungChars = progress * line.text.length
                     val progresses = visualLineProgresses(sungChars, segments)
                     // 第 27 项的文本实宽取最长视觉行的宽。
@@ -445,7 +479,7 @@ private fun LyricLineRow(
                         segments.forEachIndexed { k, seg ->
                             SungSegmentText(
                                 line.text.substring(seg.startChar, seg.endChar),
-                                progresses[k], widthPx, activeStyle, fontFamily, textColor,
+                                progresses[k], segmentWidths[k], activeStyle, fontFamily, textColor,
                                 onTextLayout = onSegmentLayout,
                             )
                         }
@@ -462,8 +496,9 @@ private fun LyricLineRow(
                     fontWeight = FontWeight.Bold,
                     fontFamily = fontFamily,
                     // 第六轮第 26 项：中间净区非当前行固定 0.85（不再按距离变淡），
-                    // 渐隐带内的变淡走整行的 rowAlpha。
-                    color = textColor.copy(alpha = 0.85f),
+                    // 渐隐带内的变淡走整行的 rowAlpha。0.1.15 第 1 项：已播放
+                    // 过的行 0.75（未播放的行 0.85）。
+                    color = textColor.copy(alpha = if (isPlayed) 0.75f else 0.85f),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                     onTextLayout = { textWidthPx = it.size.width },
                 )
@@ -478,7 +513,9 @@ private fun LyricLineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
-                color = if (isActive) dimColor else textColor.copy(alpha = 0.4f),
+                // 0.1.15 第 1 项：已播放行的翻译/罗马音同比例再淡（0.4 → 0.3，
+                // 即整行透明度 ×0.75）。
+                color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
@@ -487,7 +524,7 @@ private fun LyricLineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
-                color = if (isActive) dimColor else textColor.copy(alpha = 0.4f),
+                color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )
         }
@@ -521,6 +558,9 @@ private fun SungSegmentText(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
+    // 0.1.15 第 6 项：渐变范围按文本实宽（调用方传入的 widthPx 已是
+    // 该段的实测文本宽，不再是容器宽）——startX/endX 显式给出，
+    // 扫过边界落在文本末端；宽 ≤0 时（未量到）全透明。
     val sungBrush = if (widthPx <= 0f) {
         Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
     } else {
@@ -533,6 +573,8 @@ private fun SungSegmentText(
             fadeStart to textColor,
             fadeEnd to textColor.copy(alpha = 0f),
             1f to textColor.copy(alpha = 0f),
+            startX = 0f,
+            endX = widthPx,
         )
     }
     Box(Modifier.fillMaxWidth()) {

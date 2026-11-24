@@ -49,12 +49,16 @@ import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Artist
 import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.data.model.qqArtistId
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.COLLAPSING_COVER_FRACTION
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.collapsingCoverItem
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.isTitleScrolledOut
+import com.tokimusic.app.ui.components.positionOf
+import com.tokimusic.app.ui.components.resolveArtistTap
+import com.tokimusic.app.ui.components.segmentedCorners
 import com.tokimusic.app.ui.theme.CirroBlack
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
@@ -83,24 +87,50 @@ fun ArtistScreen(
     onHeaderVisible: (Boolean) -> Unit = {},
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
-    // 0.1.13 第 24 项：向外层报告关注态（顶栏右侧显示关注图标按钮）——
+    // 0.1.15 第 24 项：向外层报告关注态（顶栏右侧显示关注图标按钮）——
     // (是否已关注, 切换)；歌手未加载时报告 null。
     onFollowAction: (Pair<Boolean, () -> Unit>?) -> Unit = {},
+    // 0.1.15 第 2 项：QQ 歌手页（qqMid 非空时走 QQ 分支：详情、
+    // 歌曲、专辑都从 QqClient 取；关注按钮不显示，QQ 无关注接口）。
+    // QQ 模式下 artistId 传 0L 占位，不参与任何请求。
+    qqMid: String? = null,
+    onOpenQqAlbum: (String) -> Unit = {},
+    onOpenQqArtist: (String) -> Unit = {},
 ) {
     var artist by remember { mutableStateOf<Artist?>(null) }
     var allSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var loadError by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
-    LaunchedEffect(artistId, reloadKey) {
+    val isQq = qqMid != null
+    LaunchedEffect(artistId, qqMid, reloadKey) {
         loadError = false
-        artist = runCatching { vm.api.artistDetail(artistId) }.onFailure { loadError = true }.getOrNull()
-        if (artist != null) {
-            // 全量歌单：拉不到时回退热门 50 首（不断页）。
-            allSongs = runCatching { vm.api.artistSongs(artistId) }
-                .recoverCatching { vm.api.artistTopSongs(artistId) }
-                .getOrDefault(emptyList())
-            albums = runCatching { vm.api.artistAlbums(artistId) }.getOrDefault(emptyList())
+        if (isQq) {
+            val detail = runCatching { vm.qqClient.qqSingerDetail(qqMid!!) }
+                .onFailure { loadError = true }.getOrNull()
+            if (detail != null) {
+                artist = Artist(
+                    id = qqArtistId(qqMid!!),
+                    name = detail.name,
+                    picUrl = detail.picUrl,
+                    musicSize = detail.totalSongs,
+                    albumSize = detail.albums.size,
+                    mid = qqMid!!,
+                )
+                allSongs = detail.songs
+                albums = detail.albums
+            } else {
+                loadError = true
+            }
+        } else {
+            artist = runCatching { vm.api.artistDetail(artistId) }.onFailure { loadError = true }.getOrNull()
+            if (artist != null) {
+                // 全量歌单：拉不到时回退热门 50 首（不断页）。
+                allSongs = runCatching { vm.api.artistSongs(artistId) }
+                    .recoverCatching { vm.api.artistTopSongs(artistId) }
+                    .getOrDefault(emptyList())
+                albums = runCatching { vm.api.artistAlbums(artistId) }.getOrDefault(emptyList())
+            }
         }
     }
     val a = artist
@@ -112,9 +142,10 @@ fun ArtistScreen(
     LaunchedEffect(Unit) { vm.ensureFollowedArtistsLoaded() }
     val isFollowed = a?.let { it.id in followedArtistIds } ?: false
     LaunchedEffect(a, isFollowed) {
-        onFollowAction(if (a == null) null else isFollowed to { vm.toggleFollowArtist(artistId) })
+        // QQ 歌手无关注接口（0.1.15 第 2 项）：上报 null，顶栏不显示关注按钮。
+        onFollowAction(if (isQq || a == null) null else isFollowed to { vm.toggleFollowArtist(artistId) })
     }
-    val coverColors = rememberCoverColors(artistId, a?.picUrl ?: "")
+    val coverColors = rememberCoverColors(if (isQq) qqArtistId(qqMid!!) else artistId, a?.picUrl ?: "")
     val listState = rememberLazyListState()
     // 第五轮第 25 项（结构性根治，与歌单页同款）：歌手照片移进 LazyColumn
     // 做第 0 项，随列表自然滑走；旧的累计滚动量公式与 titleHeightPx
@@ -236,7 +267,9 @@ fun ArtistScreen(
                         // 第 12 项：歌曲 / 专辑分段切换，默认歌曲。
                         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             SectionPill(
-                                text = "歌曲 $listenedCount/$totalCount",
+                                // QQ 歌手没有网易云听歌榜交集（x 恒为 0），
+                                // 只显示全部歌曲数（0.1.15 第 2 项）。
+                                text = if (isQq) "歌曲 $totalCount" else "歌曲 $listenedCount/$totalCount",
                                 selected = section == ArtistSection.Songs,
                                 coverColors = coverColors,
                                 onClick = { section = ArtistSection.Songs },
@@ -250,7 +283,26 @@ fun ArtistScreen(
                         }
                     }
                     if (section == ArtistSection.Songs) {
-                        itemsIndexed(allSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }) { vm.play(allSongs, i, a?.name) } }
+                        // QQ 模式：行内歌手名点按按 Long id 标注，查本页
+                        // 歌曲的歌手 mid 后进 QQ 歌手页（0.1.15 第 2 项）。
+                        val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(allSongs, id, onOpenArtist, onOpenQqArtist) }
+                        // 0.1.15 第 21 项：歌曲行加封面自适应底盒（分段圆角）。
+                        // 底色用 coverColors.onCoverButtonBg()（封面深浅定
+                        // 黑/白 14%，与现有高亮行同源，不用 Monet——歌手页
+                        // 是封面自适应配色，见第 11 条）；无底色则圆角不可
+                        // 见，所以底盒是本条的必要部分。圆角与歌单页同规则
+                        // （首 20/中 4/末 20，单首上下都 20）；行间 2dp
+                        // （上下共 4dp），页边 16dp，与歌单页同款。
+                        itemsIndexed(allSongs) { i, song ->
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 2.dp)
+                                    .clip(segmentedCorners(positionOf(i, allSongs.size), 20.dp))
+                                    .background(coverColors.onCoverButtonBg()),
+                            ) {
+                                SongRow(song, i, onOpenArtist = openArtistForRows, horizontalPadding = 16.dp, onLongPress = { vm.openSongActions(it) }) { vm.play(allSongs, i, a?.name) }
+                            }
+                        }
                     } else if (albums.isNotEmpty()) {
                         item {
                             LazyRow(
@@ -259,7 +311,14 @@ fun ArtistScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                             ) {
                                 items(albums) { album ->
-                                    AlbumCard(album, coverColors.onCoverText(), coverColors.onCoverTextDim()) { onOpenAlbum(album.id) }
+                                    // QQ 模式：专辑按 mid 进 QQ 专辑页；mid 为
+                                    // 空时不响应（QQ 专辑 id 与网易云不是同一
+                                    // 空间，不能进网易云专辑页）。
+                                    AlbumCard(album, coverColors.onCoverText(), coverColors.onCoverTextDim()) {
+                                        if (isQq) {
+                                            if (album.mid.isNotBlank()) onOpenQqAlbum(album.mid)
+                                        } else onOpenAlbum(album.id)
+                                    }
                                 }
                             }
                         }

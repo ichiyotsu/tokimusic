@@ -40,6 +40,7 @@ import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.ui.theme.monetColorForPlaylist
 import com.tokimusic.app.ui.theme.monetColorForSource
 
 /**
@@ -86,6 +87,46 @@ import com.tokimusic.app.ui.theme.monetColorForSource
     }
 }
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * 0.1.15 第 21 项：分段圆角——一个列表组只有首项顶部与末项底部是
+ * 大圆角，中间项只有极小圆角（4dp），项与项之间留细微间距。
+ * positionOf 按下标算位置（单项列表首末同体，上下都大圆角）。
+ */
+enum class SegmentPosition { First, Middle, Last, Single }
+
+fun positionOf(index: Int, size: Int): SegmentPosition = when {
+    size <= 1 -> SegmentPosition.Single
+    index == 0 -> SegmentPosition.First
+    index == size - 1 -> SegmentPosition.Last
+    else -> SegmentPosition.Middle
+}
+
+fun segmentedCorners(position: SegmentPosition, large: Dp): RoundedCornerShape = when (position) {
+    SegmentPosition.First -> RoundedCornerShape(topStart = large, topEnd = large, bottomStart = 4.dp, bottomEnd = 4.dp)
+    SegmentPosition.Middle -> RoundedCornerShape(4.dp)
+    SegmentPosition.Last -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = large, bottomEnd = large)
+    SegmentPosition.Single -> RoundedCornerShape(large)
+}
+
+/**
+ * 0.1.15 第 2 项：SongRow 里的歌手名点按（副标题按 Long id 标注）
+ * 分流到正确的歌手页——QQ 歌曲按歌手 mid 进 QQ 歌手页（歌手 mid
+ * 存在歌曲的 Artist.mid 里，parseQqSong 填），网易云歌曲按 id 进
+ * 网易云歌手页；QQ 歌曲没有 mid 时不响应（QQ 数字 id 与网易云不是
+ * 同一空间，不能进网易云页）。songs 是点按行所在的歌曲列表。
+ */
+fun resolveArtistTap(
+    songs: List<Song>,
+    id: Long,
+    onOpenArtist: (Long) -> Unit,
+    onOpenQqArtist: (String) -> Unit,
+) {
+    val song = songs.firstOrNull { s -> s.artists.any { it.id == id } } ?: return
+    val mid = song.artists.firstOrNull { it.id == id }?.mid?.takeIf { it.isNotBlank() }
+    if (mid != null) onOpenQqArtist(mid)
+    else if (song.source != MusicSource.QQ) onOpenArtist(id)
+}
+
 @Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
@@ -143,20 +184,30 @@ import com.tokimusic.app.ui.theme.monetColorForSource
     }
 }
 @Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
-    Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
-        Box(Modifier.size(140.dp)) {
-            // 0.1.14 第 4 项：封面圆角改 20dp——与 28dp 源徽标（14dp
-            // 半径）+ 6dp 间距同心等圆角（14 + 6 = 20），视觉统一。
-            AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(RoundedCornerShape(20.dp)), contentScale = ContentScale.Crop)
-            // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
-            // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
-            if (showSourceBadge) {
-                SourceBadge(playlist.source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+    // 0.1.15 第 11 项：莫奈色板落到歌单卡片上——整卡 16% 透明底（按歌单 id
+    // 稳定取色，与歌单详情页的歌曲行、资料库歌单行同款配方）。之前色板
+    // 只在双源徽标上出现，单源时首页看不到任何配色变化。封面顶角保持
+    // 20dp（与 28dp 徽标同心），底角收 0、与下方文字区齐平。
+    Box(
+        Modifier.width(140.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(monetColorForPlaylist(playlist.id, paletteIndex).copy(alpha = 0.16f))
+            .clickable(onClick = onClick),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)), contentScale = ContentScale.Crop)
+                // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
+                // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
+                if (showSourceBadge) {
+                    SourceBadge(playlist.source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+                }
+            }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(playlist.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -351,13 +402,16 @@ fun CirroCardRow(
     title: String,
     subtitle: String? = null,
     horizontalPadding: Dp = 24.dp,
+    // 0.1.15 第 11 项：卡片底色可传——资料库五个分区卡按色板取色；
+    // 不传时保持原来的 surfaceContainer。
+    backgroundColor: androidx.compose.ui.graphics.Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth()
             .padding(horizontal = horizontalPadding)
             .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .background(backgroundColor ?: MaterialTheme.colorScheme.surfaceContainer)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp),

@@ -34,6 +34,9 @@ import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.collapsingCoverItem
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.isTitleScrolledOut
+import com.tokimusic.app.ui.components.positionOf
+import com.tokimusic.app.ui.components.resolveArtistTap
+import com.tokimusic.app.ui.components.segmentedCorners
 import com.tokimusic.app.ui.theme.monetColorForPlaylist
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
@@ -65,6 +68,8 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     onHeaderVisible: (Boolean) -> Unit = {},
     // Round 3 item 12: song-row artist names open the artist page.
     onOpenArtist: (Long) -> Unit = {},
+    // 0.1.15 第 2 项：QQ 歌单里歌曲的歌手按 mid 进 QQ 歌手页。
+    onOpenQqArtist: (String) -> Unit = {},
     // 0.1.13 第 25 项：向外层报告收藏态（顶栏右侧显示星星图标按钮）——
     // (是否已收藏, 切换)；无详情时报告 null。
     onFavoriteAction: (Pair<Boolean, () -> Unit>?) -> Unit = {},
@@ -79,15 +84,24 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
         loadError = false
         // 第三轮第 4 项：虚拟歌单（每日推荐 -1 / 私人雷达 -2）不调用任何
         // 歌单详情接口，直接用主页已加载的歌曲拼出歌单。
-        if (playlistId == -1L || playlistId == -2L) {
-            val songs = if (playlistId == -1L) vm.home.value.daily else vm.home.value.radar
-            val name = if (playlistId == -1L) "每日推荐" else "私人雷达"
+        // 0.1.15 第 15 项：QQ 每日推荐 -3 / QQ 私人雷达 -4 同款
+        // （主页已加载的 QQ 列表；creatorName 标 QQ 音乐，source 标 QQ）。
+        if (playlistId == -1L || playlistId == -2L || playlistId == -3L || playlistId == -4L) {
+            val songs = when (playlistId) {
+                -1L -> vm.home.value.daily
+                -2L -> vm.home.value.radar
+                -3L -> vm.home.value.qqDaily
+                else -> vm.home.value.qqRadar
+            }
+            val name = if (playlistId == -1L || playlistId == -3L) "每日推荐" else "私人雷达"
+            val isQq = playlistId == -3L || playlistId == -4L
             detail = Playlist(
                 id = playlistId,
                 name = name,
                 coverUrl = songs.firstOrNull()?.picUrl ?: "",
                 trackCount = songs.size,
-                creatorName = "Netease Music",
+                creatorName = if (isQq) "QQ 音乐" else "Netease Music",
+                source = if (isQq) MusicSource.QQ else MusicSource.NETEASE,
             ) to songs
         } else {
             detail = runCatching { vm.playlistDetail(playlistId) }.onFailure { loadError = true }.getOrNull()
@@ -243,14 +257,17 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                 }
                 // 0.1.13 第 12 项：歌曲行底色改莫奈色系（按歌单 id 稳定取色，
                 // 16% 透明底，20dp 圆角，行间 4dp、页边 16dp）。
+                // 0.1.15 第 21 项：改分段圆角——首项上 20 / 下 4，中间项
+                // 4dp，末项上 4 / 下 20，单首歌上下都 20dp；行间 4dp 不动。
+                val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }
                 itemsIndexed(tracks) { i, song ->
                     Box(
                         Modifier.fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(segmentedCorners(positionOf(i, tracks.size), 20.dp))
                             .background(monetColorForPlaylist(pl.id, vm.store.monetPaletteIndex).copy(alpha = 0.16f)),
                     ) {
-                        SongRow(song, i, onOpenArtist = onOpenArtist, horizontalPadding = 12.dp, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) }
+                        SongRow(song, i, onOpenArtist = openArtistForRows, horizontalPadding = 16.dp, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) }
                     }
                 }
             }

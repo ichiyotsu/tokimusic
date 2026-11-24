@@ -48,7 +48,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
@@ -73,12 +72,11 @@ fun SearchSheet(
     onClose: () -> Unit,
     onOpenPlaylist: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
+    // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页。
+    onOpenQqArtist: (String) -> Unit = {},
 ) {
-    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
-    val qqEnabled by vm.qqEnabled.collectAsState()
-    val searchSource by vm.searchSource.collectAsState()
-    val bothEnabled = neteaseEnabled && qqEnabled
-    // The query lives here so the source buttons can re-run it with the new source.
+    // 0.1.15 第 3 项：源选项已删——搜索改查所有启用的源并合并结果，
+    // 源开关只在设置里调；查询只留本地 state。
     var query by remember { mutableStateOf("") }
     TokiSheetContainer(onDismiss = onClose) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
@@ -104,24 +102,6 @@ fun SearchSheet(
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                // Sixth round, batch 2, item 24: two 40dp round source icons
-                // between the title chip and the close chip (both sources on
-                // only); tapping one switches the search source and re-runs
-                // the current query with the new source.
-                if (bothEnabled) {
-                    Row(
-                        Modifier.padding(start = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SearchSourceButton(MusicSource.NETEASE, searchSource == MusicSource.NETEASE) {
-                            vm.search(query, MusicSource.NETEASE)
-                        }
-                        SearchSourceButton(MusicSource.QQ, searchSource == MusicSource.QQ) {
-                            vm.search(query, MusicSource.QQ)
-                        }
-                    }
-                }
                 Box(
                     Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
                         .clickable { onClose() },
@@ -139,33 +119,13 @@ fun SearchSheet(
                     )
                 }
             }
-            SearchContent(vm, query, { query = it }, onClose, onOpenPlaylist, onOpenArtist, Modifier.weight(1f))
+            SearchContent(vm, query, { query = it }, onClose, onOpenPlaylist, onOpenArtist, Modifier.weight(1f), onOpenQqArtist)
         }
     }
 }
 
-/** 40dp round source icon (item 24): selected = solid source colour + white note, unselected = container + greyed note. */
 @Composable
-private fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Unit) {
-    val tint = if (source == MusicSource.NETEASE) NeteaseRed else QqGreen
-    Box(
-        Modifier.size(40.dp).clip(CircleShape)
-            .background(if (selected) tint else MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        // 0.1.13 第 1 / 2 项：搜索源钮换各源专属矢量。
-        Icon(
-            painterResource(if (source == MusicSource.NETEASE) R.drawable.ic_source_netease else R.drawable.ic_source_qq),
-            contentDescription = if (source == MusicSource.NETEASE) "用网易云搜索" else "用 QQ 搜索",
-            tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
-            modifier = Modifier.size(24.dp),
-        )
-    }
-}
-
-@Composable
-private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit, onOpenPlaylist: (Long) -> Unit, onOpenArtist: (Long) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit, onOpenPlaylist: (Long) -> Unit, onOpenArtist: (Long) -> Unit, modifier: Modifier = Modifier, onOpenQqArtist: (String) -> Unit = {}) {
     val home by vm.home.collectAsState()
     // Debounced: one request per pause in typing, not one per keystroke.
     LaunchedEffect(query) { delay(400); vm.search(query) }
@@ -243,7 +203,12 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                         item { Text("歌手", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
                         items(home.searchQqArtists) { artist ->
                             Row(
-                                Modifier.fillMaxWidth().clickable { vm.showMessage("QQ 歌手详情暂不支持") }
+                                // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页
+                                // （之前是“暂不支持”提示）；mid 为空时才提示。
+                                Modifier.fillMaxWidth().clickable {
+                                    if (artist.mid.isNotBlank()) { onClose(); onOpenQqArtist(artist.mid) }
+                                    else vm.showMessage("QQ 歌手详情暂不支持")
+                                }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -261,7 +226,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 contentPadding = PaddingValues(horizontal = 0.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist) { onOpenPlaylist(playlist.id) } }
+                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist, paletteIndex = vm.store.monetPaletteIndex) { onOpenPlaylist(playlist.id) } }
                             }
                         }
                     }
