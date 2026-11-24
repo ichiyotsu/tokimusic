@@ -132,9 +132,19 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         get() = prefs.getStringSet("favorite_playlist_ids", emptySet()) ?: emptySet()
         set(v) { prefs.edit().putStringSet("favorite_playlist_ids", v).apply() }
     /** 莫奈色板序号（0.1.13 第 12 / 21 项）：个性化里选中的色板，
-     * 歌单显示背景与图标 tile 底色用它；0 = 睡莲。 */
-    var monetPaletteIndex: Int get() = prefs.getInt("monet_palette_index", 0)
-        set(v) { prefs.edit().putInt("monet_palette_index", v).apply() }
+     * 歌单显示背景与图标 tile 底色用它；0 = 睡莲。
+     * 大排查 S13：改成 Compose 状态驱动——之前是 SharedPreferences
+     * 直值，个性化里换色板后，首页 / 资料库 / 歌单页的莫奈底色要等
+     * 重进页面才变；现在换完立即全页生效。 */
+    var monetPaletteIndex: Int
+        get() = monetPaletteIndexState.intValue
+        set(v) {
+            monetPaletteIndexState.intValue = v
+            prefs.edit().putInt("monet_palette_index", v).apply()
+        }
+    private val monetPaletteIndexState = androidx.compose.runtime.mutableIntStateOf(
+        prefs.getInt("monet_palette_index", 0),
+    )
     /** 自定义头像的本地文件路径（0.1.13 第 18 项，Tokinote 方案：
      * 图片选择器挑图后拷进应用私有目录）；空 = 用服务端头像。 */
     var profileAvatarPath: String get() = prefs.getString("profile_avatar_path", "") ?: ""

@@ -275,6 +275,7 @@ class QqClient(
             param = JSONObject().put("code", code),
             commExtra = mapOf("tmeLoginType" to 2),
             session = session,
+            attachStoredCredential = false,
         )
         credentialFromLoginResp(resp, "QQ 登录失败")
     }
@@ -386,6 +387,7 @@ class QqClient(
             method = "SendPhoneAuthCode",
             param = JSONObject().put("tmeAppid", "qqmusic").put("areaCode", "86").put("phoneNo", phone),
             commExtra = mapOf("tmeLoginMethod" to 3),
+            attachStoredCredential = false,
         )
         when (val code = resp.optInt("code", -1)) {
             0 -> QqPhoneAuthResult.Sent
@@ -410,6 +412,7 @@ class QqClient(
             method = "Login",
             param = JSONObject().put("code", authCode).put("loginMode", 1).put("phoneNo", phone),
             commExtra = mapOf("tmeLoginMethod" to 3, "tmeLoginType" to 0),
+            attachStoredCredential = false,
         )
         credentialFromLoginResp(resp, "手机号登录失败")
     }
@@ -430,6 +433,7 @@ class QqClient(
             method = "CreateQRCode",
             param = JSONObject().put("tmeAppID", "qqmusic").put("ct", CT).put("cv", CV),
             commExtra = mapOf("ct" to 23, "cv" to 0),
+            attachStoredCredential = false,
         )
         val data = resp.optJSONObject("data")
             ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码获取失败")
@@ -457,6 +461,7 @@ class QqClient(
             method = "Login",
             param = JSONObject().put("musicid", musicId).put("qrCodeID", qrcodeId).put("token", key),
             commExtra = mapOf("tmeLoginType" to 6),
+            attachStoredCredential = false,
         )
         credentialFromLoginResp(resp, "QQ音乐扫码登录失败")
     }
@@ -465,7 +470,7 @@ class QqClient(
 
     /** Anonymous GetSession (spike-verified): returns the uid/sid the QQLogin comm carries. */
     private suspend fun getSession(): QqSession {
-        val resp = cgi(
+        val resp = cgiRaw(
             module = "music.getSession.session",
             method = "GetSession",
             param = JSONObject().put("uid", "").put("vkey", 0).put("caller", 2),
@@ -512,6 +517,48 @@ class QqClient(
 
     /** In-memory CDN list from GetCdnDispatch (one call per client lifetime). */
     private var cachedSip: List<String>? = null
+
+    /** In-memory Android session (GetSession uid/sid, one call per client lifetime). */
+    private var cachedSession: QqSession? = null
+
+    /** Stored login credential, if the user is logged in to QQ. */
+    private fun storedCredential(): QqCredential? {
+        val id = store.qqMusicId
+        val key = store.qqMusicKey
+        return if (id.isNotBlank() && key.isNotBlank()) QqCredential(id, key) else null
+    }
+
+    /** Cached session, fetching one (best effort) the first time. */
+    private suspend fun ensureSession(): QqSession? {
+        cachedSession?.let { return it }
+        return runCatching { getSession() }.getOrNull()?.also { cachedSession = it }
+    }
+
+    /**
+     * Content/login CGI call (0.1.14 第 9 条)：L-1124 的 executor 给每
+     * 次 ANDROID CGI 调用都带 Android session（uid/sid）与登录凭证
+     * （comm qq/authst + Cookie），Kotlin 之前只在登录换凭证 / 播放时
+     * 带，内容请求全是匿名的——排行榜 GetAll 回 10006。默认值从 store /
+     * 缓存的 GetSession 补；显式参数优先。登录换凭证的调用传
+     * attachStoredCredential=false（L-1124 登录走全新 scope，不带旧
+     * 凭证）。GetSession 本身走 [cgiRaw]（它就是创建 session 的调用）。
+     * session 只在会带凭证时取：匿名调用与登录换凭证调用不取（否则
+     * 每次调用都多一次 GetSession；无凭证时 session 单独发也无用，
+     * 探针已证明 session 对匿名调用的结果无影响）。
+     */
+    private suspend fun cgi(
+        module: String,
+        method: String,
+        param: JSONObject?,
+        commExtra: Map<String, Any?> = emptyMap(),
+        credential: QqCredential? = null,
+        session: QqSession? = null,
+        attachStoredCredential: Boolean = true,
+    ): JSONObject {
+        val cred = credential ?: if (attachStoredCredential) storedCredential() else null
+        val sess = session ?: if (cred != null) runCatching { ensureSession() }.getOrNull() else null
+        return cgiRaw(module, method, param, commExtra, cred, sess)
+    }
 
     /**
      * QQ playback URL (music.vkey.GetVkey / UrlGetVkey, ANDROID route —
@@ -652,9 +699,13 @@ class QqClient(
         )
     }
 
-    /** One QQ playlist object (dissname/dissid; cover at cover.default_url for recommendations). */
+    /** One QQ playlist object (dissname/dissid; cover at cover.default_url for recommendations).
+     * 0.1.14 第 9 条：推荐歌单的 basic 里歌单 id 键是 tid，不是 dissid/
+     * id——L-1124 的 SongList.id 接受 id/tid/dissid 三个别名，之前
+     * 只认前两个，25 条推荐歌单全被丢弃（dissid=0 → null），主页 QQ
+     * 歌单区一直是空的。实测确认：basic.tid=7572223780 时解析出歌单。 */
     internal fun parseQqPlaylist(obj: JSONObject): Playlist? {
-        val dissid = obj.optLong("dissid", obj.optLong("id", 0))
+        val dissid = obj.optLong("dissid", obj.optLong("id", obj.optLong("tid", 0)))
         if (dissid == 0L) return null
         val name = firstString(obj, "dissname", "title", "name").orEmpty()
         val cover = firstString(obj.optJSONObject("cover"), "default_url")
@@ -850,12 +901,13 @@ class QqClient(
     fun clearSession() {
         store.qqMusicId = ""
         store.qqMusicKey = ""
+        cachedSession = null
     }
 
     // ---- CGI plumbing ----
 
     /** One musicu.fcg call; returns the req_0 object (caller reads code/data). */
-    private suspend fun cgi(
+    private suspend fun cgiRaw(
         module: String,
         method: String,
         param: JSONObject?,

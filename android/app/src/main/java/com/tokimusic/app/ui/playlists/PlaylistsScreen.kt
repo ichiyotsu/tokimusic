@@ -1,12 +1,15 @@
 package com.tokimusic.app.ui.playlists
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +26,9 @@ import androidx.compose.ui.unit.Dp
 import com.tokimusic.app.data.model.*
 import com.tokimusic.app.data.playlistFavoriteKey
 import com.tokimusic.app.player.PlayMode
+import com.tokimusic.app.player.nextModeAfterSingleButtonTap
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.components.COLLAPSING_COVER_FRACTION
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.collapsingCoverItem
@@ -106,6 +111,8 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     // 0.1.12：收藏态与播放模式（控制行用）。
     val favoriteIds by vm.favoritePlaylistIds.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
+    // 0.1.14 第 7 项：单按钮位的按压回弹交互源。
+    val modeInteraction = remember { MutableInteractionSource() }
     // 0.1.13 第 25 项：收藏移到顶栏——详情 / 收藏态变化时向外层报告
     // (是否已收藏, 切换)，顶栏右侧显示星星图标按钮（见 TokiMusicApp）。
     val isFavDetail = detail?.let { playlistFavoriteKey(it.first.source, it.first.id) in favoriteIds } ?: false
@@ -167,47 +174,49 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                             overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.height(16.dp))
-                        // 0.1.13 第 25 项：播放控制行——白色大播放 pill
-                        // 居左（0.1.12 外观不动，176×64 白底黑图标），
-                        // 右边 顺序播放 / 随机播放 两个 48dp squircle；
-                        // 收藏星星移到顶栏右侧（见 onFavoriteAction）。
-                        // 顺序 / 随机与第 17 条的播放模式互斥单选打通
-                        // （playPlaylist 按 shuffle 同步设置播放模式，
-                        // 点已激活的模式 pill 回顺序播放见 nextModeAfterTap）。
+                        // 0.1.14 第 6 项：播放 pill 改歌手页同款尺寸——
+                        // 56dp 高、28dp 图标、左右 20dp 内边距（白底黑
+                        // 图标不动）；旧 176×64 大 pill 太大，与歌手页
+                        // 不一致。
+                        // 0.1.14 第 7 项：顺序 / 随机合并成一个 48dp 按
+                        // 钮位——图标显示当前模式（顺序 / 随机 / 列表循环 /
+                        // 单曲循环），点一下回弹一下切换顺序↔随机；一直保
+                        // 持未选择态（底色恒为封面衍生底色，永不白底），与
+                        // 四个播放模式互斥单选打通；只切模式，不开始播放
+                        // （旧的两个 squircle 是点按即播）。
                         if (tracks.isNotEmpty()) {
-                            val sequentialActive = playMode == PlayMode.Sequential
-                            val shuffleActive = playMode == PlayMode.Shuffle
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                // 大号白色播放 pill：176×64dp，白底黑图标（0.1.12 外观不动）。
+                                // 大号白色播放 pill（歌手页同款尺寸）。
                                 Box(
-                                    Modifier.size(176.dp, 64.dp)
+                                    Modifier.height(56.dp)
                                         .clip(RoundedCornerShape(percent = 50))
                                         .background(Color.White)
-                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = false) },
+                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = false) }
+                                        .padding(horizontal = 20.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = Color.Black, modifier = Modifier.size(32.dp))
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = Color.Black, modifier = Modifier.size(28.dp))
                                 }
-                                // 顺序播放：48dp squircle（16dp 圆角），封面衍生底色；
-                                // 已是顺序模式时白底黑图标。
+                                // 顺序 / 随机单按钮位。
                                 Box(
                                     Modifier.size(48.dp)
                                         .clip(RoundedCornerShape(16.dp))
-                                        .background(if (sequentialActive) Color.White else coverColors.onCoverButtonBg())
-                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = false) },
+                                        .background(coverColors.onCoverButtonBg())
+                                        .clickable(interactionSource = modeInteraction, indication = ripple()) { vm.player.setPlayMode(nextModeAfterSingleButtonTap(playMode)) }
+                                        .pressRebound(modeInteraction),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Rounded.FormatListNumbered, contentDescription = "顺序播放", tint = if (sequentialActive) Color.Black else coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(24.dp))
-                                }
-                                // 随机播放：48dp squircle；已是随机模式时白底黑图标。
-                                Box(
-                                    Modifier.size(48.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(if (shuffleActive) Color.White else coverColors.onCoverButtonBg())
-                                        .clickable { vm.playPlaylist(tracks, pl, shuffle = true) },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Rounded.Shuffle, contentDescription = "随机播放", tint = if (shuffleActive) Color.Black else coverColors.onCoverTextAt(titleFraction), modifier = Modifier.size(24.dp))
+                                    Icon(
+                                        when (playMode) {
+                                            PlayMode.Sequential -> Icons.Rounded.FormatListNumbered
+                                            PlayMode.Shuffle -> Icons.Rounded.Shuffle
+                                            PlayMode.RepeatAll -> Icons.Rounded.Repeat
+                                            PlayMode.RepeatOne -> Icons.Rounded.RepeatOne
+                                        },
+                                        contentDescription = "切换顺序 / 随机播放",
+                                        tint = coverColors.onCoverTextAt(titleFraction),
+                                        modifier = Modifier.size(24.dp),
+                                    )
                                 }
                             }
                             Spacer(Modifier.height(12.dp))

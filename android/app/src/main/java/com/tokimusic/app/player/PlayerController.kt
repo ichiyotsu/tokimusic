@@ -69,6 +69,15 @@ fun nextModeAfterTap(current: PlayMode, tapped: PlayMode): PlayMode =
     if (current == tapped) PlayMode.Sequential else tapped
 
 /**
+ * 歌单页单按钮位的点按（0.1.14 第 7 项）：顺序 / 随机二选一切换——
+ * 当前是随机时回顺序，其余（顺序 / 列表循环 / 单曲循环）都切到随机，
+ * 即按钮是“随机开 / 关”的开关，图标显示当前模式；与四个播放模式
+ * 互斥单选打通（按钮只切模式，不开始播放）。纯函数，JVM 单测覆盖。
+ */
+fun nextModeAfterSingleButtonTap(current: PlayMode): PlayMode =
+    if (current == PlayMode.Shuffle) PlayMode.Sequential else PlayMode.Shuffle
+
+/**
  * Shuffle 下一次要跳到的下标：队列里除当前曲外随机一首；只有一首（或
  * 为空）时返回 null（调用方不动）。纯函数，JVM 单测覆盖。
  */
@@ -248,9 +257,12 @@ class PlayerController(context: Context) {
                 )
                 player.prepare(); if (autoPlay) player.play()
             } else {
-                unplayable.add(id)
-                // 恢复队列时的预取失败不提示、不跳歌：用户还没点播放。
+                // 大排查 S6：只有用户真的点了播放（autoPlay）才记
+                // unplayable——恢复队列时的预取失败（冷启动断网等）不
+                // 记，之前记了就永久拉黑：之后点播放也不再取地址，
+                // onPlayerError 又把空 URI 错误吞掉，歌就静默播不出。
                 if (!autoPlay) return@launch
+                unplayable.add(id)
                 onPlaybackError?.invoke("这首歌暂无播放地址（可能无版权或需 VIP），已跳过")
                 if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.pause()
             }
@@ -323,7 +335,19 @@ class PlayerController(context: Context) {
         ensureUrlForCurrent(controller, autoPlay = false)
     }
 
-    fun toggle() { mediaController?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() {
+        val controller = mediaController ?: return
+        if (controller.isPlaying) { controller.pause(); return }
+        // 大排查 S6：恢复队列的歌若预取失败（冷启动断网），当前条目
+        // 还是空 URI——直接 play() 只会触发空 URI 错误又被吞掉，点播放
+        // 毫无反应。先走一次取地址，取到后在里面自动播放。
+        val item = controller.currentMediaItem
+        if (item != null && item.localConfiguration?.uri.toString().isBlank()) {
+            ensureUrlForCurrent(controller, autoPlay = true)
+            return
+        }
+        controller.play()
+    }
 
     /**
      * 空间音频开关（第二轮第 6 项 B，spike 未证实杜比片源，见 spike 报告）：

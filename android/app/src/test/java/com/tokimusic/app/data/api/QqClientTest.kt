@@ -293,6 +293,9 @@ class QqClientTest {
     fun getLoginUserInfoReturnsNullOnDeadCredential() = runBlocking {
         settings.qqMusicId = "123456"
         settings.qqMusicKey = "KEY123"
+        // 先回 GetSession（登录态下 cgi() 的预取），再回真正的
+        // GetLoginUserInfo（凭证已死，code 1000）。
+        server.enqueue(json(sessionResponse()))
         server.enqueue(json("""{"code":0,"req_0":{"code":1000,"data":{}}}"""))
         assertNull(client.getLoginUserInfo())
     }
@@ -338,7 +341,11 @@ class QqClientTest {
     private fun musicuDispatcher(handler: (JSONObject) -> MockResponse): Dispatcher = object : Dispatcher() {
         override fun dispatch(request: RecordedRequest): MockResponse {
             if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
-            return handler(JSONObject(request.body.readUtf8()))
+            val body = JSONObject(request.body.readUtf8())
+            // 0.1.14 第 9 条：登录态下 cgi() 会先取一次 GetSession（之后
+            // 缓存），dispatcher 直接回合法 session，不进业务 handler。
+            if (body.getJSONObject("req_0").getString("method") == "GetSession") return json(sessionResponse())
+            return handler(body)
         }
     }
 
@@ -355,7 +362,7 @@ class QqClientTest {
             QqSongUrlResult.Url("https://cdn.example.com/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1&guid=G"),
             result,
         )
-        assertEquals(1, server.requestCount)
+        assertEquals(2, server.requestCount) // GetSession 预取（缓存一次）+ GetVkey
         val param = seenParams.single()
         // L-1124 get_song_urls param shape: uin = str_musicid, filename =
         // {prefix}{mid}{mid}{ext}, guid, songmid, songtype [0], ctx 0.
@@ -373,7 +380,7 @@ class QqClientTest {
         val result = client.songUrl("0039MnYb0qxYhV", "standard")
         assertEquals(QqSongUrlResult.NoPermission, result)
         // standard tries both tiers (M500, M800) before giving up.
-        assertEquals(2, server.requestCount)
+        assertEquals(3, server.requestCount) // GetSession 预取 + 2 次 GetVkey
     }
 
     @Test
@@ -426,7 +433,7 @@ class QqClientTest {
             QqSongUrlResult.Url("https://dispatch.example.com/M5000039MnYb0qxYhV0039MnYb0qxYhV.mp3?vkey=VK1"),
             result,
         )
-        assertEquals(2, server.requestCount)
+        assertEquals(3, server.requestCount) // GetSession 预取 + GetVkey + CdnDispatch
     }
 
     @Test
@@ -463,14 +470,20 @@ class QqClientTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
                 val req0 = JSONObject(request.body.readUtf8()).getJSONObject("req_0")
-                seen += req0
                 val key = req0.getString("module") + "/" + req0.getString("method")
+                // 0.1.14 第 9 条：登录态下 cgi() 会先取一次 GetSession（之后
+                // 缓存），直接回合法 session，不记入 seen。
+                if (key == "music.getSession.session/GetSession") return json(sessionResponse())
+                seen += req0
                 val body = responses[key] ?: return MockResponse().setResponseCode(404)
                 return json(body)
             }
         }
 
     private fun cgiOk(dataJson: String): String = """{"code":0,"req_0":{"code":0,"data":$dataJson}}"""
+
+    /** GetSession 的合法响应：data.session.uid/sid（cgiRaw 返回 req_0）。 */
+    private fun sessionResponse(): String = cgiOk("""{"session":{"uid":"UID123","sid":"SID123"}}""")
 
     @Test
     fun searchSongsParsesItemSongAndSendsType0() = runBlocking {
@@ -580,6 +593,83 @@ class QqClientTest {
         assertEquals("https://example.com/cover.jpg", playlists[0].coverUrl)
         assertEquals("QQ音乐", playlists[0].creatorName)
         assertEquals(50, playlists[0].trackCount)
+    }
+
+    @Test
+    fun recommendPlaylistsReadsTidAsId() = runBlocking {
+        // 0.1.14 第 9 条：推荐歌单 basic 里的歌单 id 键是 tid（实测
+        // basic.tid=7572223780，无 dissid/id），之前只认 dissid/id，
+        // 25 条推荐歌单全被丢弃，主页 QQ 歌单区一直是空的。
+        server.dispatcher = readDispatcher(
+            mapOf(
+                "music.playlist.PlaylistSquare/GetRecommendFeed" to cgiOk(
+                    """{"List":[{"Playlist":{"basic":{"tid":7572223780,"title":"抖音热歌","cover":{"default_url":"https://example.com/cover.jpg"},"song_cnt":543,"creator":{"nick":"今晚打老虎"}}}}]}""",
+                ),
+            ),
+        )
+        val playlists = client.recommendPlaylists()
+        assertEquals(1, playlists.size)
+        assertEquals("抖音热歌", playlists[0].name)
+        assertEquals("7572223780", playlists[0].sourceId)
+        assertEquals("https://example.com/cover.jpg", playlists[0].coverUrl)
+        assertEquals(543, playlists[0].trackCount)
+    }
+
+    @Test
+    fun contentCallsAttachStoredCredentialAndSession() = runBlocking {
+        // 0.1.14 第 9 条：L-1124 给每次 CGI 调用都带 session（uid/sid）
+        // 与登录凭证（comm qq/authst + Cookie），之前内容请求全是匿名
+        // 的。登录态下推荐请求应带上凭证与 session，且 session 只取一次
+        // （第二次调用不再发 GetSession）。
+        loggedIn()
+        val comms = mutableListOf<JSONObject>()
+        val cookies = mutableListOf<String?>()
+        val methods = mutableListOf<String>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
+                val root = JSONObject(request.body.readUtf8())
+                val req0 = root.getJSONObject("req_0")
+                comms += root.getJSONObject("comm")
+                cookies += request.getHeader("Cookie")
+                methods += req0.getString("method")
+                return when (req0.getString("method")) {
+                    "GetSession" -> json(cgiOk("""{"session":{"uid":"UID123","sid":"SID123"}}"""))
+                    "GetRecommendFeed" -> json(cgiOk("""{"List":[{"Playlist":{"basic":{"tid":7572223780,"title":"抖音热歌","cover":{"default_url":"https://example.com/c.jpg"},"song_cnt":1,"creator":{"nick":"x"}}}}]}"""))
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
+        val first = client.recommendPlaylists()
+        val second = client.recommendPlaylists()
+        assertEquals(1, first.size)
+        assertEquals(1, second.size)
+        assertEquals(1, methods.count { it == "GetSession" })
+        assertEquals(2, methods.count { it == "GetRecommendFeed" })
+        val sessionComm = comms[0]
+        assertTrue(!sessionComm.has("qq"))
+        val contentComm = comms[1]
+        assertEquals("123456", contentComm.getString("qq"))
+        assertEquals("KEY123", contentComm.getString("authst"))
+        assertEquals("UID123", contentComm.getString("uid"))
+        assertEquals("SID123", contentComm.getString("sid"))
+        assertTrue(cookies[1]!!.contains("qm_keyst=KEY123"))
+        assertTrue(cookies[1]!!.contains("qqmusic_key=KEY123"))
+    }
+
+    @Test
+    fun loginExchangeDoesNotAttachStoredCredential() = runBlocking {
+        // 0.1.14 第 9 条：登录换凭证走全新 scope，不带旧凭证——否则
+        // 已登录时重新登录会把失效的旧凭证发给 LoginServer。
+        loggedIn()
+        var comm: JSONObject? = null
+        server.dispatcher = musicuDispatcher { body ->
+            comm = body.getJSONObject("comm")
+            json("""{"code":0,"req_0":{"code":0,"data":{}}}""")
+        }
+        client.sendPhoneAuthCode("13812345678")
+        assertTrue(!comm!!.has("qq"))
+        assertTrue(!comm!!.has("authst"))
     }
 
     @Test

@@ -381,13 +381,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val songs = runCatching { qqClient.searchSongs(keywords) }.getOrDefault(emptyList())
                     val artists = runCatching { qqClient.searchArtists(keywords) }.getOrDefault(emptyList())
                     val playlists = runCatching { qqClient.searchPlaylists(keywords) }.getOrDefault(emptyList())
-                    _home.value = _home.value.copy(searchResults = songs, searchQqArtists = artists, searchPlaylists = playlists, searching = false)
+                    // 大排查 S1：切源时清掉另一源的歌手列表——之前只写本源
+                    // 的列表，旧源歌手区一直残留（两个“歌手”标题并列）。
+                    _home.value = _home.value.copy(searchResults = songs, searchArtists = emptyList(), searchQqArtists = artists, searchPlaylists = playlists, searching = false)
                 }
                 MusicSource.NETEASE -> {
                     val songs = runCatching { api.search(keywords) }.getOrDefault(emptyList())
                     val artists = runCatching { api.searchArtists(keywords) }.getOrDefault(emptyList())
                     val playlists = runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList())
-                    _home.value = _home.value.copy(searchResults = songs, searchArtists = artists, searchPlaylists = playlists, searching = false)
+                    // 大排查 S1：同上，清掉 QQ 歌手残留。
+                    _home.value = _home.value.copy(searchResults = songs, searchArtists = artists, searchQqArtists = emptyList(), searchPlaylists = playlists, searching = false)
                 }
                 // LOCAL: the search box is disabled in local mode (§2.6.3) —
                 // the VM keeps no local-search branch; local songs are browsed from Home.
@@ -552,11 +555,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelQrLogin() {
         qrJob?.cancel(); qrState.value = null; qrImage.value = ""; _qrError.value = null
     }
-    /** QQ 任一登录方式成功后的收尾：启用 QQ 源、拉取资料。 */
+    /** QQ 任一登录方式成功后的收尾：启用 QQ 源、拉取资料，并刷新
+     * 主页——大排查 S7：之前只改开关不刷主页，QQ 歌单/新歌区一直是空
+     * 的（本地模式下还一直停留在本地音乐区），直到手动下拉刷新。 */
     private fun onQqLoginSuccess() {
         store.qqEnabled = true; _qqEnabled.value = true
         _qqLoggedIn.value = true
         refreshQqSession()
+        refreshHome()
     }
 
     /** 第六轮第 1 项：QQ 二维码登录（与网易云 startQrLogin 同款状态机）：
@@ -711,11 +717,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _qqSmsError.value = null; qqSmsCaptchaUrl.value = null
     }
     /** 第六轮第 19 项：退出 QQ 登录——只清 QQ 侧会话并关闭 QQ 源；
-     * 网易云登录不受影响。 */
+     * 网易云登录不受影响。大排查 S7：退出后也刷新主页，否则 QQ
+     * 歌单/新歌/排行榜的旧内容一直留在主页上（开关已关）。 */
     fun qqLogout() {
         qqClient.clearSession(); _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
         _qqLoggedIn.value = false
         store.qqEnabled = false; _qqEnabled.value = false
+        refreshHome()
     }
     fun testConnection() = viewModelScope.launch { _health.value = api.apiHealth() }
     fun logout() {
@@ -724,7 +732,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _likedSongs.value = emptyList(); likedSongsLoaded = false
         _artists.value = emptyList(); artistsLoaded = false
         _albums.value = emptyList(); albumsLoaded = false
-        _toplist.value = emptyList(); toplistLoaded = false
+        // 大排查 S7：退出后排行榜（公开区，不用登录）也要重拉——之前
+        // 只清掉不重拉，退出登录后主页排行榜区一直空白，直到切源/重启。
+        _toplist.value = emptyList(); toplistLoaded = false; loadToplist(force = true)
     }
 
     /** 喜爱歌曲：喜欢的 id 列表 + /song/detail 分批取详情（一次最多 100 个 id）。 */

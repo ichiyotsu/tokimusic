@@ -321,7 +321,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
     onOpenPlaylist: (Long) -> Unit,
 ) {
     // 保留原“我的歌单”的分组（我喜欢的音乐 / 我创建的歌单 / 我收藏的歌单）。
+    // 大排查 S8：歌单为空时之前整栏空白、无任何提示，补一行空态文案。
     val groups = com.tokimusic.app.data.model.groupPlaylists(myPlaylists, myUid)
+    if (groups.all { it.value.isEmpty() }) {
+        item {
+            Text(
+                "还没有歌单",
+                Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
     groups.forEach { (group, list) ->
         if (list.isEmpty()) return@forEach
         item {
@@ -348,10 +360,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
                     Modifier.matchParentSize().clip(RoundedCornerShape(16.dp)),
                     contentScale = ContentScale.Crop,
                 )
-                // 0.1.13 第 23 项：两源都开时封面左上角叠源徽标。
-                if (showSourceBadge) {
-                    SourceBadge(playlist.source, size = 20, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart))
-                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -363,6 +371,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            // 0.1.14 第 8 项：源徽标（音乐 icon）放行尾右侧，不再叠在
+            // 封面左上角；只在双源都开时显示。
+            if (showSourceBadge) {
+                Spacer(Modifier.width(12.dp))
+                SourceBadge(playlist.source, size = 20, paletteIndex = paletteIndex)
             }
         }
     }
@@ -427,7 +441,20 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     onPlay: (Int) -> Unit,
 ) {
     // “歌曲”行定义（PLAN 默认）：最近播放全量列表。
-    itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, paletteIndex = paletteIndex) { onPlay(i) } }
+    // 大排查 S8：最近播放为空时之前整栏空白、无任何提示（喜欢/歌手/
+    // 专辑栏都有空态），补一行空态文案。
+    if (recent.isEmpty()) {
+        item {
+            Text(
+                "还没有播放过歌曲",
+                Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else {
+        itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, paletteIndex = paletteIndex) { onPlay(i) } }
+    }
 }
 
 @Composable

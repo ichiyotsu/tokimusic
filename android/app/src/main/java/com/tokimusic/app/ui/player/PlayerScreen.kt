@@ -654,6 +654,15 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f), onOpenArtist: ((Long) -> Unit)? = null) {
+    // 0.1.14 第 10 条：边缘淡入淡出只在歌名真正溢出时加——之前无条件
+    // 加，3 个字的短歌名（“我可以”）两端也被 24dp 渐隐吃掉，还叠加
+    // fadingEdges 的黑块，看着突兀。basicMarquee 把文本按全宽量，
+    // onTextLayout 的 size.width 就是歌名实宽，与容器实宽（外层
+    // onSizeChanged）比，实宽更大才溢出；fadingEdges 本身不改布局，
+    // 开关切换不会引起重排循环。
+    var titleTextWidthPx by remember { mutableIntStateOf(0) }
+    var titleBoxWidthPx by remember { mutableIntStateOf(0) }
+    val titleOverflow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
     Column(modifier) {
         Text(
             song.name,
@@ -662,10 +671,12 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Clip,
+            onTextLayout = { titleTextWidthPx = it.size.width },
             // 0.1.13 第 16 项：歌名过长时左右边缘淡入淡出（轮播滚动到
-            // 边缘时不硬切）。
-            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 60.dp)
-                .fadingEdges(horizontal = true, edge = 24.dp),
+            // 边缘时不硬切）。0.1.14 第 10 条：只在溢出时加。
+            modifier = Modifier.onSizeChanged { titleBoxWidthPx = it.width }
+                .basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 60.dp)
+                .then(if (titleOverflow) Modifier.fadingEdges(horizontal = true, edge = 24.dp) else Modifier),
         )
         // 第六轮第 36 项：歌手行可点进歌手页（多歌手时进第一个；点按进页、
         // 轮播滚动不触发——basicMarquee 只是视觉滚动，不接手势）。不传

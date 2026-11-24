@@ -263,6 +263,17 @@ fun ArtistScreen(
                                 }
                             }
                         }
+                    } else {
+                        // 大排查 S8：切到“专辑”且专辑为空时之前下方一片
+                        // 空白、无任何提示，补一行空态文案。
+                        item {
+                            Text(
+                                "暂无专辑",
+                                Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = coverColors.onCoverTextDim(),
+                            )
+                        }
                     }
                 }
                 Box(

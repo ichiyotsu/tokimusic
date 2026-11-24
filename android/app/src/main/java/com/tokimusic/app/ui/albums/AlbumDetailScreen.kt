@@ -2,6 +2,7 @@ package com.tokimusic.app.ui.albums
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -116,6 +117,11 @@ fun AlbumDetailScreen(
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
                         item {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
+                                // 大排查 S10：专辑头部的歌手名可点进歌手页
+                                // （文档一直这么写，但之前是纯文本、点按无反
+                                // 应）。Album 本身不带歌手 id，用首曲的首位
+                                // 歌手（通常就是专辑歌手）；无曲目时保持纯文本。
+                                val albumArtistId = tracks.firstOrNull()?.artists?.firstOrNull()?.id
                                 if (album.artistText.isNotBlank()) {
                                     Text(
                                         album.artistText,
@@ -123,6 +129,12 @@ fun AlbumDetailScreen(
                                         color = coverColors.onCoverTextDim(),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
+                                        modifier = if (albumArtistId != null) {
+                                            Modifier.clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                            ) { onOpenArtist(albumArtistId) }
+                                        } else Modifier,
                                     )
                                     Spacer(Modifier.height(4.dp))
                                 }
