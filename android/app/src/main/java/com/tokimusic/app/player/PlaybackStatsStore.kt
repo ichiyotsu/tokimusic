@@ -42,6 +42,17 @@ class PlaybackStatsStore(context: Context) {
 
     fun yearMillis(year: Int): Long = (1..12).sumOf { monthMillis(year, it) }
 
+    /**
+     * 全部累计播放毫秒（0.1.13 第 23 项：离线模式的 tokimusic 听歌时长）——
+     * 扫全部 "day:" 键求和；从功能上线起累计，卸载 / 清数据后归零。
+     */
+    fun totalMillis(): Long =
+        prefs.all.entries.filter { (k, _) -> k.startsWith("day:") }
+            .sumOf { (_, v) -> (v as? Long) ?: 0L }
+
+    /** 全部累计播放分钟（totalMillis 的分钟数，向下取整）。 */
+    fun totalMinutes(): Long = totalMillis() / 60_000L
+
     /** Months in the year that have data, newest first. */
     fun yearMonths(year: Int): List<Pair<Int, Long>> =
         (1..12).map { it to monthMillis(year, it) }

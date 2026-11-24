@@ -2,6 +2,7 @@ package com.tokimusic.app.ui.player
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -22,8 +23,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -116,8 +118,10 @@ import kotlin.math.roundToInt
     // 第五轮第 6 项：点歌词行跳到该行开头（行级跳转）。
     onSeek: (Long) -> Unit = {},
     // 第五轮第 17 项：沉浸式——控制区已隐藏，歌词区撑满全屏；
-    // “回到当前行”按钮一并弹到最底（底部边距 80dp → 16dp，做动画）。
+    // “回到当前行”按钮一并弹到最底（底部边距 4dp → 16dp，做动画）。
     immersive: Boolean = false,
+    // 0.1.13 第 3 项（发热）：暂停时逐字轮询降频用。
+    isPlaying: Boolean = true,
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
@@ -128,8 +132,15 @@ import kotlin.math.roundToInt
         return
     }
     // 逐字动画用 50ms 轮询；只有当前行读取位置状态，其他行不重组。
+    // 0.1.13 第 3 项（发热）：暂停时降到 1000ms（暂停态进度不动，
+    // 轮询只是为了暂停中 seek 后同步一次）。
     val posState = remember { mutableLongStateOf(positionProvider()) }
-    LaunchedEffect(Unit) { while (true) { posState.longValue = positionProvider(); delay(50) } }
+    LaunchedEffect(isPlaying) {
+        while (true) {
+            posState.longValue = positionProvider()
+            delay(if (isPlaying) 50 else 1000)
+        }
+    }
     // 第三轮第 8 项：切页入场窗口只在切入后约 700ms 内打开；窗口期内
     // 首屏行逐行淡入 + 上移，窗口期后才滚入的行直接以最终态出现，
     // 滚动时不重复入场。
@@ -258,10 +269,13 @@ import kotlin.math.roundToInt
         // 第五轮第 17 项：沉浸式下按钮弹到最底（16dp，跟歌词区一起撑满全屏）。
         // 第六轮第 17 项：文字 pill 改 48dp 圆形图标钮——当前行在可视区上方
         // 用上箭头、下方用下箭头；放在 More 按钮正上方、右对齐（end 24dp，
-        // bottom 80dp / 沉浸 16dp）；长按提示“回到当前行”。
+        // bottom 4dp / 沉浸 16dp）；长按提示“回到当前行”。
+        // 0.1.13 第 15 项：非沉浸底边距 80dp → 4dp——按钮 48dp 高 + 4dp
+        // 底边距 + 控制区 8dp 顶边距 = 到 More 按钮 12dp，与左侧收藏钮
+        // 到 More 的 12dp 间距对齐。
         if (userBrowsing && active >= 0) {
             val backToCurrentBottom by animateDpAsState(
-                targetValue = if (immersive) 16.dp else 80.dp,
+                targetValue = if (immersive) 16.dp else 4.dp,
                 animationSpec = tween(300),
                 label = "backToCurrentBottom",
             )
@@ -291,7 +305,7 @@ import kotlin.math.roundToInt
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        if (arrowUp) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        if (arrowUp) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                         contentDescription = "回到当前行",
                         tint = textColor,
                         modifier = Modifier.size(24.dp),
@@ -355,6 +369,15 @@ private fun LyricLineRow(
     // distance 只留给入场 stagger 的延迟。
     val blurPx = fade.first
     val rowAlpha = fade.second
+    // 0.1.13 第 6 项：当前行进出时的缩放过渡——当前行 1f、非当前行
+    // 约 0.8f（与字号差 28sp / 22sp 对应），300ms tween，锚点左中；
+    // 之前只有字号突变，进出时没有动画，看起来“跳”一下。上下 64dp
+    // 渐隐带 + 磨砂已存在，保留。
+    val rowScale by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0.8f,
+        animationSpec = tween(300),
+        label = "lyricRowScale",
+    )
     // 第三轮第 8 项：切页入场——窗口期内组成的行从透明 + 24px 下移
     // 逐行淡入；窗口期后才滚入的行直接以最终态出现（不重复入场）。
     val enterAlpha = remember { Animatable(if (entranceWindow) 0f else 1f) }
@@ -371,6 +394,9 @@ private fun LyricLineRow(
             .graphicsLayer {
                 alpha = enterAlpha.value * (springAlpha?.value ?: 1f) * rowAlpha
                 translationY = enterOffsetY.value + (springOffset?.value ?: 0f)
+                scaleX = rowScale
+                scaleY = rowScale
+                transformOrigin = TransformOrigin(0f, 0.5f)
                 renderEffect = if (blurPx > 0f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
             },
     ) {

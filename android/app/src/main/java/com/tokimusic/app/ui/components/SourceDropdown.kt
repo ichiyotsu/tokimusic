@@ -8,8 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -25,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.tokimusic.app.R
 import com.tokimusic.app.ui.theme.NeteaseRed
 import com.tokimusic.app.ui.theme.QqGreen
 
@@ -51,14 +52,17 @@ fun SourceDropdownButton(
                 .clickable { expanded = true },
             contentAlignment = Alignment.Center,
         ) {
+            // 0.1.13 第 1 / 2 项：入口叠放的两枚 logo 换各源专属矢量
+            // （网易云 mingcute netease-music-line 红、QQ mingcute
+            // music-3-line 绿），位置与大小不变。
             Icon(
-                Icons.Filled.MusicNote,
+                painterResource(R.drawable.ic_source_netease),
                 contentDescription = "切换音乐源",
                 tint = NeteaseRed,
                 modifier = Modifier.size(20.dp).offset((-4).dp, (-3).dp),
             )
             Icon(
-                Icons.Filled.MusicNote,
+                painterResource(R.drawable.ic_source_qq),
                 contentDescription = null,
                 tint = QqGreen,
                 modifier = Modifier.size(20.dp).offset(4.dp, 3.dp),
@@ -72,12 +76,14 @@ fun SourceDropdownButton(
         ) {
             SourceDropdownRow(
                 name = "网易云音乐",
+                iconRes = R.drawable.ic_source_netease,
                 tint = NeteaseRed,
                 selected = neteaseEnabled,
                 onClick = { onToggleNetease(); expanded = false },
             )
             SourceDropdownRow(
                 name = "QQ音乐",
+                iconRes = R.drawable.ic_source_qq,
                 tint = QqGreen,
                 selected = qqEnabled,
                 onClick = { onToggleQq(); expanded = false },
@@ -87,15 +93,15 @@ fun SourceDropdownButton(
 }
 
 @Composable
-private fun SourceDropdownRow(name: String, tint: Color, selected: Boolean, onClick: () -> Unit) {
+private fun SourceDropdownRow(name: String, iconRes: Int, tint: Color, selected: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
         text = { Text(name, Modifier.alpha(if (selected) 1f else 0.5f)) },
         onClick = onClick,
         leadingIcon = {
-            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = tint, modifier = Modifier.alpha(if (selected) 1f else 0.5f))
+            Icon(painterResource(iconRes), contentDescription = null, tint = tint, modifier = Modifier.alpha(if (selected) 1f else 0.5f))
         },
         trailingIcon = {
-            if (selected) Icon(Icons.Filled.Check, contentDescription = "已选中")
+            if (selected) Icon(Icons.Rounded.Check, contentDescription = "已选中")
         },
     )
 }

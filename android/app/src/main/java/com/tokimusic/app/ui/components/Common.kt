@@ -8,9 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,17 +20,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.ui.theme.monetColorForSource
 
 /**
  * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
@@ -76,7 +82,7 @@ import com.tokimusic.app.data.model.Song
     }
 }
 @OptIn(ExperimentalFoundationApi::class)
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -102,7 +108,11 @@ import com.tokimusic.app.data.model.Song
     }
     Row(rowModifier.padding(horizontal = horizontalPadding, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
-        AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+        // 0.1.13 第 23 项：双源同时展示时，封面左上角叠源徽标。
+        Box(Modifier.size(48.dp)) {
+            AsyncImage(song.picUrl, song.name, Modifier.matchParentSize().clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+            if (showSourceBadge) SourceBadge(song.source, size = 20, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(2.dp))
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -128,14 +138,14 @@ import com.tokimusic.app.data.model.Song
         if (trailingAction != null) { Spacer(Modifier.width(12.dp)); trailingAction() }
     }
 }
-@Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, onClick: () -> Unit) {
+@Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
     Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
         Box(Modifier.size(140.dp)) {
             AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(MaterialTheme.shapes.extraLarge), contentScale = ContentScale.Crop)
             // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
-            // （半透明底 + 纯色音符，红 = 网易云、绿 = QQ，与源下拉同色）。
+            // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
             if (showSourceBadge) {
-                SourceBadge(playlist.source, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+                SourceBadge(playlist.source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -145,22 +155,25 @@ import com.tokimusic.app.data.model.Song
 }
 
 /**
- * 源徽标（第六轮第二批第 21 项）：纯色音符 + 半透明源色底（红 = 网易云、
- * 绿 = QQ），与源下拉的 logo 同色。只在双源都启用时显示——单源无歧义。
+ * 源徽标（第六轮第二批第 21 项）：只在双源都启用时显示——单源无歧义。
+ * 0.1.13 第 1 / 2 项：图标换各源专属矢量（网易云 mingcute
+ * netease-music-line、QQ mingcute music-3-line、本地 mdi
+ * folder-music-outline）；第 12 项：底色换莫奈色（按源取色板前三色），
+ * 来源仍由图标形状区分。
  */
 @Composable
-fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
-    val tint = when (source) {
-        MusicSource.NETEASE -> com.tokimusic.app.ui.theme.NeteaseRed
-        MusicSource.QQ -> com.tokimusic.app.ui.theme.QqGreen
-        MusicSource.LOCAL -> MaterialTheme.colorScheme.onSurfaceVariant
+fun SourceBadge(source: MusicSource, size: Int = 20, paletteIndex: Int = 0, modifier: Modifier = Modifier) {
+    val iconRes = when (source) {
+        MusicSource.NETEASE -> R.drawable.ic_source_netease
+        MusicSource.QQ -> R.drawable.ic_source_qq
+        MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Box(
-        modifier.size(size.dp).clip(CircleShape).background(tint.copy(alpha = 0.85f)),
+        modifier.size(size.dp).clip(CircleShape).background(monetColorForSource(source, paletteIndex)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.Filled.MusicNote,
+            painterResource(iconRes),
             contentDescription = when (source) {
                 MusicSource.NETEASE -> "网易云音乐"
                 MusicSource.QQ -> "QQ音乐"
@@ -182,7 +195,7 @@ fun SmallRoundPlayButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.Filled.PlayArrow,
+            Icons.Rounded.PlayArrow,
             contentDescription = "播放",
             modifier = Modifier.size(24.dp),
         )
@@ -249,7 +262,10 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
     }
 }
 @Composable fun Avatar(url: String, size: Int = 40) {
-    AsyncImage(url, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+    // 0.1.13 第 18 项：自定义头像是应用私有目录里的本地文件路径
+    // （以 "/" 开头），走 File 模型；其余（http 链接 / 空）走原字符串模型。
+    val model: Any = if (url.startsWith("/")) java.io.File(url) else url
+    AsyncImage(model, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
 fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60) }
 /** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
@@ -269,6 +285,43 @@ fun formatHours(totalMinutes: Long): String {
 
 /** 两个毫秒时间戳之间隔了多少个整天（向下取整；当天为 0 天；时钟回拨时不为负）。第五轮第 24 项。 */
 fun daysSince(firstMs: Long, nowMs: Long): Long = ((nowMs - firstMs) / 86_400_000L).coerceAtLeast(0L)
+
+/**
+ * 边缘淡入淡出（0.1.13 第 16 / 17 项）：内容在上下或左右边缘做 alpha
+ * 渐隐，滚动到边缘时不生硬截断。DstIn 把渐变当 alpha 蒙版乘在已画
+ * 内容上；边缘带宽 [edge]，内容比两倍带宽还短时不画（免得整块变淡）。
+ * 纯 Modifier，可单测的只有调用方逻辑，本身真机验。
+ */
+fun Modifier.fadingEdges(
+    horizontal: Boolean = false,
+    vertical: Boolean = false,
+    edge: Dp = 32.dp,
+): Modifier = this.drawWithContent {
+    drawContent()
+    val e = edge.toPx()
+    if (vertical && e > 0f && size.height > 2 * e) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to Color.Transparent,
+                e / size.height to Color.Black,
+                (size.height - e) / size.height to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+    if (horizontal && e > 0f && size.width > 2 * e) {
+        drawRect(
+            brush = Brush.horizontalGradient(
+                0f to Color.Transparent,
+                e / size.width to Color.Black,
+                (size.width - e) / size.width to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+}
 fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }
 
 /**
@@ -303,7 +356,7 @@ fun CirroCardRow(
             Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

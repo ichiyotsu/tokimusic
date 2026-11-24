@@ -20,8 +20,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -152,11 +152,11 @@ fun ListeningStatsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { offset-- }, enabled = true) {
-                    Icon(Icons.Filled.ChevronLeft, contentDescription = "上一期")
+                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "上一期")
                 }
                 Text(periodLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = { if (offset < 0) offset++ }, enabled = offset < 0) {
-                    Icon(Icons.Filled.ChevronRight, contentDescription = "下一期")
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = "下一期")
                 }
             }
         }

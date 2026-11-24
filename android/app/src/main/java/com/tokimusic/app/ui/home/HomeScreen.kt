@@ -32,8 +32,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,11 +64,13 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
+import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
@@ -116,6 +118,8 @@ fun HomeScreen(
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
     val bothEnabled = neteaseEnabled && qqEnabled
+    // 0.1.13 第 12 项：莫奈配色序号（歌单徽标底色用）。
+    val paletteIndex = vm.store.monetPaletteIndex
     val toplist by vm.toplist.collectAsState()
     // Sixth round, batch 2, item 33: the toplist now lives on Home —
     // load it here (force on source toggle so a switch re-fetches).
@@ -198,7 +202,7 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Rounded.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("无法连接网易云", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "请检查网络后重试",
@@ -247,6 +251,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
+                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -260,6 +265,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
+                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -322,7 +328,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    ToplistGrid(neToplist, onOpenPlaylist)
+                    ToplistGrid(neToplist, paletteIndex, onOpenPlaylist)
                 }
             }
             if (qqToplist.isNotEmpty()) {
@@ -336,7 +342,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    ToplistGrid(qqToplist, onOpenPlaylist)
+                    ToplistGrid(qqToplist, paletteIndex, onOpenPlaylist)
                 }
             }
         }
@@ -361,7 +367,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(allPlaylists, key = { it.id }) { playlist ->
-                        PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) }
+                        PlaylistCard(playlist, showSourceBadge = bothEnabled, paletteIndex = paletteIndex) { onOpenPlaylist(playlist.id) }
                     }
                 }
             }
@@ -379,7 +385,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Spacer(Modifier.height(8.dp))
-                NewSongsGrid(allNewSongs, bothEnabled, vm, onOpenArtist)
+                NewSongsGrid(allNewSongs, bothEnabled, paletteIndex, vm, onOpenArtist)
             }
         }
     }
@@ -399,7 +405,7 @@ fun HomeScreen(
 
 /** Toplist 2-row horizontal grid (Discover's layout, moved onto Home). */
 @Composable
-private fun ToplistGrid(playlists: List<Playlist>, onOpenPlaylist: (Long) -> Unit) {
+private fun ToplistGrid(playlists: List<Playlist>, paletteIndex: Int = 0, onOpenPlaylist: (Long) -> Unit) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
         modifier = Modifier.fillMaxWidth().height(416.dp),
@@ -408,14 +414,14 @@ private fun ToplistGrid(playlists: List<Playlist>, onOpenPlaylist: (Long) -> Uni
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(playlists, key = { it.id }) { playlist ->
-            PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
+            PlaylistCard(playlist, paletteIndex = paletteIndex) { onOpenPlaylist(playlist.id) }
         }
     }
 }
 
 /** Recommended new songs: 2-row horizontally scrolling grid of SongRows. */
 @Composable
-private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, vm: AppViewModel, onOpenArtist: (Long) -> Unit) {
+private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, paletteIndex: Int = 0, vm: AppViewModel, onOpenArtist: (Long) -> Unit) {
     // One column is one full-width song row (screen width minus the 24dp
     // page margins); SongRow's own horizontal padding is 0 here because
     // the grid's contentPadding already provides the margins.
@@ -439,7 +445,7 @@ private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, vm: AppViewMod
                             SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") }
                             if (bothEnabled) {
                                 Spacer(Modifier.width(8.dp))
-                                SourceBadge(song.source)
+                                SourceBadge(song.source, paletteIndex = paletteIndex)
                             }
                         }
                     },
@@ -460,6 +466,15 @@ private fun LocalMusicHeader(hasSongs: Boolean, hasPermission: Boolean, onReques
         Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // 0.1.13 第 7 项：本地模式标题上方加文件夹音乐图标（mdi
+        // folder-music-outline，56dp 圆角 tile，surfaceContainer 底，
+        // 28dp 图标）。
+        Box(
+            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_local_music), contentDescription = null, modifier = Modifier.size(28.dp))
+        }
         Text("本地音乐", style = MaterialTheme.typography.titleLarge)
         Text(
             "两源都已关闭，只显示本地音乐",
@@ -497,6 +512,7 @@ private fun RecommendCard(
     hazeState: dev.chrisbanes.haze.HazeState,
     backdropBlur: Boolean,
     showSourceBadge: Boolean = false,
+    paletteIndex: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val hasCover = loggedIn && songs.isNotEmpty()
@@ -547,7 +563,7 @@ private fun RecommendCard(
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
-                        Icons.Filled.MusicNote,
+                        Icons.Rounded.MusicNote,
                         contentDescription = null,
                         modifier = Modifier.size(56.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -563,8 +579,9 @@ private fun RecommendCard(
                 }
             }
             // 第六轮第二批第 21 项：双源都启用时，卡片左上角叠 28dp 网易云徽标。
+            // 0.1.13 第 12 项：徽标底色用莫奈色系。
             if (showSourceBadge) {
-                SourceBadge(MusicSource.NETEASE, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+                SourceBadge(MusicSource.NETEASE, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
             }
         }
     }

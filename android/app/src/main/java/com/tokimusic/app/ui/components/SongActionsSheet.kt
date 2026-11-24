@@ -15,12 +15,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,16 +88,16 @@ fun SongActionsSheet(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SongActionButton(
                         label = if (liked) "已收藏" else "收藏",
-                        icon = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         tint = if (liked) MaterialTheme.colorScheme.primary else CirroPlayKeyIcon,
                         onClick = onToggleLike,
                     )
-                    SongActionButton(label = "关于", icon = Icons.Filled.Info, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.About })
-                    SongActionButton(label = "添加", icon = Icons.Filled.PlaylistAdd, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.Add })
+                    SongActionButton(label = "关于", icon = Icons.Rounded.Info, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.About })
+                    SongActionButton(label = "添加", icon = Icons.Rounded.PlaylistAdd, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.Add })
                     if (context.isOwnPlaylist) {
                         SongActionButton(
                             label = "删除",
-                            icon = Icons.Filled.Delete,
+                            icon = Icons.Rounded.Delete,
                             tint = MaterialTheme.colorScheme.error,
                             onClick = onRemoveFromPlaylist,
                         )
@@ -159,7 +159,7 @@ private fun SongActionButton(label: String, icon: ImageVector, tint: androidx.co
 private fun SongActionsSubHeader(title: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, Modifier.size(40.dp)) {
-            Icon(Icons.Filled.ChevronLeft, contentDescription = "返回")
+            Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回")
         }
         Text(title, style = MaterialTheme.typography.titleMedium)
     }

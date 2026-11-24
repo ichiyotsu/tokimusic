@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -147,7 +147,7 @@ fun AlbumDetailScreen(
                                                 .padding(horizontal = 20.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            Icon(Icons.Filled.PlayArrow, contentDescription = "播放全部", tint = CirroPlayKeyIcon, modifier = Modifier.size(28.dp))
+                                            Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = CirroPlayKeyIcon, modifier = Modifier.size(28.dp))
                                         }
                                         Spacer(Modifier.width(16.dp))
                                     }

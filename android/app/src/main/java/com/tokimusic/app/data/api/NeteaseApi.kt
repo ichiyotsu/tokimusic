@@ -30,6 +30,8 @@ interface NeteaseApi {
     suspend fun userLevel(): Int                   // /api/user/level (weapi) — data.level
     suspend fun recentSongs(): List<Song>             // /history/recent/songs
     suspend fun artistSublist(): List<Artist>         // /artist/sublist （我关注的歌手）
+    /** 关注 / 取消关注歌手（0.1.13 第 24 项）：/api/artist/sub|unsub（weapi，上游 artist_sub 模块）；返回是否成功。 */
+    suspend fun artistSub(id: Long, subscribe: Boolean): Boolean
     suspend fun artistDetail(id: Long): Artist        // /artist/head/info/get （第三轮第 12 项，weapi；上游模块未指定 crypto，实测 weapi 可用）
     suspend fun artistTopSongs(id: Long): List<Song>  // /artist/top/song （第三轮第 12 项，weapi，热门 50 首）
     suspend fun artistSongs(id: Long): List<Song>   // /v1/artist/songs （第五轮第 13 项，eapi，分页拉全量 + 去 live + 原唱/单曲优先排序）

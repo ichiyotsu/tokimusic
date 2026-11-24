@@ -537,6 +537,18 @@ class NeteaseClient(
                 }
             }
 
+    // 0.1.13 第 24 项：关注 / 取消关注歌手（上游 artist_sub 模块：
+    // /api/artist/sub|unsub，weapi，参数 artistId + artistIds "[id]"；
+    // 失败（未登录 / 网络）返回 false，不抛异常）。
+    override suspend fun artistSub(id: Long, subscribe: Boolean): Boolean =
+        runCatching {
+            post(
+                if (subscribe) "/api/artist/sub" else "/api/artist/unsub",
+                obj("artistId" to id, "artistIds" to "[$id]"),
+                Crypto.WEAPI,
+            ).body.optInt("code") == 200
+        }.getOrDefault(false)
+
     // 第三轮第 12 项：歌手详情 / 热门歌曲 / 专辑列表 / 专辑详情。
     // artist_detail 上游模块未指定 crypto，实测 weapi 可用（2026-11-21，
     // 上游模块直连 music.163.com 验证：plain 与 weapi 均返回 code 200）。

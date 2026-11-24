@@ -50,6 +50,13 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
 data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — no QQ artist detail this round, tap shows a toast). */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), val searchSource: MusicSource = MusicSource.NETEASE, /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList())
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
+/** 单个来源的资料库统计（0.1.13 第 23 项）：等级 + 听歌分钟数；minutes 为 null 表示该源没有时长数据（QQ 暂无时长接口），显示 "—"。 */
+data class SourceStats(val level: Int, val minutes: Long?)
+
+/** 关注歌手 id 集合的纯切换（0.1.13 第 24 项，JVM 单测覆盖）：已关注则去掉，未关注则加上。 */
+fun toggleFollowedIds(ids: Set<Long>, id: Long): Set<Long> =
+    if (id in ids) ids - id else ids + id
+
 /** Music source (sixth round, item 19/20): the two login sources plus the local player. Moved to the model layer (see Models.kt) so QQ playback routing can live outside the UI. */
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -62,6 +69,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // 第六轮第 1 项：QQ 登录态（与网易云 authState 平行，各自独立）。
     private val _qqProfile = MutableStateFlow<QqProfile?>(null); val qqProfile: StateFlow<QqProfile?> = _qqProfile
     private val _qqAuthState = MutableStateFlow(AuthState.Unknown); val qqAuthState: StateFlow<AuthState> = _qqAuthState
+    // 0.1.13 第 4 项：QQ 是否登录只看凭证（qqMusicId 非空），不依赖
+    // GetLoginUserInfo 的资料拉取——资料拉取失败时源开关仍可用，
+    // 登录成功后立即显示已登录态。
+    private val _qqLoggedIn = MutableStateFlow(store.qqMusicId.isNotBlank()); val qqLoggedIn: StateFlow<Boolean> = _qqLoggedIn
     // 第六轮第 19 项：源启用开关——设置里的开关与主页/资料库下拉菜单翻
     // 同一个标志（StateFlow 供界面订阅；store 是持久层）。
     private val _neteaseEnabled = MutableStateFlow(store.neteaseEnabled); val neteaseEnabled: StateFlow<Boolean> = _neteaseEnabled
@@ -111,6 +122,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val qqSmsCountdown = MutableStateFlow(0)
     private val _qqSmsError = MutableStateFlow<String?>(null); val qqSmsError: StateFlow<String?> = _qqSmsError
     val qqSmsCaptchaUrl = MutableStateFlow<String?>(null)
+    // 0.1.13 第 4 项：短信登录成功标志——弹窗订阅它，成功后自动关闭 + 提示。
+    val qqSmsSuccess = MutableStateFlow(false)
+    // 0.1.13 第 18 项：自定义头像 / 显示名 / ID（Tokinote 方案：本地
+    // 持久化 + StateFlow 供头像入口与账户卡订阅；空 = 用服务端值）。
+    private val _customAvatarPath = MutableStateFlow(store.profileAvatarPath); val customAvatarPath: StateFlow<String> = _customAvatarPath
+    private val _customDisplayName = MutableStateFlow(store.profileDisplayName); val customDisplayName: StateFlow<String> = _customDisplayName
+    private val _customUserId = MutableStateFlow(store.profileCustomId); val customUserId: StateFlow<String> = _customUserId
+    fun setCustomAvatarPath(path: String) { store.profileAvatarPath = path; _customAvatarPath.value = path }
+    fun setCustomDisplayName(name: String) { store.profileDisplayName = name; _customDisplayName.value = name }
+    fun setCustomUserId(id: String) { store.profileCustomId = id; _customUserId.value = id }
+    // 0.1.13 第 24 项：已关注歌手 id（/artist/sublist 的缓存）；关注
+    // 按钮的状态与切换都走它，不直接读资料库的 artists 列表。
+    private val _followedArtistIds = MutableStateFlow<Set<Long>>(emptySet()); val followedArtistIds: StateFlow<Set<Long>> = _followedArtistIds
+    // 0.1.13 第 23 项：QQ 与本地的资料库统计。QQ 暂无等级 / 时长接口：
+    // 等级固定 Lv.1（用户确认“等级后面再做，现在都显示 Lv.1”），
+    // 时长为 null（显示 "—"）；本地等级同样 Lv.1，时长读本地累计。
+    val qqStats = MutableStateFlow(SourceStats(level = 1, minutes = null))
+    private val _localStats = MutableStateFlow(SourceStats(level = 1, minutes = 0L)); val localStats: StateFlow<SourceStats> = _localStats
+    fun refreshLocalStats() {
+        _localStats.value = SourceStats(level = 1, minutes = player.statsStore.totalMinutes())
+    }
     private val qqMqttClient = QqMqttClient(qqClient)
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
@@ -195,6 +227,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 回未登录，不发请求。 */
     fun refreshQqSession() = viewModelScope.launch {
         val p = runCatching { qqClient.getLoginUserInfo() }.getOrNull()
+        // 0.1.13 第 4 项：登录态只看凭证——资料拉取失败也不把已登录
+        // 打回未登录（开关与已登录显示不依赖这次拉取）。
+        _qqLoggedIn.value = store.qqMusicId.isNotBlank()
         if (p == null) {
             _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
         } else {
@@ -523,6 +558,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** QQ 任一登录方式成功后的收尾：启用 QQ 源、记首次登录时间、拉取资料。 */
     private fun onQqLoginSuccess() {
         store.qqEnabled = true; _qqEnabled.value = true
+        _qqLoggedIn.value = true
         if (store.qqFirstLoginMs == 0L) store.qqFirstLoginMs = System.currentTimeMillis()
         refreshQqSession()
     }
@@ -618,6 +654,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         qqSmsJob?.cancel()
         _qqSmsError.value = null
+        qqSmsSuccess.value = false
         qqSmsJob = viewModelScope.launch {
             try {
                 when (val result = qqClient.sendPhoneAuthCode(phone)) {
@@ -648,6 +685,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         qqSmsJob = viewModelScope.launch {
             try {
                 qqClient.phoneAuthorize(phone, code)
+                // 0.1.13 第 4 项：短信登录成功标志——弹窗订阅它自动关闭。
+                qqSmsSuccess.value = true
                 onQqLoginSuccess()
             } catch (e: CancellationException) {
                 throw e
@@ -672,12 +711,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelQqSmsLogin() {
         qqSmsJob?.cancel(); qqSmsCountdownJob?.cancel()
         qqSmsSent.value = false; qqSmsCode.value = ""; qqSmsCountdown.value = 0
+        qqSmsSuccess.value = false
         _qqSmsError.value = null; qqSmsCaptchaUrl.value = null
     }
     /** 第六轮第 19 项：退出 QQ 登录——只清 QQ 侧会话并关闭 QQ 源；
      * 网易云登录不受影响。 */
     fun qqLogout() {
         qqClient.clearSession(); _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
+        _qqLoggedIn.value = false
         store.qqEnabled = false; _qqEnabled.value = false
     }
     fun testConnection() = viewModelScope.launch { _health.value = api.apiHealth() }
@@ -706,7 +747,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadArtists() {
         if (artistsLoaded) return
         artistsLoaded = true
-        viewModelScope.launch { _artists.value = runCatching { api.artistSublist() }.getOrDefault(emptyList()) }
+        viewModelScope.launch {
+            _artists.value = runCatching { api.artistSublist() }.getOrDefault(emptyList())
+            // 0.1.13 第 24 项：关注态与关注列表同源。
+            _followedArtistIds.value = _artists.value.map { it.id }.toSet()
+        }
+    }
+
+    /** 0.1.13 第 24 项：歌手页关注按钮进页时确保关注列表已加载（只加载一次）。 */
+    fun ensureFollowedArtistsLoaded() {
+        if (!artistsLoaded) loadArtists()
+    }
+
+    /** 0.1.13 第 24 项：关注 / 取消关注歌手——先调服务端，成功才翻本地态；失败只提示，不动状态。 */
+    fun toggleFollowArtist(id: Long) = viewModelScope.launch {
+        val following = id in _followedArtistIds.value
+        val ok = runCatching { api.artistSub(id, !following) }.getOrDefault(false)
+        if (ok) {
+            _followedArtistIds.value = toggleFollowedIds(_followedArtistIds.value, id)
+            _userMessage.value = if (following) "已取消关注" else "已关注"
+        } else {
+            _userMessage.value = if (store.cookie.isBlank()) "请先登录网易云" else "关注失败，请重试"
+        }
     }
 
     fun loadAlbums() {
