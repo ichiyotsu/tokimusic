@@ -36,7 +36,7 @@ class QqClientTest {
         override var qqDeviceId: String = "0123456789abcdef0123456789abcdef"
         override var qqDeviceId2: String = "fedcba9876543210fedcba9876543210"
         override var qqAndroidId: String = "a1b2c3d4e5f6a1b2"
-        override var qqFirstLoginMs: Long = 0L
+        override var qqRegisterDateMs: Long = 0L
         override var neteaseEnabled: Boolean = true
         override var qqEnabled: Boolean = false
     }

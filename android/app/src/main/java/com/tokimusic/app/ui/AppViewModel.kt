@@ -234,9 +234,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
         } else {
             _qqProfile.value = p; _qqAuthState.value = AuthState.LoggedIn
-            // 首次 QQ 登录时间只记一次（与网易云 firstLoginMs 同款逻辑）；
-            // 正常在扫码成功时已记，这里只补极端情况下的缺失值。
-            if (store.qqFirstLoginMs == 0L) store.qqFirstLoginMs = System.currentTimeMillis()
         }
     }
 
@@ -555,11 +552,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelQrLogin() {
         qrJob?.cancel(); qrState.value = null; qrImage.value = ""; _qrError.value = null
     }
-    /** QQ 任一登录方式成功后的收尾：启用 QQ 源、记首次登录时间、拉取资料。 */
+    /** QQ 任一登录方式成功后的收尾：启用 QQ 源、拉取资料。 */
     private fun onQqLoginSuccess() {
         store.qqEnabled = true; _qqEnabled.value = true
         _qqLoggedIn.value = true
-        if (store.qqFirstLoginMs == 0L) store.qqFirstLoginMs = System.currentTimeMillis()
         refreshQqSession()
     }
 
