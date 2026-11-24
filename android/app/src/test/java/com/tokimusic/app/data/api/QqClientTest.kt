@@ -161,6 +161,109 @@ class QqClientTest {
         assertEquals("SID1", comm.getString("sid"))
     }
 
+    // ---- 0.1.11 修复轮：check_sig 全量 cookie → authorize ----
+
+    private class QrExchangeCapture {
+        var checkSigReferer: String? = null
+        var authorizeCookie: String? = null
+        var authorizeBody: String? = null
+        var loginCode: String? = null
+    }
+
+    /** check_sig → authorize → QQLogin 的可配 dispatcher：check_sig 返回
+     * 指定的多 cookie，authorize 返回指定的响应；记录 check_sig 的
+     * Referer、authorize 的 Cookie 头与表单、QQLogin 收到的 code。 */
+    private fun qrExchangeDispatcher(
+        capture: QrExchangeCapture,
+        authorizeResponse: MockResponse,
+        checkSigCookies: List<String> = listOf("p_skey=PSKEY1; Path=/; Domain=.qq.com"),
+    ): Dispatcher = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            return when {
+                request.path!!.startsWith("/check_sig") -> {
+                    capture.checkSigReferer = request.getHeader("Referer")
+                    val resp = MockResponse().setResponseCode(302)
+                        .addHeader("Location", "https://graph.qq.com/oauth2.0/login_jump")
+                    checkSigCookies.forEach { resp.addHeader("Set-Cookie", it) }
+                    resp
+                }
+                request.path!!.startsWith("/oauth2.0/authorize") -> {
+                    capture.authorizeCookie = request.getHeader("Cookie")
+                    capture.authorizeBody = request.body.readUtf8()
+                    authorizeResponse
+                }
+                request.path!!.startsWith("/cgi-bin/musicu.fcg") -> {
+                    val req0 = JSONObject(request.body.readUtf8()).getJSONObject("req_0")
+                    when (req0.getString("module")) {
+                        "music.getSession.session" -> json(
+                            """{"code":0,"req_0":{"code":0,"data":{"session":{"uid":"UID1","sid":"SID1"}}}}""",
+                        )
+                        "QQConnectLogin.LoginServer" -> {
+                            capture.loginCode = req0.getJSONObject("param").getString("code")
+                            json(
+                                """{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456"}}}""",
+                            )
+                        }
+                        else -> MockResponse().setResponseCode(404)
+                    }
+                }
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+    }
+
+    @Test
+    fun exchangeQrLoginForwardsAllCheckSigCookiesToAuthorize() = runBlocking {
+        val capture = QrExchangeCapture()
+        server.dispatcher = qrExchangeDispatcher(
+            capture,
+            MockResponse().setResponseCode(302)
+                .addHeader("Location", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/&code=CODE123&state=state"),
+            checkSigCookies = listOf(
+                "p_skey=PSKEY1; Path=/; Domain=.qq.com",
+                "uin=o123456; Path=/; Domain=.qq.com",
+                "skey=SK1; Path=/; Domain=.qq.com",
+            ),
+        )
+        val credential = client.exchangeQrLogin("123456", "SIGX123")
+        assertEquals("KEY123", credential.musicKey)
+        // 0.1.10 真机失败的根因：只带 p_skey 时 authorize 不回 code；
+        // L-1124 转发 check_sig 的全部 cookie，这里三枚都要带上。
+        assertTrue(capture.authorizeCookie!!.contains("p_skey=PSKEY1"))
+        assertTrue(capture.authorizeCookie!!.contains("uin=o123456"))
+        assertTrue(capture.authorizeCookie!!.contains("skey=SK1"))
+        // g_tk 仍只由 p_skey 算。
+        assertTrue(capture.authorizeBody!!.contains("g_tk=${hash33("PSKEY1", 5381)}"))
+        // check_sig 带 Referer（与 L-1124 一致）。
+        assertEquals("https://xui.ptlogin2.qq.com/", capture.checkSigReferer)
+    }
+
+    @Test
+    fun exchangeQrLoginParsesCodeAtEndOfLocation() = runBlocking {
+        val capture = QrExchangeCapture()
+        server.dispatcher = qrExchangeDispatcher(
+            capture,
+            MockResponse().setResponseCode(302)
+                .addHeader("Location", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/&code=CODE9"),
+        )
+        val credential = client.exchangeQrLogin("123456", "SIGX123")
+        assertEquals("KEY123", credential.musicKey)
+        assertEquals("CODE9", capture.loginCode)
+    }
+
+    @Test
+    fun exchangeQrLoginAuthorizeErrorNamesHttpStatusAndLocation() = runBlocking {
+        server.dispatcher = qrExchangeDispatcher(
+            QrExchangeCapture(),
+            MockResponse().setResponseCode(200).setBody("<html>confirm</html>"),
+        )
+        val error = runCatching { client.exchangeQrLogin("123456", "SIGX123") }.exceptionOrNull()
+        assertTrue(error is ApiException)
+        assertTrue(error!!.message!!.contains("authorize 未返回 code"))
+        assertTrue(error.message!!.contains("HTTP 200"))
+        assertTrue(error.message!!.contains("无 Location"))
+    }
+
     @Test
     fun getLoginUserInfoParsesProfile() = runBlocking {
         settings.qqMusicId = "123456"

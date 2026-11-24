@@ -55,6 +55,11 @@ data class QqProfile(val nickname: String, val avatarUrl: String?, val musicId: 
 /** Anonymous Android session (GetSession) — its uid/sid ride in the QQLogin comm. */
 private data class QqSession(val uid: String, val sid: String)
 
+/** check_sig result: the p_skey plus every cookie the response sets — graph
+ * authorize needs the full check_sig cookie jar (L-1124 _authorize_qq_qr
+ * forwards dict(payload.cookies)), not just p_skey. */
+private data class CheckSigResult(val pSkey: String, val cookies: Map<String, String>)
+
 /** QR polling outcome, mirroring the ptuiCB status codes. */
 sealed interface QqQrCheck {
     /** 66: waiting for scan. */
@@ -232,8 +237,8 @@ class QqClient(
      * qqEnabled / qqFirstLoginMs.
      */
     suspend fun exchangeQrLogin(uin: String, sigx: String): QqCredential = withContext(Dispatchers.IO) {
-        val pSkey = checkSig(uin, sigx)
-        val code = authorize(pSkey)
+        val checkSigResult = checkSig(uin, sigx)
+        val code = authorize(checkSigResult.pSkey, checkSigResult.cookies)
         val session = runCatching { getSession() }.getOrNull()
         val resp = cgi(
             module = "QQConnectLogin.LoginServer",
@@ -254,8 +259,12 @@ class QqClient(
         credential
     }
 
-    /** check_sig: exchanges ptsigx for the p_skey cookie (no redirects — the 302 carries the cookie). */
-    private suspend fun checkSig(uin: String, sigx: String): String = withContext(Dispatchers.IO) {
+    /** check_sig: exchanges ptsigx for the p_skey cookie (no redirects — the 302 carries the cookie).
+     * Returns the p_skey plus every cookie the response sets: graph authorize
+     * needs the full check_sig cookie jar (L-1124 _authorize_qq_qr forwards
+     * dict(payload.cookies)), not just p_skey — sending only p_skey is what
+     * made authorize return no code on a real device (0.1.10 feedback). */
+    private suspend fun checkSig(uin: String, sigx: String): CheckSigResult = withContext(Dispatchers.IO) {
         val params = listOf(
             "pttype" to "1", "uin" to uin, "service" to "ptqrlogin", "nodirect" to "0",
             "ptsigx" to sigx, "s_url" to "https://graph.qq.com/oauth2.0/login_jump",
@@ -265,15 +274,26 @@ class QqClient(
             "pt_login_type" to "3", "pt_aid" to "0", "pt_aaid" to "16",
             "pt_light" to "0", "pt_3rd_aid" to OAUTH_CLIENT_ID.toString(),
         ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
-        val req = Request.Builder().url("${hosts.graphPtlogin}/check_sig?$params").build()
-        val pSkey = http.newCall(req).execute().use { resp ->
-            resp.headers("Set-Cookie").firstNotNullOfOrNull { parseCookie(it)["p_skey"] }
-        } ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 登录失败：check_sig 未返回 p_skey")
-        pSkey
+        val req = Request.Builder().url("${hosts.graphPtlogin}/check_sig?$params")
+            .header("Referer", PTLOGIN_REFERER)
+            .build()
+        val cookies = http.newCall(req).execute().use { resp ->
+            resp.headers("Set-Cookie").fold(mutableMapOf<String, String>()) { acc, header ->
+                parseCookie(header).forEach { (k, v) -> acc[k] = v }
+                acc
+            }
+        }
+        val pSkey = cookies["p_skey"]
+            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 登录失败：check_sig 未返回 p_skey")
+        CheckSigResult(pSkey, cookies)
     }
 
-    /** graph authorize: POSTs the OAuth form; the 302 Location header carries the code. */
-    private suspend fun authorize(pSkey: String): String = withContext(Dispatchers.IO) {
+    /** graph authorize: POSTs the OAuth form; the 302 Location header carries the code.
+     * Sends the full check_sig cookie jar (not just p_skey); g_tk is still
+     * computed from p_skey alone. The failure message carries the HTTP status
+     * and whether a Location header came back, so the next failure is
+     * diagnosable from the toast alone. */
+    private suspend fun authorize(pSkey: String, cookies: Map<String, String>): String = withContext(Dispatchers.IO) {
         val form = FormBody.Builder()
             .add("response_type", "code")
             .add("client_id", OAUTH_CLIENT_ID.toString())
@@ -292,13 +312,16 @@ class QqClient(
         val req = Request.Builder()
             .url("${hosts.graph}/oauth2.0/authorize")
             .post(form)
-            .header("Cookie", "p_skey=$pSkey")
+            .header("Cookie", cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" })
             .build()
-        val location = http.newCall(req).execute().use { resp ->
-            resp.header("Location") ?: ""
+        val (httpCode, location) = http.newCall(req).execute().use { resp ->
+            resp.code to (resp.header("Location") ?: "")
         }
-        Regex("""(?<=code=)(.+?)(?=&)""").find(location)?.groupValues?.getOrNull(1)
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 登录失败：authorize 未返回 code")
+        Regex("""code=([^&]+)""").find(location)?.groupValues?.getOrNull(1)
+            ?: throw ApiException(
+                ApiErrorKind.Unknown,
+                message = "QQ 登录失败：authorize 未返回 code（HTTP $httpCode/${if (location.isBlank()) "无 Location" else "有 Location"}）",
+            )
     }
 
     // ---- session / profile ----

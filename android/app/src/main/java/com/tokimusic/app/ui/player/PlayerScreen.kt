@@ -1,5 +1,7 @@
 package com.tokimusic.app.ui.player
 
+import android.content.Context
+import android.media.AudioManager
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -56,6 +58,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -538,17 +541,26 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                 // 第六轮第 28 项：恢复歌词 + 队列两个底钮（投放留在 More）——
                 // 在播放控制行下方，SpaceBetween、16dp 横向、6dp 纵向；
                 // 歌词钮恒实心引号，长按提示随视图切“歌词/返回封面”；队列钮
-                // 实心，点开队列；都用控制区配色（buttonBg/onCover）；沉浸
-                // 时随控制区一起淡出。
+                // 实心，点开队列；沉浸时随控制区一起淡出。
+                // 0.1.11 修复轮：两个底钮去掉背景（只留图标，不动上一首/
+                // 下一首和标题行按钮）；中间加声音钮，点一下调安卓原生
+                // 音量面板（AudioManager FLAG_SHOW_UI；One UI 的面板自带
+                // 媒体输出切换，可连蓝牙耳机），不自画音量条、不跳蓝牙设置页。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     TokiLongPressLabel(if (showLyrics) "返回封面" else "歌词") {
-                        CircleArtButton(Icons.Filled.FormatQuote, onCover, bgColor = buttonBg) { showLyrics = !showLyrics }
+                        CircleArtButton(Icons.Filled.FormatQuote, onCover, bgColor = Color.Transparent) { showLyrics = !showLyrics }
+                    }
+                    TokiLongPressLabel("声音") {
+                        CircleArtButton(Icons.Filled.VolumeUp, onCover, bgColor = Color.Transparent) {
+                            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                            audioManager?.adjustVolume(AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
+                        }
                     }
                     TokiLongPressLabel("播放队列") {
-                        CircleArtButton(Icons.Filled.QueueMusic, onCover, bgColor = buttonBg) { showQueue = true }
+                        CircleArtButton(Icons.Filled.QueueMusic, onCover, bgColor = Color.Transparent) { showQueue = true }
                     }
                 }
             }
