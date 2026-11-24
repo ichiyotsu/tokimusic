@@ -74,6 +74,36 @@ sealed interface QqQrCheck {
     data class Done(val uin: String, val sigx: String) : QqQrCheck
 }
 
+/** 手机号短信验证码发送结果（L-1124 PhoneLoginEvents：SEND=0 / CAPTCHA=20276 / FREQUENCY=100001）。 */
+sealed interface QqPhoneAuthResult {
+    /** 验证码已发送。 */
+    data object Sent : QqPhoneAuthResult
+    /** 需要人机验证：[securityUrl] 用 WebView 打开做验证，验证完重新发送。 */
+    data class Captcha(val securityUrl: String) : QqPhoneAuthResult
+    /** 请求过于频繁。 */
+    data object Frequency : QqPhoneAuthResult
+}
+
+/** Login CGI 业务码 → 中文说明（L-1124 _validate_result；0 与未列出的码返回 null，
+ * 调用方用 null 表示“成功”或“用通用文案 + 码号兜底”）。 */
+internal fun qqLoginCodeMessage(code: Int): String? = when (code) {
+    0 -> null
+    1000, 104401, 104400 -> "登录鉴权已过期"
+    20261 -> "登录参数错误"
+    20271 -> "验证码错误"
+    20272 -> "账号绑定异常"
+    20274 -> "账号绑定缺失"
+    20277, 20278 -> "账号受限"
+    20279 -> "登录设备数量超限"
+    20450 -> "账号已被封禁"
+    104604 -> "操作过于频繁，请稍后再试"
+    else -> null
+}
+
+/** 中国大陆手机号格式（11 位数字，以 1 开头）——纯函数，单测覆盖。 */
+internal fun isValidCnPhone(phone: String): Boolean =
+    phone.length == 11 && phone[0] == '1' && phone.all { it.isDigit() }
+
 /** QQ playback URL result — never a fabricated URL: every non-Url case means "do not play". */
 sealed interface QqSongUrlResult {
     data class Url(val url: String) : QqSongUrlResult
@@ -247,16 +277,34 @@ class QqClient(
             commExtra = mapOf("tmeLoginType" to 2),
             session = session,
         )
+        credentialFromLoginResp(resp, "QQ 登录失败")
+    }
+
+    /**
+     * Login CGI 响应 → 凭证（L-1124 _validate_result 的 code 映射 +
+     * Credential 字段）：code 0 才取 data.musicid/musickey 并落库到
+     * [QqSettings]；其余 code 按映射抛中文错，未列出的码用码号兜底。
+     * QQ 扫码换凭证、手机号登录、QQ音乐 App 扫码换凭证三路共用。
+     */
+    private fun credentialFromLoginResp(resp: JSONObject, failurePrefix: String): QqCredential {
+        val code = resp.optInt("code", -1)
+        if (code != 0) {
+            val detail = qqLoginCodeMessage(code)
+            throw ApiException(
+                ApiErrorKind.Unknown,
+                message = if (detail != null) "$failurePrefix：$detail" else "$failurePrefix（$code）",
+            )
+        }
         val data = resp.optJSONObject("data") ?: resp
         val musicId = data.opt("musicid")?.toString().orEmpty()
         val musicKey = data.optString("musickey", "")
         if (musicId.isBlank() || musicKey.isBlank()) {
-            throw ApiException(ApiErrorKind.Unknown, message = "QQ 登录失败：服务端未返回凭证")
+            throw ApiException(ApiErrorKind.Unknown, message = "$failurePrefix：服务端未返回凭证")
         }
         val credential = QqCredential(musicId, musicKey, data.optString("str_musicid", musicId))
         store.qqMusicId = credential.musicId
         store.qqMusicKey = credential.musicKey
-        credential
+        return credential
     }
 
     /** check_sig: exchanges ptsigx for the p_skey cookie (no redirects — the 302 carries the cookie).
@@ -322,6 +370,96 @@ class QqClient(
                 ApiErrorKind.Unknown,
                 message = "QQ 登录失败：authorize 未返回 code（HTTP $httpCode/${if (location.isBlank()) "无 Location" else "有 Location"}）",
             )
+    }
+
+    // ---- phone SMS login (0.1.12) ----
+
+    /**
+     * 发手机号验证码（L-1124 send_authcode）：CGI SendPhoneAuthCode，
+     * param tmeAppid=qqmusic + areaCode=86 + phoneNo，comm tmeLoginMethod=3，
+     * 固定 ANDROID 平台。响应 code 0 → 已发送；20276 → 人机验证
+     * （data.securityURL 用 WebView 打开）；100001 → 过于频繁。
+     * 手机号须是 QQ音乐账号绑定的手机号。
+     */
+    suspend fun sendPhoneAuthCode(phone: String): QqPhoneAuthResult = withContext(Dispatchers.IO) {
+        val resp = cgi(
+            module = "music.login.LoginServer",
+            method = "SendPhoneAuthCode",
+            param = JSONObject().put("tmeAppid", "qqmusic").put("areaCode", "86").put("phoneNo", phone),
+            commExtra = mapOf("tmeLoginMethod" to 3),
+        )
+        when (val code = resp.optInt("code", -1)) {
+            0 -> QqPhoneAuthResult.Sent
+            20276 -> {
+                val url = resp.optJSONObject("data")?.optString("securityURL", "").orEmpty()
+                if (url.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = "验证码发送失败：需要人机验证但未返回验证地址")
+                QqPhoneAuthResult.Captcha(url)
+            }
+            100001 -> QqPhoneAuthResult.Frequency
+            else -> throw ApiException(ApiErrorKind.Unknown, message = "验证码发送失败（$code）")
+        }
+    }
+
+    /**
+     * 手机号验证码换凭证（L-1124 phone_authorize）：CGI Login，
+     * param code + loginMode=1 + phoneNo，comm tmeLoginMethod=3 /
+     * tmeLoginType=0。成功后凭证落库（credentialFromLoginResp）。
+     */
+    suspend fun phoneAuthorize(phone: String, authCode: String): QqCredential = withContext(Dispatchers.IO) {
+        val resp = cgi(
+            module = "music.login.LoginServer",
+            method = "Login",
+            param = JSONObject().put("code", authCode).put("loginMode", 1).put("phoneNo", phone),
+            commExtra = mapOf("tmeLoginMethod" to 3, "tmeLoginType" to 0),
+        )
+        credentialFromLoginResp(resp, "手机号登录失败")
+    }
+
+    // ---- QQ Music app QR login (0.1.12) ----
+
+    /**
+     * 取 QQ音乐 App 扫码的二维码（L-1124 _get_mobile_qr）：CGI CreateQRCode，
+     * param tmeAppID=qqmusic + 版本参数 ct/cv（ANDROID 11/20090008），
+     * comm ct=23/cv=0（覆盖默认 comm 的 ct/cv）。返回 base64 PNG 解码后
+     * 的字节 + qrcodeID（二维码内容是 QQ音乐服务端生成的登录码，不是
+     * ptlogin2 的 URL，须用 QQ音乐 App 扫）。L-1124 取 qrcode.split(",")[-1]，
+     * 这里同样只取逗号后的 base64。
+     */
+    suspend fun mobileQrShow(): Pair<ByteArray, String> = withContext(Dispatchers.IO) {
+        val resp = cgi(
+            module = "music.login.LoginServer",
+            method = "CreateQRCode",
+            param = JSONObject().put("tmeAppID", "qqmusic").put("ct", CT).put("cv", CV),
+            commExtra = mapOf("ct" to 23, "cv" to 0),
+        )
+        val data = resp.optJSONObject("data")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码获取失败")
+        val qrcode = data.optString("qrcode", "")
+        val qrcodeId = data.optString("qrcodeID", "")
+        if (qrcode.isBlank() || qrcodeId.isBlank()) {
+            throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码获取失败")
+        }
+        val b64 = qrcode.substringAfter(",", qrcode)
+        val png = runCatching { Base64.getDecoder().decode(b64) }.getOrNull()
+            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码解析失败")
+        png to qrcodeId
+    }
+
+    /**
+     * QQ音乐 App 扫码换凭证（L-1124 _handle_mobile_message 的 cookies 事件）：
+     * MQTT 收到 cookies 后取 qqmusic_uin + qqmusic_key，调 CGI Login，
+     * param musicid/qrCodeID/token，comm tmeLoginType=6。
+     */
+    suspend fun exchangeMobileQrLogin(qrcodeId: String, uin: String, key: String): QqCredential = withContext(Dispatchers.IO) {
+        val musicId = uin.toLongOrNull()
+            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码登录失败：凭证格式错误")
+        val resp = cgi(
+            module = "music.login.LoginServer",
+            method = "Login",
+            param = JSONObject().put("musicid", musicId).put("qrCodeID", qrcodeId).put("token", key),
+            commExtra = mapOf("tmeLoginType" to 6),
+        )
+        credentialFromLoginResp(resp, "QQ音乐扫码登录失败")
     }
 
     // ---- session / profile ----
