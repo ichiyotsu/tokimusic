@@ -101,8 +101,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.viewinterop.AndroidView
 import com.tokimusic.app.R
-import com.tokimusic.app.data.api.QqMobileQrEvent
-import com.tokimusic.app.data.api.QqQrCheck
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.CrashLog
@@ -424,7 +422,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             // list item，spacedBy(12.dp) 下会在列表底多出空隙；
             // AlertDialog 是独立窗口，放哪里渲染都一样。
             if (showLogin) LoginDialog(vm) { showLogin = false }
-            if (showQqLogin) QqLoginDialog(vm) { showQqLogin = false }
+            if (showQqLogin) QqSmsLoginDialog(vm, onBack = { showQqLogin = false }, onDismiss = { showQqLogin = false })
             // 第六轮第 19 项：开关 / 退出登录的二次确认弹窗（AlertDialog，
             // 默认内容边距 24dp 横向，与页边距一致）。
             sourceConfirm?.let { confirm ->
@@ -955,6 +953,28 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+    // 0.1.18 第 15 项：算法推荐开关（测试功能，默认关），与播放行为
+    // 开关同组（听歌记录上报之后）。
+    item {
+        var algorithmRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("算法推荐（测试功能）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = algorithmRecommend,
+                    onCheckedChange = { algorithmRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            "开启后，应用会在本机记录播放历史、分析你常听的歌手，并在主页推荐可能合口味的歌单；数据只存本机、不上传。关闭后停止记录，也不再显示推荐区。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     // 0.1.16 第 2 条：健康状态为空时不发 item——之前空 item 仍占
     // spacedBy，两组之间只剩 8dp；现在没状态就是 12dp 组间距。
     if (health != null) item {
@@ -1319,124 +1339,6 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
-}
-
-/** 0.1.12：QQ 登录方式三选一——手机 QQ 扫码 / QQ音乐 App 扫码 /
- * 手机号短信登录，与现有 QQ 扫码并列。选一种后进入对应弹窗；
- * 子弹窗的“返回”回到三选一，关闭则整个退出并取消进行中的登录。 */
-@Composable
-fun QqLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
-    var method by remember { mutableStateOf<QqLoginMethod?>(null) }
-    when (method) {
-        null -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("登录 QQ音乐") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("选择一种登录方式", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FilledTonalButton(onClick = { method = QqLoginMethod.QqQr }, Modifier.fillMaxWidth().height(56.dp)) { Text("手机 QQ 扫码") }
-                    FilledTonalButton(onClick = { method = QqLoginMethod.MobileQr }, Modifier.fillMaxWidth().height(56.dp)) { Text("QQ音乐 App 扫码") }
-                    FilledTonalButton(onClick = { method = QqLoginMethod.Sms }, Modifier.fillMaxWidth().height(56.dp)) { Text("手机号短信登录") }
-                }
-            },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        )
-        QqLoginMethod.QqQr -> QqQrLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
-        QqLoginMethod.MobileQr -> QqMobileQrLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
-        QqLoginMethod.Sms -> QqSmsLoginDialog(vm, onBack = { method = null }, onDismiss = onDismiss)
-    }
-}
-
-private enum class QqLoginMethod { QqQr, MobileQr, Sms }
-
-/** 二维码 data-URI → ImageBitmap（QQ 扫码与 QQ音乐 App 扫码共用）。 */
-@Composable
-private fun rememberQrBitmap(img: String) = remember(img) {
-    runCatching {
-        val raw = img.substringAfter("base64,", img)
-        if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
-    }.getOrNull()
-}
-
-/** 第六轮第 1 项：QQ 二维码登录弹窗（与 LoginDialog 同款结构，QQ 扫码态）。 */
-@Composable
-private fun QqQrLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
-    val qr by vm.qqQrState.collectAsState(); val img by vm.qqQrImage.collectAsState(); val qrError by vm.qqQrError.collectAsState()
-    LaunchedEffect(Unit) { vm.startQqQrLogin() }
-    // 0.1.13 第 4 项：登录成功自动关闭并 toast（之前只显示“登录成功”不动）。
-    val context = LocalContext.current
-    LaunchedEffect(qr) {
-        if (qr is com.tokimusic.app.data.api.QqQrCheck.Done) {
-            Toast.makeText(context, "QQ 登录成功", Toast.LENGTH_SHORT).show()
-            onDismiss()
-        }
-    }
-    // Closing the dialog cancels the poll; reopening starts a fresh one.
-    AlertDialog(onDismissRequest = { vm.cancelQqQrLogin(); onDismiss() }, title = { Text("扫码登录 QQ音乐") }, text = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            val bitmap = rememberQrBitmap(img)
-            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
-            if (qrError != null) {
-                Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                FilledTonalButton(onClick = { vm.startQqQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
-            } else {
-                Text(when (qr) {
-                    com.tokimusic.app.data.api.QqQrCheck.Waiting -> "等待扫码"
-                    com.tokimusic.app.data.api.QqQrCheck.Scanned -> "已扫码，请在手机上确认"
-                    is com.tokimusic.app.data.api.QqQrCheck.Done -> "登录成功"
-                    com.tokimusic.app.data.api.QqQrCheck.Expired -> "二维码已过期，正在重新生成…"
-                    com.tokimusic.app.data.api.QqQrCheck.Refused -> "已在手机上拒绝登录"
-                    null -> "使用手机 QQ App 扫码"
-                }, Modifier.padding(top = 12.dp))
-            }
-        }
-    }, confirmButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onDismiss() }) { Text("关闭") } },
-    dismissButton = { TextButton(onClick = { vm.cancelQqQrLogin(); onBack() }) { Text("返回") } })
-}
-
-/** 0.1.12：QQ音乐 App 扫码登录弹窗（与 QqQrLoginDialog 同款结构）。
- * 二维码下方提示：需用另一台设备上的 QQ音乐 App 摄像头扫码；
- * QQ音乐是否支持相册识码未证实（不要写“支持相册扫码”）。 */
-@Composable
-private fun QqMobileQrLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
-    val qr by vm.qqMobileQrState.collectAsState(); val img by vm.qqMobileQrImage.collectAsState(); val qrError by vm.qqMobileQrError.collectAsState()
-    LaunchedEffect(Unit) { vm.startQqMobileQrLogin() }
-    // 0.1.13 第 4 项：登录成功自动关闭并 toast（之前只显示“登录成功”不动——
-    // 0.1.12 真机上扫码成功后 App 无反应就是这里）。
-    val context = LocalContext.current
-    LaunchedEffect(qr) {
-        if (qr == QqMobileQrEvent.Done) {
-            Toast.makeText(context, "QQ 登录成功", Toast.LENGTH_SHORT).show()
-            onDismiss()
-        }
-    }
-    // Closing the dialog cancels the MQTT watch; reopening starts a fresh one.
-    AlertDialog(onDismissRequest = { vm.cancelQqMobileQrLogin(); onDismiss() }, title = { Text("QQ音乐 App 扫码登录") }, text = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            val bitmap = rememberQrBitmap(img)
-            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
-            Text(
-                "请用另一台设备上的 QQ音乐 App 摄像头扫码；QQ音乐是否支持相册识码未证实。",
-                Modifier.padding(top = 12.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (qrError != null) {
-                Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                FilledTonalButton(onClick = { vm.startQqMobileQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
-            } else {
-                Text(when (qr) {
-                    QqMobileQrEvent.Waiting -> "等待扫码"
-                    QqMobileQrEvent.Scanned -> "已扫码，请在手机上确认"
-                    QqMobileQrEvent.Done -> "登录成功"
-                    QqMobileQrEvent.Refused -> "已在手机上拒绝登录"
-                    QqMobileQrEvent.Timeout -> "二维码已过期，正在重新生成…"
-                    null -> "使用 QQ音乐 App 扫码"
-                }, Modifier.padding(top = 12.dp))
-            }
-        }
-    }, confirmButton = { TextButton(onClick = { vm.cancelQqMobileQrLogin(); onDismiss() }) { Text("关闭") } },
-    dismissButton = { TextButton(onClick = { vm.cancelQqMobileQrLogin(); onBack() }) { Text("返回") } })
 }
 
 /** 0.1.12：手机号短信登录弹窗——手机号 + 发送验证码 + 验证码输入；

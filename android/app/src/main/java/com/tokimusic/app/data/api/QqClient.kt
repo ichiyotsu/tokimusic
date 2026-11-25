@@ -10,7 +10,6 @@ import com.tokimusic.app.data.model.qqArtistId
 import com.tokimusic.app.data.model.qqSongId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,9 +24,6 @@ import kotlin.random.Random
 
 /** Direct-connection hosts for the QQ Music login flow; tests point them at a MockWebServer. */
 data class QqHosts(
-    val ptlogin: String = "https://ssl.ptlogin2.qq.com",
-    val graphPtlogin: String = "https://ssl.ptlogin2.graph.qq.com",
-    val graph: String = "https://graph.qq.com",
     val musicu: String = "https://u.y.qq.com",
     /** Plaintext-LRC lyric endpoint (c.y.qq.com, no login needed). */
     val lyric: String = "https://c.y.qq.com",
@@ -59,25 +55,6 @@ data class QqProfile(val nickname: String, val avatarUrl: String?, val musicId: 
 
 /** Anonymous Android session (GetSession) — its uid/sid ride in the QQLogin comm. */
 private data class QqSession(val uid: String, val sid: String)
-
-/** check_sig result: the p_skey plus every cookie the response sets — graph
- * authorize needs the full check_sig cookie jar (L-1124 _authorize_qq_qr
- * forwards dict(payload.cookies)), not just p_skey. */
-private data class CheckSigResult(val pSkey: String, val cookies: Map<String, String>)
-
-/** QR polling outcome, mirroring the ptuiCB status codes. */
-sealed interface QqQrCheck {
-    /** 66: waiting for scan. */
-    data object Waiting : QqQrCheck
-    /** 67: scanned, waiting for confirm on the phone. */
-    data object Scanned : QqQrCheck
-    /** 65: QR expired — show a fresh one. */
-    data object Expired : QqQrCheck
-    /** 68: user refused on the phone. */
-    data object Refused : QqQrCheck
-    /** 0: done — [uin] and [sigx] feed the check_sig exchange. */
-    data class Done(val uin: String, val sigx: String) : QqQrCheck
-}
 
 /** 手机号短信验证码发送结果（L-1124 PhoneLoginEvents：SEND=0 / CAPTCHA=20276 / FREQUENCY=100001）。 */
 sealed interface QqPhoneAuthResult {
@@ -132,11 +109,24 @@ internal fun qqFileTiersForQuality(quality: String): List<Pair<String, String>> 
     else -> listOf("M500" to ".mp3", "M800" to ".mp3")
 }
 
-/** QQ hash33 (L-1124 utils/common.py): h = (h << 5) + h + ord(c), masked to 31 bits at the end. */
-internal fun hash33(s: String, seed: Int = 0): Int {
-    var h = seed
-    for (c in s) h = (h shl 5) + h + c.code
-    return 0x7FFFFFFF and h
+/**
+ * 0.1.18 第 8 项：推荐分页合并——多页按顺序拼，按 [Song.sourceId]（QQ
+ * songmid）去重，截到 [target] 首。无 sourceId 的行无法去重，直接丢弃
+ * （parseQqSong 在 mid 为空时本来就返回 null，正常流程不会遇到）。
+ * 纯函数，JVM 单测覆盖（QqClientTest）。
+ */
+internal fun mergeRecommendPages(pages: List<List<Song>>, target: Int): List<Song> {
+    val seen = HashSet<String>()
+    val out = ArrayList<Song>()
+    for (page in pages) {
+        for (song in page) {
+            if (out.size >= target) return out
+            val key = song.sourceId
+            if (key.isBlank() || !seen.add(key)) continue
+            out.add(song)
+        }
+    }
+    return out
 }
 
 /**
@@ -171,14 +161,8 @@ class QqClient(
     private val hosts: QqHosts = QqHosts(),
 ) {
     companion object {
-        private const val QR_APPID = 716027609L
-        private const val QR_DAID = 383
-        private const val OAUTH_CLIENT_ID = 100497308L
         /** CGI user-agent (probe-android.js): "QQMusic 20090008(android 15)". */
         private const val CGI_UA = "QQMusic 20090008(android 15)"
-        /** ptlogin user-agent (probe8b.js). */
-        private const val PTLOGIN_UA = "Mozilla/5.0 (Linux; Android 15; V2408A) AppleWebKit/537.36 QQMusic/20.9.0.8"
-        private const val PTLOGIN_REFERER = "https://xui.ptlogin2.qq.com/"
         private const val PHONE_TYPE = "V2408A"
         private const val OS_VER = "15"
         private const val CT = 11
@@ -187,10 +171,6 @@ class QqClient(
         /** Stream fallback domain when neither the GetVkey sip nor GetCdnDispatch returns a CDN (L-1124 song.py _SONG_URL_FALLBACK_DOMAIN). */
         private const val FALLBACK_CDN = "https://isure.stream.qqmusic.qq.com/"
         private val JSON = "application/json; charset=utf-8".toMediaType()
-
-        /** Server-rendered QR PNG bytes → the same data-URI shape the NetEase login dialog already decodes. */
-        fun qrImageDataUri(png: ByteArray): String =
-            "data:image/png;base64," + Base64.getEncoder().encodeToString(png)
     }
 
     private val http = OkHttpClient.Builder()
@@ -202,89 +182,6 @@ class QqClient(
         .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    // ---- QR flow ----
-
-    /** ptqrshow: returns the server-rendered QR PNG bytes plus the qrsig cookie that identifies this QR. */
-    suspend fun qrShow(): Pair<ByteArray, String> = withContext(Dispatchers.IO) {
-        val url = "${hosts.ptlogin}/ptqrshow?appid=$QR_APPID&e=2&l=M&s=3&d=72&v=4&t=${Random.nextLong(1, 1_000_000_000)}&daid=$QR_DAID&pt_3rd_aid=$OAUTH_CLIENT_ID"
-        val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
-        http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = "QQ 二维码获取失败")
-            val qrsig = resp.headers("Set-Cookie")
-                .firstNotNullOfOrNull { parseCookie(it)["qrsig"] }
-                ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 二维码缺少 qrsig")
-            val png = resp.body?.bytes() ?: ByteArray(0)
-            if (png.isEmpty()) throw ApiException(ApiErrorKind.Unknown, message = "QQ 二维码图片为空")
-            png to qrsig
-        }
-    }
-
-    /** ptqrlogin polling: one poll per call; the caller repeats every ~2 s. */
-    suspend fun qrCheck(qrsig: String): QqQrCheck = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val params = listOf(
-            "u1" to "https://graph.qq.com/oauth2.0/login_jump",
-            "ptqrtoken" to hash33(qrsig).toString(),
-            "ptredirect" to "0", "h" to "1", "t" to "1", "g" to "1",
-            "from_ui" to "1", "ptlang" to "2052",
-            "action" to "0-0-$now",
-            "js_ver" to "20102616", "js_type" to "1", "pt_uistyle" to "40",
-            "aid" to QR_APPID.toString(), "daid" to QR_DAID.toString(),
-            "pt_3rd_aid" to OAUTH_CLIENT_ID.toString(), "has_onekey" to "1",
-        ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
-        val req = Request.Builder()
-            .url("${hosts.ptlogin}/ptqrlogin?$params")
-            .header("User-Agent", PTLOGIN_UA)
-            .header("Referer", PTLOGIN_REFERER)
-            .header("Cookie", "qrsig=$qrsig")
-            .build()
-        val body = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = "QQ 扫码状态查询失败")
-            resp.body?.string() ?: ""
-        }
-        // ptuiCB('66','0','','0','未失效','...') — status is args[0]; on '0'
-        // args[2] is the redirect URL carrying ptsigx + uin.
-        val code = Regex("""ptuiCB\('(\d+)'""").find(body)?.groupValues?.getOrNull(1)
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 扫码状态无法解析")
-        when (code) {
-            "66" -> QqQrCheck.Waiting
-            "67" -> QqQrCheck.Scanned
-            "65" -> QqQrCheck.Expired
-            "68" -> QqQrCheck.Refused
-            "0" -> {
-                val url = Regex("""ptuiCB\('0','\d*','([^']*)'""").find(body)?.groupValues?.getOrNull(1)
-                    ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 扫码成功但缺少跳转地址")
-                val sigx = Regex("""ptsigx=([^&'"]+)""").find(url)?.groupValues?.getOrNull(1)
-                    ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 扫码成功但缺少 ptsigx")
-                val uin = Regex("""uin=([^&'"]+)""").find(url)?.groupValues?.getOrNull(1)
-                    ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 扫码成功但缺少 uin")
-                QqQrCheck.Done(uin, sigx)
-            }
-            else -> throw ApiException(ApiErrorKind.Unknown, message = "QQ 扫码状态未知（$code）")
-        }
-    }
-
-    /**
-     * Full QR exchange after [QqQrCheck.Done]: check_sig (p_skey) →
-     * graph authorize (code) → anonymous GetSession (uid/sid for the
-     * QQLogin comm, best effort) → QQLogin CGI (musicid/musickey).
-     * Persists the credential into [QqSettings]; the caller sets
-     * qqEnabled.
-     */
-    suspend fun exchangeQrLogin(uin: String, sigx: String): QqCredential = withContext(Dispatchers.IO) {
-        val checkSigResult = checkSig(uin, sigx)
-        val code = authorize(checkSigResult.pSkey, checkSigResult.cookies)
-        val session = runCatching { getSession() }.getOrNull()
-        val resp = cgi(
-            module = "QQConnectLogin.LoginServer",
-            method = "QQLogin",
-            param = JSONObject().put("code", code),
-            commExtra = mapOf("tmeLoginType" to 2),
-            session = session,
-            attachStoredCredential = false,
-        )
-        credentialFromLoginResp(resp, "QQ 登录失败")
-    }
 
     /**
      * Login CGI 响应 → 凭证（L-1124 _validate_result 的 code 映射 +
@@ -317,71 +214,6 @@ class QqClient(
         euinCache = null
         captureEncryptUin(data)
         return credential
-    }
-
-    /** check_sig: exchanges ptsigx for the p_skey cookie (no redirects — the 302 carries the cookie).
-     * Returns the p_skey plus every cookie the response sets: graph authorize
-     * needs the full check_sig cookie jar (L-1124 _authorize_qq_qr forwards
-     * dict(payload.cookies)), not just p_skey — sending only p_skey is what
-     * made authorize return no code on a real device (0.1.10 feedback). */
-    private suspend fun checkSig(uin: String, sigx: String): CheckSigResult = withContext(Dispatchers.IO) {
-        val params = listOf(
-            "pttype" to "1", "uin" to uin, "service" to "ptqrlogin", "nodirect" to "0",
-            "ptsigx" to sigx, "s_url" to "https://graph.qq.com/oauth2.0/login_jump",
-            "ptlang" to "2052", "ptredirect" to "100",
-            "aid" to QR_APPID.toString(), "daid" to QR_DAID.toString(),
-            "j_later" to "0", "low_login_hour" to "0", "regmaster" to "0",
-            "pt_login_type" to "3", "pt_aid" to "0", "pt_aaid" to "16",
-            "pt_light" to "0", "pt_3rd_aid" to OAUTH_CLIENT_ID.toString(),
-        ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
-        val req = Request.Builder().url("${hosts.graphPtlogin}/check_sig?$params")
-            .header("Referer", PTLOGIN_REFERER)
-            .build()
-        val cookies = http.newCall(req).execute().use { resp ->
-            resp.headers("Set-Cookie").fold(mutableMapOf<String, String>()) { acc, header ->
-                parseCookie(header).forEach { (k, v) -> acc[k] = v }
-                acc
-            }
-        }
-        val pSkey = cookies["p_skey"]
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 登录失败：check_sig 未返回 p_skey")
-        CheckSigResult(pSkey, cookies)
-    }
-
-    /** graph authorize: POSTs the OAuth form; the 302 Location header carries the code.
-     * Sends the full check_sig cookie jar (not just p_skey); g_tk is still
-     * computed from p_skey alone. The failure message carries the HTTP status
-     * and whether a Location header came back, so the next failure is
-     * diagnosable from the toast alone. */
-    private suspend fun authorize(pSkey: String, cookies: Map<String, String>): String = withContext(Dispatchers.IO) {
-        val form = FormBody.Builder()
-            .add("response_type", "code")
-            .add("client_id", OAUTH_CLIENT_ID.toString())
-            .add("redirect_uri", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/")
-            .add("scope", "get_user_info,get_app_friends")
-            .add("state", "state")
-            .add("switch", "")
-            .add("from_ptlogin", "1")
-            .add("src", "1")
-            .add("update_auth", "1")
-            .add("openapi", "1010_1030")
-            .add("g_tk", hash33(pSkey, 5381).toString())
-            .add("auth_time", System.currentTimeMillis().toString())
-            .add("ui", java.util.UUID.randomUUID().toString())
-            .build()
-        val req = Request.Builder()
-            .url("${hosts.graph}/oauth2.0/authorize")
-            .post(form)
-            .header("Cookie", cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" })
-            .build()
-        val (httpCode, location) = http.newCall(req).execute().use { resp ->
-            resp.code to (resp.header("Location") ?: "")
-        }
-        Regex("""code=([^&]+)""").find(location)?.groupValues?.getOrNull(1)
-            ?: throw ApiException(
-                ApiErrorKind.Unknown,
-                message = "QQ 登录失败：authorize 未返回 code（HTTP $httpCode/${if (location.isBlank()) "无 Location" else "有 Location"}）",
-            )
     }
 
     // ---- phone SMS login (0.1.12) ----
@@ -427,37 +259,6 @@ class QqClient(
             attachStoredCredential = false,
         )
         credentialFromLoginResp(resp, "手机号登录失败")
-    }
-
-    // ---- QQ Music app QR login (0.1.12) ----
-
-    /**
-     * 取 QQ音乐 App 扫码的二维码（L-1124 _get_mobile_qr）：CGI CreateQRCode，
-     * param tmeAppID=qqmusic + 版本参数 ct/cv（ANDROID 11/20090008），
-     * comm ct=23/cv=0（覆盖默认 comm 的 ct/cv）。返回 base64 PNG 解码后
-     * 的字节 + qrcodeID（二维码内容是 QQ音乐服务端生成的登录码，不是
-     * ptlogin2 的 URL，须用 QQ音乐 App 扫）。L-1124 取 qrcode.split(",")[-1]，
-     * 这里同样只取逗号后的 base64。
-     */
-    suspend fun mobileQrShow(): Pair<ByteArray, String> = withContext(Dispatchers.IO) {
-        val resp = cgi(
-            module = "music.login.LoginServer",
-            method = "CreateQRCode",
-            param = JSONObject().put("tmeAppID", "qqmusic").put("ct", CT).put("cv", CV),
-            commExtra = mapOf("ct" to 23, "cv" to 0),
-            attachStoredCredential = false,
-        )
-        val data = resp.optJSONObject("data")
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码获取失败")
-        val qrcode = data.optString("qrcode", "")
-        val qrcodeId = data.optString("qrcodeID", "")
-        if (qrcode.isBlank() || qrcodeId.isBlank()) {
-            throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码获取失败")
-        }
-        val b64 = qrcode.substringAfter(",", qrcode)
-        val png = runCatching { Base64.getDecoder().decode(b64) }.getOrNull()
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码二维码解析失败")
-        png to qrcodeId
     }
 
     /**
@@ -955,13 +756,36 @@ class QqClient(
      * 个性化歌单）。匿名态报 code 1000（探针实测），需要登录凭证；
      * 走带凭证的 cgi，未登录时返回空列表（主页不显示该卡片），
      * 登录态是否出歌待真机验证。
+     * 0.1.18 第 8 项：服务端每页只给 5 首左右（L-1124 参考实现本身
+     * 只请求 num=5；GuessRecommendResponse 只有 tracks，没有 total/
+     * has_more），单次调用要 20 也只回 5 首。改成分页：from=0,5,10…
+     * （每页 num=5）取满 30 首（卡片就叫 Daily 30）；页空 / 本页无新歌
+     * （from 不翻页时防死循环）/ 6 页封顶即停。
      */
-    suspend fun recommendDaily(num: Int = 20): List<Song> {
+    suspend fun recommendDaily(num: Int = 30): List<Song> {
+        val pages = mutableListOf<List<Song>>()
+        var from = 0
+        var prevSize = 0
+        while (pages.size < 6) {
+            val page = recommendDailyPage(from)
+            if (page.isEmpty()) break
+            pages += page
+            val merged = mergeRecommendPages(pages, num)
+            if (merged.size >= num) return merged
+            if (merged.size == prevSize) break // 本页没带来新歌：from 没翻页，停。
+            prevSize = merged.size
+            from += 5
+        }
+        return mergeRecommendPages(pages, num)
+    }
+
+    /** 每日推荐单页：from 是翻页偏移，num 固定 5（L-1124 同款）。 */
+    private suspend fun recommendDailyPage(from: Int): List<Song> {
         val resp = runCatching {
             cgi(
                 module = "music.radioProxy.MbTrackRadioSvr",
                 method = "get_radio_track",
-                param = JSONObject().put("id", 99).put("num", num).put("from", 0).put("scene", 0)
+                param = JSONObject().put("id", 99).put("num", 5).put("from", from).put("scene", 0)
                     .put("song_ids", JSONArray()),
             )
         }.getOrNull() ?: return emptyList()
@@ -976,22 +800,48 @@ class QqClient(
      * 可用（探针实测 code 0、VecSongs 10 条）；FavSongs 为空时按热门
      * 推荐出歌。响应里的 Track 与 parseQqSong 的形状一致（mid / name /
      * singer[含 mid] / album / interval）。
+     * 0.1.18 第 8 项：请求里根本没传数量，L-1124 用 PageStrategy +
+     * has_more 翻页；之前只取第 1 页（登录态解析后剩 5 首）。改成分页：
+     * Page=1,2,… 取满 20 首或 has_more 为 false；页空 / 本页无新歌 /
+     * 5 页封顶即停。HasMore 缺字段时按 true 处理（L-1124 模型里它是
+     * 必填字段，缺失属异常；继续翻到封顶比第一页就停更稳妥）。
      */
     suspend fun recommendRadar(num: Int = 20): List<Song> {
+        val pages = mutableListOf<List<Song>>()
+        var pageNo = 1
+        var prevSize = 0
+        while (pageNo <= 5) {
+            val (page, hasMore) = recommendRadarPage(pageNo)
+            if (page.isEmpty()) break
+            pages += page
+            val merged = mergeRecommendPages(pages, num)
+            if (merged.size >= num) return merged
+            if (merged.size == prevSize) break // 本页没带来新歌，停。
+            prevSize = merged.size
+            if (!hasMore) break
+            pageNo++
+        }
+        return mergeRecommendPages(pages, num)
+    }
+
+    /** 雷达推荐单页：返回（歌曲，HasMore）。 */
+    private suspend fun recommendRadarPage(page: Int): Pair<List<Song>, Boolean> {
         val resp = runCatching {
             cgi(
                 module = "music.recommend.TrackRelationServer",
                 method = "GetRadarSong",
-                param = JSONObject().put("Page", 1).put("ReqType", 0)
+                param = JSONObject().put("Page", page).put("ReqType", 0)
                     .put("FavSongs", JSONArray()).put("EntranceSongs", JSONArray()),
             )
-        }.getOrNull() ?: return emptyList()
-        if (resp.optInt("code", -1) != 0) return emptyList()
-        val arr = resp.optJSONObject("data")?.optJSONArray("VecSongs") ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { i ->
+        }.getOrNull() ?: return emptyList<Song>() to false
+        if (resp.optInt("code", -1) != 0) return emptyList<Song>() to false
+        val data = resp.optJSONObject("data") ?: return emptyList<Song>() to false
+        val arr = data.optJSONArray("VecSongs") ?: return emptyList<Song>() to false
+        val songs = (0 until arr.length()).mapNotNull { i ->
             val track = arr.optJSONObject(i)?.optJSONObject("Track") ?: return@mapNotNull null
             parseQqSong(track)
-        }.take(num)
+        }
+        return songs to data.optBoolean("HasMore", true)
     }
 
     /**
@@ -1437,12 +1287,6 @@ class QqClient(
     private fun credentialCookies(credential: QqCredential): String {
         val uin = credential.strMusicId.ifBlank { credential.musicId }
         return "uin=$uin; qqmusic_uin=$uin; qm_keyst=${credential.musicKey}; qqmusic_key=${credential.musicKey}"
-    }
-
-    private fun parseCookie(setCookie: String): Map<String, String> {
-        val kv = setCookie.split(";").firstOrNull()?.trim()?.split("=", limit = 2) ?: return emptyMap()
-        if (kv.size != 2 || kv[0].isBlank()) return emptyMap()
-        return mapOf(kv[0].trim() to kv[1].trim())
     }
 
     private fun firstString(obj: JSONObject?, vararg keys: String): String? {

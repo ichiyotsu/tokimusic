@@ -38,8 +38,8 @@ import androidx.compose.ui.unit.dp
 import com.tokimusic.app.R
 import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
+import com.tokimusic.app.ui.theme.TokiNavIcon
 import com.tokimusic.app.ui.theme.TokiPill
-import com.tokimusic.app.ui.theme.TokiPillIcon
 import com.tokimusic.app.ui.theme.TokiChromeStroke
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
@@ -161,8 +161,9 @@ fun TokiSideActionButton(
 }
 
 /**
- * 导航项：纯图标，无文字标签。选中项落在浅灰紫 pill 上，
- * 图标为深色；未选中为细线图标。宽 64dp、高 56dp，图标 24dp。
+ * 导航项：纯图标，无文字标签。选中项落在浅灰紫 pill 上，未选中直接落在
+ * 底栏上；两个 icon 都是浅紫（0.1.18 第 1 项，第 22 项最终定浅紫），
+ * 选中态靠 pill + 实心图标区分。宽 64dp、高 56dp，图标 24dp。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -172,7 +173,9 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
     val scheme = MaterialTheme.colorScheme
     val label = stringResource(entry.label)
     val pillColor = TokiPill
-    val selectedTint = TokiPillIcon
+    // 0.1.18 第 1 项 + 第 22 项最终修正：选中与未选中 icon 同为浅紫
+    // TokiNavIcon；选中态靠 pill + 实心 icon 形状区分。
+    val iconTint = TokiNavIcon
     TokiLongPressLabel(label) {
         Box(
             modifier = Modifier
@@ -192,7 +195,7 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
             Icon(
                 if (selected) entry.selectedIcon else entry.icon,
                 contentDescription = label,
-                tint = if (selected) selectedTint else scheme.onSurfaceVariant,
+                tint = iconTint,
                 modifier = Modifier.size(24.dp),
             )
         }

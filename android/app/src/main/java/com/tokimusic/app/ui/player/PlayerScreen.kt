@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -46,6 +47,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,8 +60,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -113,6 +114,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Song
+import com.tokimusic.app.player.LiveLyricLine
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.player.PlayerState
 import com.tokimusic.app.player.nextModeAfterTap
@@ -142,8 +144,10 @@ import kotlin.math.roundToInt
  * 播放/下一曲两钮，底部 2dp 细进度线。悬浮在导航胶囊上方。
  *
  * 第二轮第 1 项：迷你播放器之前是纯色卡片、完全没有模糊，亮背景下显透。
- * 现在与导航胶囊同配方——加强档磨砂（32dp 模糊 + 45% veil）；玻璃关闭时
- * 回退纯色 #2C2C2E。
+ * 曾与导航胶囊同配方（加强档磨砂 32dp + 45% veil）。
+ * 0.1.18 第 25 项：拆出自己的玻璃（调用方传 tokiContentGlassMiniPlayer）——
+ * 85dp 强模糊、不上色（无 tint、无 veil），纯模糊背后内容；玻璃关闭时
+ * 回退纯色 #2C2C2E（[glass] 只在 glassOn 时才被套用）。
  */
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {
@@ -159,6 +163,8 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
     }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     val scheme = MaterialTheme.colorScheme
+    // 0.1.18 第 6 项：播放/暂停 icon 切换补淡入淡出 + 缩放（之前瞬切）。
+    val motion = MaterialTheme.motionScheme
     val shape = RoundedCornerShape(percent = 50)
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -167,13 +173,17 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
             .clickable(onClick = onOpen),
     ) {
         Column {
-            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 // 0.1.13 第 9 项：迷你封面 48dp → 56dp。
-                // 0.1.17 第 5 项：封面圆角与外层大圆角匹配——外层是
-                // percent 50 的 pill（高约 78dp、半径约 39dp），同心
-                // 规则下封面半径 39−10 = 29dp，夹到 56dp 的一半 28dp，
-                // 实质上就是圆形；直接用 percent 50。
-                AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(percent = 50)), contentScale = ContentScale.Crop)
+                // 0.1.18 第 7 项：封面圆角改回 0.1.16 的 14dp（0.1.17 第 5 项
+                // 改成的 percent 50 近圆形撤回；外层 shape 本就是 0.1.16 的
+                // percent 50，未动）；高度降 10%：封面 56dp → 50dp、Row
+                // padding 10dp → 9dp，总高 78dp → 70dp（-10.3%）。
+                // 0.1.18 第 19 项：播放钮 48dp → 56dp、图标 28dp → 32dp；
+                // Row 纵向 padding 9dp → 6dp（横向仍 9dp），总高仍 70dp
+                //（6+56+6+2）；下一首钮 offset x -6dp 左移（与播放钮间距
+                // 10dp → 4dp 视觉），封面/歌名区不动。
+                AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     // 0.1.17 第 5 项：歌手名颜色 #d9d9d9。
@@ -185,18 +195,27 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                 TokiLongPressLabel(playLabel) {
                     val playInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(48.dp).clip(RoundedCornerShape(percent = 50))
+                        Modifier.size(56.dp).clip(RoundedCornerShape(percent = 50))
                             .clickable(interactionSource = playInteraction, indication = null) { vm.player.toggle() }
                             .pressRebound(playInteraction),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = playLabel, modifier = Modifier.size(28.dp))
+                        AnimatedContent(
+                            targetState = state.isPlaying,
+                            transitionSpec = {
+                                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.8f)) togetherWith
+                                    (fadeOut(motion.defaultEffectsSpec()) + scaleOut(motion.defaultSpatialSpec(), targetScale = 0.8f))
+                            },
+                            label = "miniPlayIcon",
+                        ) { playing ->
+                            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = playLabel, modifier = Modifier.size(32.dp))
+                        }
                     }
                 }
                 TokiLongPressLabel("下一首") {
                     val nextInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(48.dp).clip(RoundedCornerShape(percent = 50))
+                        Modifier.size(48.dp).offset(x = (-6).dp).clip(RoundedCornerShape(percent = 50))
                             .clickable(interactionSource = nextInteraction, indication = null) { vm.player.next() }
                             .pressRebound(nextInteraction),
                         contentAlignment = Alignment.Center,
@@ -296,10 +315,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
         label = "playKeyCorner",
     )
     // 第五轮第 20(a) 项：封面圆角随视图切换插值（大封面 20dp ↔ 迷你 12dp，
-    // 与视图切换同 300ms）。
+    // 与视图切换同 spec；0.1.18 第 6 项：之前手写 tween(300)，改 spatial spec）。
     val coverCorner by animateDpAsState(
         targetValue = if (playerView == PlayerView.Lyrics) 12.dp else 20.dp,
-        animationSpec = tween(300),
+        animationSpec = scheme.defaultSpatialSpec(),
         label = "coverCorner",
     )
     // 第五轮第 21 项：封面点按的独立按压源（与控制区 shield 分开，避免
@@ -371,15 +390,16 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     transitionSpec = {
                         // 0.1.13 第 13 项：共享元素已删——大封面退出时淡出 +
                         // 缩到 0.94（替代原来的共享元素飞行），回封面时淡入 +
-                        // 从 0.94 放大；歌词/队列仍淡入上移。
+                        // 从 0.94 放大；歌词/队列仍淡入上移。0.1.18 第 6 项：
+                        // 缩放/位移走 spatial spec（之前手写 tween(300)）。
                         if (targetState == PlayerView.Cover) {
-                            (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(tween(300), initialScale = 0.94f)) togetherWith
-                                (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(tween(300)) { it / 12 })
+                            (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), initialScale = 0.94f)) togetherWith
+                                (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(scheme.defaultSpatialSpec()) { it / 12 })
                         } else if (initialState == PlayerView.Cover) {
-                            (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(tween(300)) { it / 12 }) togetherWith
-                                (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(tween(300), targetScale = 0.94f))
+                            (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(scheme.defaultSpatialSpec()) { it / 12 }) togetherWith
+                                (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), targetScale = 0.94f))
                         } else {
-                            (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(tween(300)) { it / 12 }) togetherWith
+                            (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(scheme.defaultSpatialSpec()) { it / 12 }) togetherWith
                                 fadeOut(scheme.defaultEffectsSpec())
                         }
                     },
@@ -498,8 +518,9 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
             AnimatedContent(
                 targetState = playerView != PlayerView.Cover,
                 transitionSpec = {
-                    (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(tween(300), initialScale = 0.94f)) togetherWith
-                        (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(tween(300), targetScale = 0.94f))
+                    // 0.1.18 第 6 项：缩放走 spatial spec（之前手写 tween(300)）。
+                    (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), initialScale = 0.94f)) togetherWith
+                        (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), targetScale = 0.94f))
                 },
                 label = "titleRow",
             ) { mini ->
@@ -587,12 +608,22 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 .pressRebound(interaction),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = playLabel,
-                                tint = TokiPlayKeyIcon,
-                                modifier = Modifier.size(40.dp),
-                            )
+                            // 0.1.18 第 6 项：播放/暂停 icon 切换补淡入淡出 + 缩放（之前瞬切）。
+                            AnimatedContent(
+                                targetState = state.isPlaying,
+                                transitionSpec = {
+                                    (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), initialScale = 0.8f)) togetherWith
+                                        (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), targetScale = 0.8f))
+                                },
+                                label = "playKeyIcon",
+                            ) { playing ->
+                                Icon(
+                                    if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = playLabel,
+                                    tint = TokiPlayKeyIcon,
+                                    modifier = Modifier.size(40.dp),
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.width(28.dp))
@@ -678,9 +709,22 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
     var titleTextWidthPx by remember { mutableIntStateOf(0) }
     var titleBoxWidthPx by remember { mutableIntStateOf(0) }
     val titleOverflow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
+    // 0.1.18 第 16 项：实时歌词——每秒把当前歌词行替换歌名显示；无歌词 /
+    // 纯音乐时回歌名。行来源复用 0.1.17 第 12 项的 LiveLyricLine（AppViewModel
+    // 的 500ms 循环推），这里只做 1 秒 tick 采样，不另算行。SongTitleBlock
+    // 是封面大标题与歌词/队列迷你条共用的标题组件，两处同走这一逻辑；
+    // MiniPlayer 与 MoreSheet 的歌名不是这个组件，保持歌名不动。
+    var lyricLine by remember(song.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(song.id) {
+        while (true) {
+            lyricLine = LiveLyricLine.current?.takeIf { it.isNotBlank() }
+            delay(1000)
+        }
+    }
+    val titleText = lyricLine ?: song.name
     Column(modifier) {
         Text(
-            song.name,
+            titleText,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = textColor,
@@ -745,10 +789,11 @@ private fun CircleArtButton(icon: ImageVector, tint: Color, size: androidx.compo
 
 /**
  * 队列视图（0.1.12 播放器升级）：与封面、歌词平级的全屏视图（参考图
- * 同款）——顶部四个模式 pill（顺序 / 随机 / 列表循环 / 单曲循环，同一时间
- * 只能选一个，点已激活的回顺序播放）+ “继续播放” + 来源副标题 +
- * 队列列表（上下边缘淡入淡出）；底部仍是迷你信息 + 进度条 + 播放控制 +
- * 底部三钮（控制区在 PlayerScreen 里共用）。点行跳转后留在本视图。
+ * 同款）——顶部三个模式 pill（顺序 / 随机 / 倒序，同一时间只能选一个，
+ * 点已激活的回顺序播放；0.1.18 第 10 项：列表循环 / 单曲循环从顶栏拿掉，
+ * 枚举与 Media3 映射保留，入口见歌单页单按钮的图标映射）+ “继续播放” +
+ * 来源副标题 + 队列列表（上下边缘淡入淡出）；底部仍是迷你信息 + 进度条 +
+ * 播放控制 + 底部三钮（控制区在 PlayerScreen 里共用）。点行跳转后留在本视图。
  * 旧的 QueueSheet 底部弹窗已删。
  */
 @Composable
@@ -763,19 +808,17 @@ private fun QueueView(
     val onCover = coverColors.onCoverText()
     val onCoverDim = coverColors.onCoverTextDim()
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        // 0.1.13 第 17 项：顶部四个模式 pill（顺序 / 随机 / 列表循环 /
-        // 单曲循环）——点未激活的切到它，点已激活的回顺序播放（互斥
-        // 单选由单一 playMode 状态保证，见 nextModeAfterTap）；
-        // 单曲循环图标改用 RepeatOne（0.1.12 用的 AllInclusive 是无穷符号）。
-        // 激活态白底 + 深色图标，未激活半透明底。
+        // 0.1.18 第 10 项：顶部三个模式 pill（顺序 / 随机 / 倒序）——
+        // 点未激活的切到它，点已激活的回顺序播放（互斥单选由单一
+        // playMode 状态保证，见 nextModeAfterTap）；倒序图标用 SwapVert
+        //（上下互换，表顺序反向）。激活态白底 + 深色图标，未激活半透明底。
         Row(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ModePill(PlayMode.Sequential, Icons.Rounded.FormatListNumbered, "顺序播放", playMode == PlayMode.Sequential, onCover, coverColors.bottom) { onModeTap(PlayMode.Sequential) }
             ModePill(PlayMode.Shuffle, Icons.Rounded.Shuffle, "随机播放", playMode == PlayMode.Shuffle, onCover, coverColors.bottom) { onModeTap(PlayMode.Shuffle) }
-            ModePill(PlayMode.RepeatAll, Icons.Rounded.Repeat, "列表循环", playMode == PlayMode.RepeatAll, onCover, coverColors.bottom) { onModeTap(PlayMode.RepeatAll) }
-            ModePill(PlayMode.RepeatOne, Icons.Rounded.RepeatOne, "单曲循环", playMode == PlayMode.RepeatOne, onCover, coverColors.bottom) { onModeTap(PlayMode.RepeatOne) }
+            ModePill(PlayMode.Reverse, Icons.Rounded.SwapVert, "倒序播放", playMode == PlayMode.Reverse, onCover, coverColors.bottom) { onModeTap(PlayMode.Reverse) }
         }
         Spacer(Modifier.height(16.dp))
         Text("继续播放", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = onCover)
@@ -790,11 +833,18 @@ private fun QueueView(
         }
         Spacer(Modifier.height(12.dp))
         // 0.1.13 第 17 项：队列列表上下边缘淡入淡出。
-        LazyColumn(Modifier.weight(1f).fadingEdges(vertical = true, edge = 32.dp)) {
+        // 0.1.18 第 11 项：顶部淡出只在列表已滚动（有内容滚出顶部）时
+        // 才生效——停在顶部时第一行完全不透明；底部淡出保持原样。
+        val queueListState = rememberLazyListState()
+        val queueScrolled = queueListState.firstVisibleItemIndex > 0 || queueListState.firstVisibleItemScrollOffset > 0
+        LazyColumn(
+            Modifier.weight(1f).fadingEdges(vertical = true, edge = 32.dp, top = queueScrolled),
+            state = queueListState,
+        ) {
             itemsIndexed(state.queue) { i, song ->
                 QueueListRow(
                     song = song,
-                    rowState = queueRowState(state.index, i),
+                    rowState = queueRowState(state.index, i, reverse = playMode == PlayMode.Reverse),
                     isPlaying = state.isPlaying,
                     onCover = onCover,
                     onCoverDim = onCoverDim,
@@ -807,7 +857,7 @@ private fun QueueView(
     }
 }
 
-/** 队列顶栏的模式 pill：圆角胶囊，56dp 高，四等分（0.1.13 第 17 项：四个模式）。 */
+/** 队列顶栏的模式 pill：圆角胶囊，56dp 高，三等分（0.1.18 第 10 项：三个模式）。 */
 @Composable
 private fun RowScope.ModePill(
     mode: PlayMode,

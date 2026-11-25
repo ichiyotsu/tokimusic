@@ -1,7 +1,6 @@
 package com.tokimusic.app.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -46,6 +45,7 @@ import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.tokiSpace
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * The one title header for the whole app (TokiStudio 0.1.10).
@@ -90,6 +90,12 @@ fun OverlayTitleHeader(
     val titleShape = RoundedCornerShape(percent = 50)
     Row(
         modifier
+            // 0.1.18 第 17 项：顶栏（标题 + 头像）注册为 haze 源——当前
+            // Android 没有原生 platform backdrop，Haze 的 Backdrop 输入
+            // 回退为只采样 hazeSource 内容；不注册的话设置遮罩糊不到
+            // 顶栏（与 TokiMusicApp 里 SettingsBackdrop 移到 Scaffold
+            // 之上配套，两半缺一不可）。配方不变，只扩采样范围。
+            .hazeSource(hazeState)
             .fillMaxWidth()
             .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .statusBarsPadding()
@@ -132,11 +138,14 @@ fun OverlayTitleHeader(
                 )
                 // Round 3 item 20: the title text crossfades/slides up when the
                 // top-bar title switches (Home sections: 主页 / 推荐歌单 / 推荐新歌).
+                // 0.1.18 第 6 项：淡入淡出走 effects spec、上下滑走 spatial spec
+                //（MD3E motionScheme；之前是手写 tween(300)）。
+                val scheme = MaterialTheme.motionScheme
                 AnimatedContent(
                     targetState = title,
                     transitionSpec = {
-                        (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 4 }) togetherWith
-                            (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 4 })
+                        (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(scheme.defaultSpatialSpec()) { it / 4 }) togetherWith
+                            (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(scheme.defaultSpatialSpec()) { -it / 4 })
                     },
                     label = "headerTitle",
                 ) { currentTitle ->

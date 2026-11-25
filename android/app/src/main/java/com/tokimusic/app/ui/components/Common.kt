@@ -104,10 +104,10 @@ fun positionOf(index: Int, size: Int): SegmentPosition = when {
     else -> SegmentPosition.Middle
 }
 
-fun segmentedCorners(position: SegmentPosition, large: Dp): RoundedCornerShape = when (position) {
-    SegmentPosition.First -> RoundedCornerShape(topStart = large, topEnd = large, bottomStart = 4.dp, bottomEnd = 4.dp)
-    SegmentPosition.Middle -> RoundedCornerShape(4.dp)
-    SegmentPosition.Last -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = large, bottomEnd = large)
+fun segmentedCorners(position: SegmentPosition, large: Dp, small: Dp = 4.dp): RoundedCornerShape = when (position) {
+    SegmentPosition.First -> RoundedCornerShape(topStart = large, topEnd = large, bottomStart = small, bottomEnd = small)
+    SegmentPosition.Middle -> RoundedCornerShape(small)
+    SegmentPosition.Last -> RoundedCornerShape(topStart = small, topEnd = small, bottomStart = large, bottomEnd = large)
     SegmentPosition.Single -> RoundedCornerShape(large)
 }
 
@@ -416,24 +416,36 @@ fun defaultCustomId(firstLoginMs: Long, uid: Long, zone: java.time.ZoneId = java
  * 渐变的透明区会把父级背景也擦掉，上下两端露出一整条黑带（歌词页 /
  * 队列首行被盖、当前行深色带）。纯 Modifier，可单测的只有调用方逻辑，
  * 本身真机验。
+ * 0.1.18 第 11 项：[top] / [bottom] 可单独开关上下淡出（默认全开，
+ * 与之前一致）——队列页停在顶部时关掉顶部淡出，第一行不无故变淡。
  */
 fun Modifier.fadingEdges(
     horizontal: Boolean = false,
     vertical: Boolean = false,
     edge: Dp = 32.dp,
+    top: Boolean = true,
+    bottom: Boolean = true,
 ): Modifier = this.drawWithContent {
     drawIntoCanvas { canvas ->
         canvas.saveLayer(Rect(Offset.Zero, size), Paint())
         drawContent()
         val e = edge.toPx()
-        if (vertical && e > 0f && size.height > 2 * e) {
+        if (vertical && e > 0f && (top || bottom) && size.height > (if (top) e else 0f) + (if (bottom) e else 0f)) {
+            val stops = ArrayList<Pair<Float, Color>>(4)
+            if (top) {
+                stops.add(0f to Color.Transparent)
+                stops.add(e / size.height to Color.Black)
+            } else {
+                stops.add(0f to Color.Black)
+            }
+            if (bottom) {
+                stops.add((size.height - e) / size.height to Color.Black)
+                stops.add(1f to Color.Transparent)
+            } else {
+                stops.add(1f to Color.Black)
+            }
             drawRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    e / size.height to Color.Black,
-                    (size.height - e) / size.height to Color.Black,
-                    1f to Color.Transparent,
-                ),
+                brush = Brush.verticalGradient(*stops.toTypedArray()),
                 blendMode = BlendMode.DstIn,
             )
         }

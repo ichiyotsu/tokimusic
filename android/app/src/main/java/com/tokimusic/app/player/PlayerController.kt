@@ -30,36 +30,55 @@ import com.tokimusic.app.data.SettingsStore
 import com.tokimusic.app.data.model.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val sourceName: String? = null) {
     val current: Song? get() = queue.getOrNull(index)
 }
 
-/** 队列行状态（纯函数，JVM 单测覆盖）：已播放 / 当前 / 未播放。 */
+/**
+ * 0.1.18 第 24 项：播放错误恢复的退避表（纯函数，JVM 单测覆盖）——
+ * 第 attempt 次重试（0 起）前等待的毫秒；超出表长返回 null = 不再
+ * 重试，走暂停 + 提示的收尾。共 3 次：2s / 5s / 15s。
+ */
+fun errorRetryDelayMs(attempt: Int): Long? =
+    listOf(2_000L, 5_000L, 15_000L).getOrNull(attempt)
+
+/** 队列行状态（纯函数，JVM 单测覆盖）：已播放 / 当前 / 未播放。倒序（reverse=true）时播放顺序反向，已播放的是当前行之后的行。 */
 enum class QueueRowState { Played, Current, Upcoming }
 
-fun queueRowState(currentIndex: Int, rowIndex: Int): QueueRowState = when {
-    rowIndex < currentIndex -> QueueRowState.Played
-    rowIndex == currentIndex -> QueueRowState.Current
-    else -> QueueRowState.Upcoming
+fun queueRowState(currentIndex: Int, rowIndex: Int, reverse: Boolean = false): QueueRowState {
+    if (reverse) return when {
+        rowIndex > currentIndex -> QueueRowState.Played
+        rowIndex == currentIndex -> QueueRowState.Current
+        else -> QueueRowState.Upcoming
+    }
+    return when {
+        rowIndex < currentIndex -> QueueRowState.Played
+        rowIndex == currentIndex -> QueueRowState.Current
+        else -> QueueRowState.Upcoming
+    }
 }
 
 /**
- * 播放模式（0.1.12 播放器升级，队列顶栏三个 pill 用）。
+ * 播放模式（0.1.12 播放器升级，队列顶栏三个 pill 用：顺序 / 随机 / 倒序；
+ * RepeatAll / RepeatOne 只在歌单页单按钮的图标映射里出现，不再有顶栏 pill）。
  *
  * 映射到 Media3：RepeatAll → REPEAT_MODE_ALL、RepeatOne → REPEAT_MODE_ONE，
- * 其余 → REPEAT_MODE_OFF。Shuffle 不走 Media3 的 shuffle——Media3 的
- * shuffle 会重排时间线下标，`state.index`（currentMediaItemIndex）就对
- * 不上 `_state.queue` 的原顺序；随机只在我们这一层实现（next() 随机跳），
- * Media3 的 shuffle 永远保持关闭。
+ * 其余 → REPEAT_MODE_OFF。Shuffle 与 Reverse 都不走 Media3 的 shuffle——
+ * Media3 的 shuffle 会重排时间线下标，`state.index`（currentMediaItemIndex）
+ * 就对不上 `_state.queue` 的原顺序；随机只在我们这一层实现（next() 随机跳），
+ * 倒序同样在我们这一层实现（next() 跳前一首，到队首停），Media3 的
+ * shuffle 永远保持关闭。
  */
-enum class PlayMode { Sequential, Shuffle, RepeatAll, RepeatOne }
+enum class PlayMode { Sequential, Shuffle, Reverse, RepeatAll, RepeatOne }
 
 /**
  * 队列顶栏 pill 的点按：点未激活的切到它，点已激活的回顺序播放。
@@ -70,7 +89,7 @@ fun nextModeAfterTap(current: PlayMode, tapped: PlayMode): PlayMode =
 
 /**
  * 歌单页单按钮位的点按（0.1.14 第 7 项）：顺序 / 随机二选一切换——
- * 当前是随机时回顺序，其余（顺序 / 列表循环 / 单曲循环）都切到随机，
+ * 当前是随机时回顺序，其余（顺序 / 倒序 / 列表循环 / 单曲循环）都切到随机，
  * 即按钮是“随机开 / 关”的开关，图标显示当前模式；与四个播放模式
  * 互斥单选打通（按钮只切模式，不开始播放）。纯函数，JVM 单测覆盖。
  */
@@ -87,6 +106,14 @@ fun nextShuffleIndex(queueSize: Int, currentIndex: Int, random: kotlin.random.Ra
     while (next == currentIndex) next = random.nextInt(queueSize)
     return next
 }
+
+/** 倒序下一次要跳到的下标：当前曲的前一首；已到队首返回 null（调用方不动）。纯函数，JVM 单测覆盖。 */
+fun nextReverseIndex(queueSize: Int, currentIndex: Int): Int? =
+    if (currentIndex > 0) currentIndex - 1 else null
+
+/** 倒序时“上一首”要跳到的下标：当前曲的后一首（反向播放顺序里往回走）；已到队尾返回 null。纯函数，JVM 单测覆盖。 */
+fun prevReverseIndex(queueSize: Int, currentIndex: Int): Int? =
+    if (currentIndex in 0 until queueSize - 1) currentIndex + 1 else null
 
 /** 随机播放的起始下标：队列内随机一首；空队列返回 0。纯函数，JVM 单测覆盖。 */
 fun shuffleStartIndex(queueSize: Int, random: kotlin.random.Random = kotlin.random.Random): Int =
@@ -148,6 +175,24 @@ class PlayerController(context: Context) {
     /** Round 3 item 13: locally accumulated playback time (see PlaybackStatsStore). */
     val statsStore = PlaybackStatsStore(context)
     private var playStartElapsedMs: Long? = null
+    /**
+     * 0.1.18 第 15 项：算法推荐的播放事件——当前歌与它累计的真实播放
+     * 毫秒（与 statsStore 同一累计点：notePlayingChanged 与 60 秒 flush）。
+     * 切歌 / 队列播完时 finishPlayEvent 落库；开关关时不写库。
+     */
+    val playEventLog = PlayEventLog(context)
+    private val settingsStore = SettingsStore(appContext)
+    private var eventSong: Song? = null
+    private var eventPlayedMs: Long = 0L
+    /**
+     * 0.1.18 第 24 项：播放错误恢复状态——同一首歌在一波错误内的重试
+     * 次数与退避任务。错误间隔超过 60 秒视为新的一波，计数清零（长
+     * 会话里相隔数小时的两次瞬时错误各自都有完整的 3 次机会）。
+     */
+    private var errorRetryJob: Job? = null
+    private var errorRetrySongId: Long? = null
+    private var errorRetryCount: Int = 0
+    private var errorBurstStartMs: Long = 0L
 
     /** 会话接通前收到的播放请求（只存最新一次）。 */
     private var pendingQueue: PendingQueue? = null
@@ -184,6 +229,7 @@ class PlayerController(context: Context) {
                     val now = SystemClock.elapsedRealtime()
                     if (now > start) {
                         statsStore.addPlayed(now - start)
+                        eventPlayedMs += now - start
                         playStartElapsedMs = now
                     }
                 }
@@ -202,15 +248,27 @@ class PlayerController(context: Context) {
 
     private fun createListener(player: Player) = object : Player.Listener {
         override fun onIsPlayingChanged(p: Boolean) { _state.value = _state.value.copy(isPlaying = p); notePlayingChanged(p) }
-        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); ensureUrlForCurrent(player, autoPlay = player.isPlaying) }
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) { _state.value = _state.value.copy(index = player.currentMediaItemIndex, durationMs = player.duration.coerceAtLeast(0)); notePlayingChanged(player.isPlaying); finishPlayEvent(); eventSong = _state.value.current; errorRetryJob?.cancel(); errorRetrySongId = null; errorRetryCount = 0; ensureUrlForCurrent(player, autoPlay = player.isPlaying) }
         override fun onPlaybackStateChanged(playbackState: Int) {
             // Shuffle 模式：自然播完一首（REPEAT_MODE_OFF 时 STATE_ENDED）
-            // 后随机跳一首；顺序模式下播完即停（原行为，不动）。
-            // RepeatAll / RepeatOne 由 Media3 的 repeatMode 自己接管，
-            // 不会走到 ENDED。只在有两首以上时跳，一首时不动。
-            if (playbackState == Player.STATE_ENDED && _playMode.value == PlayMode.Shuffle) {
-                val idx = nextShuffleIndex(player.mediaItemCount, player.currentMediaItemIndex)
-                if (idx != null) jumpTo(idx)
+            // 后随机跳一首；倒序模式：播完跳前一首，到队首停下；顺序模式
+            // 下播完即停（原行为，不动）。RepeatAll / RepeatOne 由 Media3
+            // 的 repeatMode 自己接管，不会走到 ENDED。只在有两首以上时跳，
+            // 一首时不动。
+            if (playbackState == Player.STATE_ENDED) {
+                when (_playMode.value) {
+                    PlayMode.Shuffle -> {
+                        val idx = nextShuffleIndex(player.mediaItemCount, player.currentMediaItemIndex)
+                        if (idx != null) jumpTo(idx) else finishPlayEvent()
+                    }
+                    PlayMode.Reverse -> {
+                        val idx = nextReverseIndex(player.mediaItemCount, player.currentMediaItemIndex)
+                        if (idx != null) jumpTo(idx) else finishPlayEvent()
+                    }
+                    // 顺序模式播完队列：没有切歌事件，手动把最后一首的
+                    // 播放事件落库（0.1.18 第 15 项）。
+                    else -> finishPlayEvent()
+                }
             }
         }
         override fun onPlayerError(error: PlaybackException) {
@@ -218,9 +276,64 @@ class PlayerController(context: Context) {
             // ensureUrlForCurrent owns that case (replace or skip + explain).
             val current = player.currentMediaItem
             if (current?.localConfiguration?.uri.toString().isBlank() && urlLoader != null) return
+            // 0.1.18 第 24 项：先走恢复——长会话里一次瞬时错误（连接
+            // 重置、CDN 链接中途失效、被限流）不该永久暂停。重新解析
+            // 当前歌 URL（urlLoader 内部就是既有回退链）+ reprepare，
+            // 退避 2s/5s/15s 共 3 次；恢复期间不写 isPlaying=false、
+            // 不弹 toast。3 次都失败才回到旧行为：暂停 + 提示。
+            val songId = current?.mediaId?.toLongOrNull()
+            if (songId != null && urlLoader != null && scheduleErrorRecovery(player, songId)) return
             _state.value = _state.value.copy(isPlaying = false)
             onPlaybackError?.invoke("播放失败，请检查网络后重试")
         }
+    }
+
+    /**
+     * 0.1.18 第 24 项：排一次错误恢复。返回 true = 已排上（调用方不要
+     * 再走暂停收尾）；false = 这一波的重试次数已用完。重新解析拿不到
+     * 地址也算一次失败，继续退避或收尾（收尾在协程里做）。
+     */
+    private fun scheduleErrorRecovery(player: Player, songId: Long): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (errorRetrySongId != songId || now - errorBurstStartMs > 60_000) {
+            errorRetrySongId = songId
+            errorRetryCount = 0
+            errorBurstStartMs = now
+        }
+        val delayMs = errorRetryDelayMs(errorRetryCount) ?: return false
+        errorRetryCount++
+        errorRetryJob?.cancel()
+        val idx = player.currentMediaItemIndex
+        val resumePositionMs = player.currentPosition.coerceAtLeast(0)
+        val wasPlaying = player.playWhenReady
+        errorRetryJob = scope.launch {
+            delay(delayMs)
+            // 退避期间切了歌 / 换了队列：新歌的错误自有其计数，不插手。
+            if (player.currentMediaItemIndex != idx ||
+                player.currentMediaItem?.mediaId?.toLongOrNull() != songId
+            ) return@launch
+            val loader = urlLoader ?: return@launch
+            val url = runCatching { loader(songId) }.getOrNull()
+            if (player.currentMediaItemIndex != idx ||
+                player.currentMediaItem?.mediaId?.toLongOrNull() != songId
+            ) return@launch
+            if (!url.isNullOrBlank()) {
+                val old = player.getMediaItemAt(idx)
+                player.replaceMediaItem(
+                    idx,
+                    MediaItem.Builder().setUri(url).setMediaId(songId.toString())
+                        .setMediaMetadata(old.mediaMetadata).build(),
+                )
+                player.prepare()
+                if (resumePositionMs > 0) player.seekTo(idx, resumePositionMs)
+                // 退避期间用户按了暂停（playWhenReady 变 false）就不自动播。
+                if (wasPlaying && player.playWhenReady) player.play()
+            } else if (!scheduleErrorRecovery(player, songId)) {
+                _state.value = _state.value.copy(isPlaying = false)
+                onPlaybackError?.invoke("播放失败，请检查网络后重试")
+            }
+        }
+        return true
     }
 
     /**
@@ -232,9 +345,34 @@ class PlayerController(context: Context) {
     private fun notePlayingChanged(playing: Boolean) {
         val now = SystemClock.elapsedRealtime()
         playStartElapsedMs?.let { start ->
-            if (now > start) statsStore.addPlayed(now - start)
+            if (now > start) {
+                statsStore.addPlayed(now - start)
+                eventPlayedMs += now - start
+            }
         }
         playStartElapsedMs = if (playing) now else null
+    }
+
+    /**
+     * 0.1.18 第 15 项：把当前歌累计的播放时长作为一条播放事件落库
+     * （算法推荐开关开时才写；关时直接丢弃，库里不留数据）。写库在
+     * IO 线程做，不占主线程。切歌时由 onMediaItemTransition 调用
+     * （调用前 notePlayingChanged 已把最后一段累计进来）。
+     */
+    private fun finishPlayEvent() {
+        val song = eventSong ?: return
+        eventSong = null
+        val playedMs = eventPlayedMs
+        eventPlayedMs = 0L
+        if (playedMs <= 0L || !settingsStore.algorithmRecommendEnabled) return
+        val event = PlayEvent(
+            songId = song.id,
+            source = song.source.name,
+            artistNames = song.artists.map { it.name },
+            playedSeconds = playedMs / 1000,
+            playedAtMs = System.currentTimeMillis(),
+        )
+        scope.launch { withContext(Dispatchers.IO) { runCatching { playEventLog.insert(event) } } }
     }
 
     private fun ensureUrlForCurrent(player: Player, autoPlay: Boolean = true) {
@@ -245,8 +383,18 @@ class PlayerController(context: Context) {
         if (item.localConfiguration?.uri.toString().isNotBlank() || id in unplayable) return
         val loader = urlLoader ?: return
         scope.launch {
-            val url = runCatching { loader(id) }.getOrNull()
+            var url = runCatching { loader(id) }.getOrNull()
             if (player.currentMediaItemIndex != idx) return@launch
+            if (url.isNullOrBlank() && autoPlay) {
+                // 0.1.18 第 24 项：懒加载取址失败先重试一次（3 秒后）——
+                // 长会话里 QQ musickey 刚刷新、网络瞬断都会让第一次取址
+                // 返空，直接拉黑 + 跳歌会把能播的歌跳掉。重试仍空才走
+                // 下面的跳过路径；autoPlay=false 的预取不重试（静默
+                // 语义不变）。
+                delay(3_000)
+                if (player.currentMediaItemIndex != idx) return@launch
+                url = runCatching { loader(id) }.getOrNull()
+            }
             if (!url.isNullOrBlank()) {
                 // 补 URL 时保留原条目的元数据（歌名/歌手/封面），通知不丢信息。
                 val old = player.getMediaItemAt(idx)
@@ -393,6 +541,13 @@ class PlayerController(context: Context) {
     }
 
     fun next() {
+        // 0.1.18 第 10 项：倒序下“下一首”是队里的前一首（index-1），
+        // 到队首停下，与顺序模式到队尾停下对称。
+        if (_playMode.value == PlayMode.Reverse) {
+            val idx = nextReverseIndex(_state.value.queue.size, _state.value.index)
+            if (idx != null) jumpTo(idx)
+            return
+        }
         // 0.1.12：Shuffle 下“下一首”是队列里随机一首（不等于当前曲）；
         // 其余模式走 Media3 的顺序下一首（RepeatAll 到队尾自动回绕，
         // 由 repeatMode 接管；顺序模式到队尾不动）。
@@ -403,7 +558,16 @@ class PlayerController(context: Context) {
         }
         mediaController?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
     }
-    fun previous() { mediaController?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() } }
+    fun previous() {
+        // 0.1.18 第 10 项：倒序下“上一首”是队里的后一首（反向播放顺
+        // 序里往回走），到队尾不动。
+        if (_playMode.value == PlayMode.Reverse) {
+            val idx = prevReverseIndex(_state.value.queue.size, _state.value.index)
+            if (idx != null) jumpTo(idx)
+            return
+        }
+        mediaController?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
+    }
     /** Jump the queue sheet's tap target: index change flows back through onMediaItemTransition. */
     fun jumpTo(index: Int) { mediaController?.let { if (index in 0 until it.mediaItemCount) { it.seekTo(index, 0); it.play() } } }
     /** Insert [song] right after the current item so it plays next; the state queue mirrors ExoPlayer. */
@@ -490,7 +654,14 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         store = SettingsStore(this)
-        val player = ExoPlayer.Builder(this).build()
+        // 0.1.18 第 24 项：WAKE_MODE_NETWORK——流媒体播放期间持有网络
+        // 唤醒锁（部分 WakeLock + WifiLock），息屏久了 Doze 不再把
+        // 网络/CPU 挂起掐断流。默认 WAKE_MODE_NONE 是长播自动暂停的
+        // 代码可证原因之一。权限 WAKE_LOCK / CHANGE_WIFI_STATE 已在
+        // Manifest 声明。
+        val player = ExoPlayer.Builder(this).build().apply {
+            setWakeMode(C.WAKE_MODE_NETWORK)
+        }
         val sessionActivity = PendingIntent.getActivity(
             this, 0,
             // 第六轮第 29 项：通知栏媒体卡片点进时直达播放器页（MainActivity

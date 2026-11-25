@@ -5,8 +5,8 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
-import okio.Buffer
 import org.json.JSONObject
+import com.tokimusic.app.data.model.Song
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -15,15 +15,18 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * QQ direct-login regression tests (sixth round, item 1). MockWebServer
- * stands in for the four QQ hosts; the tests assert the exact request
- * shapes L-1124 sends (ptqrshow params, ptqrlogin ptqrtoken, the
- * check_sig → authorize → QQLogin chain, the ANDROID CGI comm) — a
- * wrong byte in the port looks exactly like "QQ is down" at runtime.
+ * QQ direct-connection regression tests (sixth round, item 1). MockWebServer
+ * stands in for the QQ hosts; the tests assert the exact request shapes
+ * L-1124 sends (SMS SendPhoneAuthCode / phone_authorize -> QQLogin, the
+ * MobileQr Login exchange, the ANDROID CGI comm) — a wrong byte in the
+ * port looks exactly like "QQ is down" at runtime.
  *
  * NOT covered here (needs a real person + real device): whether the
  * QQLogin CGI call actually succeeds without QIMEI36, and the
  * GetLoginUserInfo profile key names (parsed defensively).
+ *
+ * 0.1.18 第 12 项：QQ 扫码登录已删除（ptqrshow / ptqrlogin /
+ * check_sig → authorize 链随功能删），本文件不再覆盖扫码登录。
  */
 class QqClientTest {
     private lateinit var server: MockWebServer
@@ -47,7 +50,7 @@ class QqClientTest {
         server.start()
         settings = FakeQqSettings()
         val base = server.url("/").toString().trimEnd('/')
-        client = QqClient(settings, QqHosts(base, base, base, base, base))
+        client = QqClient(settings, QqHosts(base, base))
     }
 
     @After
@@ -57,212 +60,6 @@ class QqClientTest {
 
     private fun json(body: String): MockResponse =
         MockResponse().setBody(body).addHeader("Content-Type", "application/json")
-
-    @Test
-    fun hash33MatchesPythonVectors() {
-        assertEquals(0, hash33(""))
-        assertEquals(97, hash33("a"))
-        assertEquals(108966, hash33("abc"))
-        assertEquals(261238937, hash33("hello", 5381))
-        assertEquals(88587725, hash33("p_skey_sample_value", 5381))
-        assertEquals(1707193029, hash33("d635d49779c1d4f9", 0))
-    }
-
-    @Test
-    fun qrShowReturnsPngAndQrsig() = runBlocking {
-        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
-        server.enqueue(
-            MockResponse().setBody(Buffer().write(png))
-                .addHeader("Set-Cookie", "qrsig=QRSIG1; Path=/; Domain=.qq.com")
-                .addHeader("Content-Type", "image/png"),
-        )
-        val (bytes, qrsig) = client.qrShow()
-        assertEquals("QRSIG1", qrsig)
-        assertTrue(bytes.contentEquals(png))
-        val req = server.takeRequest()
-        assertTrue(req.path!!.startsWith("/ptqrshow?"))
-        assertTrue(req.path!!.contains("appid=716027609"))
-        assertTrue(req.path!!.contains("daid=383"))
-        assertTrue(req.path!!.contains("pt_3rd_aid=100497308"))
-        // The data-URI shape is what the login dialog decodes.
-        assertTrue(QqClient.qrImageDataUri(bytes).startsWith("data:image/png;base64,"))
-    }
-
-    @Test
-    fun qrCheckParsesAllStatuses() = runBlocking {
-        suspend fun poll(body: String): QqQrCheck {
-            server.enqueue(MockResponse().setBody(body))
-            return client.qrCheck("QRSIG1")
-        }
-        assertEquals(QqQrCheck.Waiting, poll("ptuiCB('66','0','','0','未失效','');"))
-        assertEquals(QqQrCheck.Scanned, poll("ptuiCB('67','0','','0','已扫码','');"))
-        assertEquals(QqQrCheck.Expired, poll("ptuiCB('65','0','','0','已失效','');"))
-        assertEquals(QqQrCheck.Refused, poll("ptuiCB('68','0','','0','已拒绝','');"))
-        assertEquals(
-            QqQrCheck.Done("123456", "SIGX123"),
-            poll("ptuiCB('0','0','https://graph.qq.com/oauth2.0/login_jump?ptsigx=SIGX123&uin=123456','0','登录成功！','');"),
-        )
-        val req = server.takeRequest()
-        assertTrue(req.path!!.startsWith("/ptqrlogin?"))
-        assertTrue(req.path!!.contains("ptqrtoken=${hash33("QRSIG1")}"))
-        assertEquals("qrsig=QRSIG1", req.getHeader("Cookie"))
-    }
-
-    @Test
-    fun exchangeQrLoginPersistsCredential() = runBlocking {
-        // Assertions live on the test thread, not in the dispatcher: the
-        // dispatcher only records what it saw.
-        val cgiBodies = mutableListOf<JSONObject>()
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                return when {
-                    request.path!!.startsWith("/check_sig") ->
-                        MockResponse().setResponseCode(302)
-                            .addHeader("Set-Cookie", "p_skey=PSKEY1; Path=/; Domain=.qq.com")
-                            .addHeader("Location", "https://graph.qq.com/oauth2.0/login_jump")
-                    request.path!!.startsWith("/oauth2.0/authorize") ->
-                        MockResponse().setResponseCode(302)
-                            .addHeader("Location", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/&code=CODE123&state=state")
-                    request.path!!.startsWith("/cgi-bin/musicu.fcg") -> {
-                        val body = JSONObject(request.body.readUtf8())
-                        cgiBodies.add(body)
-                        val req0 = body.getJSONObject("req_0")
-                        when (req0.getString("module")) {
-                            "music.getSession.session" -> json(
-                                """{"code":0,"req_0":{"code":0,"data":{"session":{"uid":"UID1","sid":"SID1"}}}}""",
-                            )
-                            "QQConnectLogin.LoginServer" -> json(
-                                """{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456"}}}""",
-                            )
-                            else -> MockResponse().setResponseCode(404)
-                        }
-                    }
-                    else -> MockResponse().setResponseCode(404)
-                }
-            }
-        }
-        val credential = client.exchangeQrLogin("123456", "SIGX123")
-        assertEquals("123456", credential.musicId)
-        assertEquals("KEY123", credential.musicKey)
-        assertEquals("123456", settings.qqMusicId)
-        assertEquals("KEY123", settings.qqMusicKey)
-        assertEquals(2, cgiBodies.size)
-        val loginBody = cgiBodies.single { it.getJSONObject("req_0").getString("module") == "QQConnectLogin.LoginServer" }
-        val comm = loginBody.getJSONObject("comm")
-        // ANDROID comm shape (L-1124 versioning.py): QIMEI36 empty without
-        // a QIMEI cache, tmeLoginType 2 on the QQLogin call, GetSession
-        // uid/sid carried in the comm.
-        assertEquals("", comm.getString("QIMEI36"))
-        assertEquals("0123456789abcdef0123456789abcdef", comm.getString("OpenUDID"))
-        assertEquals("a1b2c3d4e5f6a1b2", comm.getString("aid"))
-        assertEquals(2, comm.getInt("tmeLoginType"))
-        assertEquals("CODE123", loginBody.getJSONObject("req_0").getJSONObject("param").getString("code"))
-        assertEquals("UID1", comm.getString("uid"))
-        assertEquals("SID1", comm.getString("sid"))
-    }
-
-    // ---- 0.1.11 修复轮：check_sig 全量 cookie → authorize ----
-
-    private class QrExchangeCapture {
-        var checkSigReferer: String? = null
-        var authorizeCookie: String? = null
-        var authorizeBody: String? = null
-        var loginCode: String? = null
-    }
-
-    /** check_sig → authorize → QQLogin 的可配 dispatcher：check_sig 返回
-     * 指定的多 cookie，authorize 返回指定的响应；记录 check_sig 的
-     * Referer、authorize 的 Cookie 头与表单、QQLogin 收到的 code。 */
-    private fun qrExchangeDispatcher(
-        capture: QrExchangeCapture,
-        authorizeResponse: MockResponse,
-        checkSigCookies: List<String> = listOf("p_skey=PSKEY1; Path=/; Domain=.qq.com"),
-    ): Dispatcher = object : Dispatcher() {
-        override fun dispatch(request: RecordedRequest): MockResponse {
-            return when {
-                request.path!!.startsWith("/check_sig") -> {
-                    capture.checkSigReferer = request.getHeader("Referer")
-                    val resp = MockResponse().setResponseCode(302)
-                        .addHeader("Location", "https://graph.qq.com/oauth2.0/login_jump")
-                    checkSigCookies.forEach { resp.addHeader("Set-Cookie", it) }
-                    resp
-                }
-                request.path!!.startsWith("/oauth2.0/authorize") -> {
-                    capture.authorizeCookie = request.getHeader("Cookie")
-                    capture.authorizeBody = request.body.readUtf8()
-                    authorizeResponse
-                }
-                request.path!!.startsWith("/cgi-bin/musicu.fcg") -> {
-                    val req0 = JSONObject(request.body.readUtf8()).getJSONObject("req_0")
-                    when (req0.getString("module")) {
-                        "music.getSession.session" -> json(
-                            """{"code":0,"req_0":{"code":0,"data":{"session":{"uid":"UID1","sid":"SID1"}}}}""",
-                        )
-                        "QQConnectLogin.LoginServer" -> {
-                            capture.loginCode = req0.getJSONObject("param").getString("code")
-                            json(
-                                """{"code":0,"req_0":{"code":0,"data":{"musicid":123456,"musickey":"KEY123","str_musicid":"123456"}}}""",
-                            )
-                        }
-                        else -> MockResponse().setResponseCode(404)
-                    }
-                }
-                else -> MockResponse().setResponseCode(404)
-            }
-        }
-    }
-
-    @Test
-    fun exchangeQrLoginForwardsAllCheckSigCookiesToAuthorize() = runBlocking {
-        val capture = QrExchangeCapture()
-        server.dispatcher = qrExchangeDispatcher(
-            capture,
-            MockResponse().setResponseCode(302)
-                .addHeader("Location", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/&code=CODE123&state=state"),
-            checkSigCookies = listOf(
-                "p_skey=PSKEY1; Path=/; Domain=.qq.com",
-                "uin=o123456; Path=/; Domain=.qq.com",
-                "skey=SK1; Path=/; Domain=.qq.com",
-            ),
-        )
-        val credential = client.exchangeQrLogin("123456", "SIGX123")
-        assertEquals("KEY123", credential.musicKey)
-        // 0.1.10 真机失败的根因：只带 p_skey 时 authorize 不回 code；
-        // L-1124 转发 check_sig 的全部 cookie，这里三枚都要带上。
-        assertTrue(capture.authorizeCookie!!.contains("p_skey=PSKEY1"))
-        assertTrue(capture.authorizeCookie!!.contains("uin=o123456"))
-        assertTrue(capture.authorizeCookie!!.contains("skey=SK1"))
-        // g_tk 仍只由 p_skey 算。
-        assertTrue(capture.authorizeBody!!.contains("g_tk=${hash33("PSKEY1", 5381)}"))
-        // check_sig 带 Referer（与 L-1124 一致）。
-        assertEquals("https://xui.ptlogin2.qq.com/", capture.checkSigReferer)
-    }
-
-    @Test
-    fun exchangeQrLoginParsesCodeAtEndOfLocation() = runBlocking {
-        val capture = QrExchangeCapture()
-        server.dispatcher = qrExchangeDispatcher(
-            capture,
-            MockResponse().setResponseCode(302)
-                .addHeader("Location", "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/&code=CODE9"),
-        )
-        val credential = client.exchangeQrLogin("123456", "SIGX123")
-        assertEquals("KEY123", credential.musicKey)
-        assertEquals("CODE9", capture.loginCode)
-    }
-
-    @Test
-    fun exchangeQrLoginAuthorizeErrorNamesHttpStatusAndLocation() = runBlocking {
-        server.dispatcher = qrExchangeDispatcher(
-            QrExchangeCapture(),
-            MockResponse().setResponseCode(200).setBody("<html>confirm</html>"),
-        )
-        val error = runCatching { client.exchangeQrLogin("123456", "SIGX123") }.exceptionOrNull()
-        assertTrue(error is ApiException)
-        assertTrue(error!!.message!!.contains("authorize 未返回 code"))
-        assertTrue(error.message!!.contains("HTTP 200"))
-        assertTrue(error.message!!.contains("无 Location"))
-    }
 
     @Test
     fun getLoginUserInfoParsesProfile() = runBlocking {
@@ -912,51 +709,6 @@ class QqClientTest {
     }
 
     @Test
-    fun mobileQrShowDecodesBase64QrAndId() = runBlocking {
-        // L-1124：qrcode 带 data: 前缀时只取逗号后的 base64。
-        val pngB64 = java.util.Base64.getEncoder().encodeToString(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
-        val seen = mutableListOf<JSONObject>()
-        val seenComms = mutableListOf<JSONObject>()
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                if (!request.path!!.startsWith("/cgi-bin/musicu.fcg")) return MockResponse().setResponseCode(404)
-                val body = JSONObject(request.body.readUtf8())
-                seen += body.getJSONObject("req_0")
-                seenComms += body.getJSONObject("comm")
-                return json(
-                    """{"code":0,"req_0":{"code":0,"data":{"qrcode":"data:image/png;base64,$pngB64","qrcodeID":"QRID123"}}}""",
-                )
-            }
-        }
-        val (png, qrcodeId) = client.mobileQrShow()
-        assertEquals("QRID123", qrcodeId)
-        assertEquals(0x89.toByte(), png[0])
-        assertEquals(0x50.toByte(), png[1])
-        val req0 = seen.single()
-        assertEquals("CreateQRCode", req0.getString("method"))
-        val param = req0.getJSONObject("param")
-        assertEquals("qqmusic", param.getString("tmeAppID"))
-        assertEquals(11, param.getInt("ct"))
-        assertEquals(20090008, param.getInt("cv"))
-        // comm ct/cv 被覆盖为 23/0（L-1124 _get_mobile_qr）。
-        val comm = seenComms.single()
-        assertEquals(23, comm.getInt("ct"))
-        assertEquals(0, comm.getInt("cv"))
-    }
-
-    @Test
-    fun mobileQrShowThrowsWhenQrOrIdMissing() = runBlocking {
-        server.dispatcher = readDispatcher(
-            mapOf(
-                "music.login.LoginServer/CreateQRCode" to
-                    cgiOk("""{"qrcode":"","qrcodeID":""}"""),
-            ),
-        )
-        val failure = runCatching { client.mobileQrShow() }.exceptionOrNull()
-        assertTrue(failure is ApiException)
-    }
-
-    @Test
     fun exchangeMobileQrLoginSendsMusicidAsNumber() = runBlocking {
         val seen = mutableListOf<JSONObject>()
         val seenComms = mutableListOf<JSONObject>()
@@ -1407,5 +1159,51 @@ class QqClientTest {
         assertEquals("晴天", library.favSongs[0].name)
         assertEquals(1, library.followedArtists.size)
         assertEquals("周杰伦", library.followedArtists[0].name)
+    }
+
+    // ---- 0.1.18 第 8 项：分页合并（纯函数，桩数据）----
+
+    private fun recSong(id: Long, mid: String) = Song(id, "歌$mid", emptyList(), sourceId = mid)
+
+    @Test
+    fun mergeRecommendPagesKeepsPageOrder() {
+        val merged = mergeRecommendPages(
+            listOf(listOf(recSong(1, "m1"), recSong(2, "m2")), listOf(recSong(3, "m3"))),
+            target = 30,
+        )
+        assertEquals(listOf("m1", "m2", "m3"), merged.map { it.sourceId })
+    }
+
+    @Test
+    fun mergeRecommendPagesDedupesAcrossPages() {
+        val merged = mergeRecommendPages(
+            listOf(listOf(recSong(1, "m1"), recSong(2, "m2")), listOf(recSong(2, "m2"), recSong(3, "m3"))),
+            target = 30,
+        )
+        assertEquals(listOf("m1", "m2", "m3"), merged.map { it.sourceId })
+    }
+
+    @Test
+    fun mergeRecommendPagesTruncatesAtTarget() {
+        val merged = mergeRecommendPages(
+            listOf(listOf(recSong(1, "m1"), recSong(2, "m2"), recSong(3, "m3")), listOf(recSong(4, "m4"))),
+            target = 2,
+        )
+        assertEquals(listOf("m1", "m2"), merged.map { it.sourceId })
+    }
+
+    @Test
+    fun mergeRecommendPagesDropsBlankSourceId() {
+        val merged = mergeRecommendPages(
+            listOf(listOf(recSong(1, ""), recSong(2, "m2"))),
+            target = 30,
+        )
+        assertEquals(listOf("m2"), merged.map { it.sourceId })
+    }
+
+    @Test
+    fun mergeRecommendPagesEmptyPagesReturnEmpty() {
+        assertTrue(mergeRecommendPages(listOf(emptyList(), emptyList()), target = 30).isEmpty())
+        assertTrue(mergeRecommendPages(emptyList(), target = 30).isEmpty())
     }
 }

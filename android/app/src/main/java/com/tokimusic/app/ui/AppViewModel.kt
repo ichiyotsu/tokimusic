@@ -11,10 +11,7 @@ import com.tokimusic.app.data.api.LyricPayload
 import com.tokimusic.app.data.api.QqClient
 import com.tokimusic.app.data.api.QqClient.QqArtist
 import com.tokimusic.app.data.api.QqProfile
-import com.tokimusic.app.data.api.QqMobileQrEvent
-import com.tokimusic.app.data.api.QqMqttClient
 import com.tokimusic.app.data.api.QqPhoneAuthResult
-import com.tokimusic.app.data.api.QqQrCheck
 import com.tokimusic.app.data.api.isValidCnPhone
 import com.tokimusic.app.data.api.QqSongUrlResult
 import com.tokimusic.app.data.api.QrCheck
@@ -25,6 +22,7 @@ import com.tokimusic.app.data.local.LocalMusicScanner
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
+import com.tokimusic.app.ui.home.interleavePlaylists
 import com.tokimusic.app.data.playlistFavoriteKey
 import com.tokimusic.app.player.LiveLyricLine
 import com.tokimusic.app.player.PlayMode
@@ -48,7 +46,7 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
  * dead service shows an error + retry, login-gated sections (daily / radar /
  * recent) show a login prompt until the user signs in.
  */
-data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — 0.1.15 第 2 项起可点进 QQ 歌手页）。 */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), /** 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（每日需登录，雷达匿名可用；空时主页不显示对应卡片）。 */ val qqDaily: List<Song> = emptyList(), val qqRadar: List<Song> = emptyList(), /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList())
+data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — 0.1.15 第 2 项起可点进 QQ 歌手页）。 */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), val searchSource: MusicSource = MusicSource.NETEASE, /** 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（每日需登录，雷达匿名可用；空时主页不显示对应卡片）。 */ val qqDaily: List<Song> = emptyList(), val qqRadar: List<Song> = emptyList(), /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList())
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
 /** 单个来源的资料库统计（0.1.13 第 23 项）：等级 + 听歌分钟数；minutes 为 null 表示该源没有时长数据（QQ 暂无时长接口），显示 "—"。 */
@@ -88,6 +86,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // The toggled source's sections must appear / vanish immediately.
         refreshHome()
     }
+    // 0.1.18 第 15 项：算法推荐（测试功能，默认关）——开关 + 推荐结果。
+    // 开关开时 PlayerController 才写播放事件；主页据此显示推荐区。
+    private val _algorithmRecommendEnabled = MutableStateFlow(store.algorithmRecommendEnabled)
+    val algorithmRecommendEnabled: StateFlow<Boolean> = _algorithmRecommendEnabled
+    private val _algorithmPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
+    val algorithmPlaylists: StateFlow<List<Playlist>> = _algorithmPlaylists
+    fun setAlgorithmRecommendEnabled(enabled: Boolean) {
+        store.algorithmRecommendEnabled = enabled
+        _algorithmRecommendEnabled.value = enabled
+        if (!enabled) _algorithmPlaylists.value = emptyList()
+    }
+
+    /**
+     * 0.1.18 第 15 项：按本地口味画像给两源推荐歌单打分选前 6——候选是
+     * 主页已拉取的两源推荐歌单（交错顺序取前 12 个逐个拉曲目算歌手
+     * 重合度）；画像来自本地播放事件 + 喜欢的歌 + 关注的歌手
+     * （TasteProfile）。只在开关开时跑；画像为空（还没数据）时不出推荐。
+     */
+    fun refreshAlgorithmRecommendations() {
+        if (!_algorithmRecommendEnabled.value) return
+        viewModelScope.launch {
+            val candidates = interleavePlaylists(_home.value.playlists, _home.value.qqPlaylists).take(12)
+            if (candidates.isEmpty()) {
+                _algorithmPlaylists.value = emptyList()
+                return@launch
+            }
+            val profile = withContext(Dispatchers.IO) {
+                com.tokimusic.app.player.TasteProfile.build(
+                    events = player.playEventLog.recentEvents(),
+                    likedSongs = _likedSongs.value,
+                    followedArtistNames = _artists.value.map { it.name },
+                )
+            }
+            if (profile.isEmpty()) {
+                _algorithmPlaylists.value = emptyList()
+                return@launch
+            }
+            val scored = candidates.map { pl ->
+                val trackArtists = runCatching { playlistDetail(pl.id).second }
+                    .getOrDefault(emptyList())
+                    .map { s -> s.artists.map { a -> a.name } }
+                pl to com.tokimusic.app.player.TasteProfile.score(trackArtists, profile)
+            }
+            _algorithmPlaylists.value = scored
+                .filter { it.second > 0.0 }
+                .sortedByDescending { it.second }
+                .take(6)
+                .map { it.first }
+        }
+    }
+
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList()); val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
     private val _mine = MutableStateFlow(MineUiState()); val mine: StateFlow<MineUiState> = _mine
     // 0.1.17 第 17 项：本周收听排行（/user/record type=1，weekData），
@@ -166,12 +215,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     val qrState = MutableStateFlow<QrCheck?>(null); val qrImage = MutableStateFlow("")
     private val _qrError = MutableStateFlow<String?>(null); val qrError: StateFlow<String?> = _qrError
-    // 第六轮第 1 项：QQ 二维码登录态（与网易云 qrState/qrImage/qrError 平行）。
-    val qqQrState = MutableStateFlow<QqQrCheck?>(null); val qqQrImage = MutableStateFlow("")
-    private val _qqQrError = MutableStateFlow<String?>(null); val qqQrError: StateFlow<String?> = _qqQrError
-    // 0.1.12：QQ音乐 App 扫码登录态（与 qqQrState 平行；事件是 QqMobileQrEvent）。
-    val qqMobileQrState = MutableStateFlow<QqMobileQrEvent?>(null); val qqMobileQrImage = MutableStateFlow("")
-    private val _qqMobileQrError = MutableStateFlow<String?>(null); val qqMobileQrError: StateFlow<String?> = _qqMobileQrError
     // 0.1.12：手机号短信登录态。phone/code 是输入框的双向绑定；sent=true
     // 进入验证码输入；countdown 是重发冷却秒数；captchaUrl 非空时弹
     // WebView 做人机验证，验证完返回重新发送。
@@ -201,7 +244,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshLocalStats() {
         _localStats.value = SourceStats(level = 1, minutes = player.statsStore.totalMinutes())
     }
-    private val qqMqttClient = QqMqttClient(qqClient)
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
@@ -241,8 +283,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     private var searchJob: Job? = null
     private var qrJob: Job? = null
-    private var qqQrJob: Job? = null
-    private var qqMobileQrJob: Job? = null
     private var qqSmsJob: Job? = null
     private var qqSmsCountdownJob: Job? = null
 
@@ -526,28 +566,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 0.1.15 第 3 项：搜索不再分源——所有启用的源并行搜，结果合并
      * （歌曲 / 歌单两源合并成一列，歌手分网易云 / QQ 两区）；源开关
      * 只在设置里调。LOCAL 模式下搜索框不可用（§2.6.3），这里不留本地分支。 */
-    fun search(keywords: String) {
+    /** Search source, remembered across launches (sixth round, batch 2; 0.1.18 第 9 项恢复）。 */
+    private val _searchSource = MutableStateFlow(
+        runCatching { MusicSource.valueOf(store.lastSearchSource) }.getOrDefault(MusicSource.NETEASE)
+            .let { if (it == MusicSource.LOCAL) MusicSource.NETEASE else it },
+    )
+    val searchSource: StateFlow<MusicSource> = _searchSource
+
+    /** Sixth round, batch 2: search is source-aware (order 歌曲/歌手/歌单); the source is remembered (lastSearchSource). LOCAL searches the scanned on-device files. 0.1.18 第 9 项恢复（0.1.15 第 3 项删掉的），单源时只搜该源——旧版不看开关，这里按任务要求钳制。 */
+    fun search(keywords: String, source: MusicSource? = null) {
         searchJob?.cancel()
         if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searching = false); return }
+        val src = when {
+            _neteaseEnabled.value && !_qqEnabled.value -> MusicSource.NETEASE
+            _qqEnabled.value && !_neteaseEnabled.value -> MusicSource.QQ
+            else -> source ?: _searchSource.value
+        }
+        _searchSource.value = src
+        store.lastSearchSource = src.name
         searchJob = viewModelScope.launch {
-            _home.value = _home.value.copy(searching = true)
-            coroutineScope {
-                val neEnabled = _neteaseEnabled.value
-                val qqEnabledNow = _qqEnabled.value
-                // A failed search is an empty result with a retry, never Demo data.
-                val neSongsD = async { if (neEnabled) runCatching { api.search(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                val neArtistsD = async { if (neEnabled) runCatching { api.searchArtists(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                val nePlsD = async { if (neEnabled) runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                val qqSongsD = async { if (qqEnabledNow) runCatching { qqClient.searchSongs(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                val qqArtistsD = async { if (qqEnabledNow) runCatching { qqClient.searchArtists(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                val qqPlsD = async { if (qqEnabledNow) runCatching { qqClient.searchPlaylists(keywords) }.getOrDefault(emptyList()) else emptyList() }
-                _home.value = _home.value.copy(
-                    searchResults = neSongsD.await() + qqSongsD.await(),
-                    searchArtists = neArtistsD.await(),
-                    searchQqArtists = qqArtistsD.await(),
-                    searchPlaylists = nePlsD.await() + qqPlsD.await(),
-                    searching = false,
-                )
+            _home.value = _home.value.copy(searching = true, searchSource = src)
+            when (src) {
+                MusicSource.QQ -> {
+                    // A failed search is an empty result with a retry, never Demo data.
+                    val songs = runCatching { qqClient.searchSongs(keywords) }.getOrDefault(emptyList())
+                    val artists = runCatching { qqClient.searchArtists(keywords) }.getOrDefault(emptyList())
+                    val playlists = runCatching { qqClient.searchPlaylists(keywords) }.getOrDefault(emptyList())
+                    // 大排查 S1：切源时清掉另一源的歌手列表——之前只写本源
+                    // 的列表，旧源歌手区一直残留（两个“歌手”标题并列）。
+                    _home.value = _home.value.copy(searchResults = songs, searchArtists = emptyList(), searchQqArtists = artists, searchPlaylists = playlists, searching = false)
+                }
+                MusicSource.NETEASE -> {
+                    val songs = runCatching { api.search(keywords) }.getOrDefault(emptyList())
+                    val artists = runCatching { api.searchArtists(keywords) }.getOrDefault(emptyList())
+                    val playlists = runCatching { api.searchPlaylists(keywords) }.getOrDefault(emptyList())
+                    // 大排查 S1：同上，清掉 QQ 歌手残留。
+                    _home.value = _home.value.copy(searchResults = songs, searchArtists = artists, searchQqArtists = emptyList(), searchPlaylists = playlists, searching = false)
+                }
+                // LOCAL: the search box is disabled in local mode (§2.6.3) —
+                // the VM keeps no local-search branch; local songs are browsed from Home.
+                MusicSource.LOCAL -> {
+                    _home.value = _home.value.copy(searchResults = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchPlaylists = emptyList(), searching = false)
+                }
             }
         }
     }
@@ -716,87 +776,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshHome()
     }
 
-    /** 第六轮第 1 项：QQ 二维码登录（与网易云 startQrLogin 同款状态机）：
-     * 取码 → 轮询（66 等待 / 67 已扫待确认 / 65 过期重取 / 68 拒绝）→
-     * 0 完成时换凭证；二维码约 5 分钟有效，过期重取，最多 3 次。
-     * 成功后自动启用 QQ 源并记首次登录时间。 */
-    fun startQqQrLogin() {
-        qqQrJob?.cancel()
-        _qqQrError.value = null
-        qqQrJob = viewModelScope.launch {
-            var attempts = 0
-            while (attempts < 3) {
-                attempts++
-                try {
-                    val (png, qrsig) = qqClient.qrShow()
-                    qqQrImage.value = QqClient.qrImageDataUri(png)
-                    while (true) {
-                        val check = qqClient.qrCheck(qrsig); qqQrState.value = check
-                        when (check) {
-                            is QqQrCheck.Done -> {
-                                qqClient.exchangeQrLogin(check.uin, check.sigx)
-                                onQqLoginSuccess()
-                                return@launch
-                            }
-                            QqQrCheck.Expired -> break
-                            QqQrCheck.Refused -> {
-                                _qqQrError.value = "已在手机上拒绝登录"; return@launch
-                            }
-                            else -> delay(2000)
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    _qqQrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查网络后重试"
-                    return@launch
-                }
-            }
-            _qqQrError.value = "二维码已过期，请重新生成"
-        }
-    }
-    fun cancelQqQrLogin() {
-        qqQrJob?.cancel(); qqQrState.value = null; qqQrImage.value = ""; _qqQrError.value = null
-    }
-
-    /** 0.1.12：QQ音乐 App 扫码登录（与 startQqQrLogin 同款状态机）：
-     * CreateQRCode 取码 → MQTT 订阅等事件（等待 / 已扫待确认 / 拒绝 /
-     * 超时）→ cookies 事件到时内部换凭证；二维码过期重取，最多 3 次。
-     * 成功后走 onQqLoginSuccess。MQTT 连接本身未在真机上验证过，见 NOTES。 */
-    fun startQqMobileQrLogin() {
-        qqMobileQrJob?.cancel()
-        _qqMobileQrError.value = null
-        qqMobileQrJob = viewModelScope.launch {
-            var attempts = 0
-            while (attempts < 3) {
-                attempts++
-                try {
-                    val (png, qrcodeId) = qqClient.mobileQrShow()
-                    qqMobileQrImage.value = QqClient.qrImageDataUri(png)
-                    val credential = qqMqttClient.watchMobileQrLogin(qrcodeId) { event ->
-                        qqMobileQrState.value = event
-                    }
-                    if (credential != null) {
-                        onQqLoginSuccess()
-                        return@launch
-                    }
-                    if (qqMobileQrState.value is QqMobileQrEvent.Refused) {
-                        _qqMobileQrError.value = "已在手机上拒绝登录"; return@launch
-                    }
-                    // 超时：循环重取一张新码（最多 3 次）。
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    _qqMobileQrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查网络后重试"
-                    return@launch
-                }
-            }
-            _qqMobileQrError.value = "二维码已过期，请重新生成"
-        }
-    }
-    fun cancelQqMobileQrLogin() {
-        qqMobileQrJob?.cancel(); qqMobileQrState.value = null; qqMobileQrImage.value = ""; _qqMobileQrError.value = null
-    }
 
     /** 0.1.12：手机号短信登录——发送验证码。手机号先做 11 位校验；
      * CAPTCHA 时把 securityURL 交给 UI 的 WebView，验证完返回重新发送。 */
@@ -912,7 +891,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             // 大排查 B6：同 loadQqLibrary——成功才记 loaded。
             runCatching { api.artistSublist() }
-                .onSuccess { _artists.value = it; artistsLoaded = true }
+                .onSuccess {
+                    _artists.value = it; artistsLoaded = true
+                    // 0.1.18 第 21 项：关注时间本地补记——已关注但没有本地
+                    // 记录的（升级前就关注的），以 app 首次在 sublist 里看到
+                    // 该 id 的时间为准（即这次加载的时间）。
+                    val now = System.currentTimeMillis()
+                    it.forEach { artist ->
+                        if (store.artistFollowTimeMs(artist.id) == 0L) {
+                            store.setArtistFollowTimeMs(artist.id, now)
+                        }
+                    }
+                }
                 .onFailure { _artists.value = emptyList() }
             // 0.1.13 第 24 项：关注态与关注列表同源。
             _followedArtistIds.value = _artists.value.map { it.id }.toSet()
@@ -924,12 +914,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!artistsLoaded) loadArtists()
     }
 
+    /** 0.1.18 第 21 项：本地记录的关注时间（0 = 无记录）；歌手页算"已关注 X 天"。 */
+    fun artistFollowTimeMs(id: Long): Long = store.artistFollowTimeMs(id)
+
     /** 0.1.13 第 24 项：关注 / 取消关注歌手——先调服务端，成功才翻本地态；失败只提示，不动状态。 */
     fun toggleFollowArtist(id: Long) = viewModelScope.launch {
         val following = id in _followedArtistIds.value
         val ok = runCatching { api.artistSub(id, !following) }.getOrDefault(false)
         if (ok) {
             _followedArtistIds.value = toggleFollowedIds(_followedArtistIds.value, id)
+            // 0.1.18 第 21 项：关注成功记下关注时间（服务端没有这个字段，
+            // 见 SettingsStore.artistFollowTimeMs）；取消关注成功清掉，
+            // 重新关注重新计时。
+            if (!following) store.setArtistFollowTimeMs(id, System.currentTimeMillis())
+            else store.clearArtistFollowTimeMs(id)
             _userMessage.value = if (following) "已取消关注" else "已关注"
         } else {
             _userMessage.value = if (store.cookie.isBlank()) "请先登录网易云" else "关注失败，请重试"
