@@ -53,8 +53,6 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiSheetContainer
-import com.tokimusic.app.ui.theme.NeteaseRed
-import com.tokimusic.app.ui.theme.QqGreen
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import kotlinx.coroutines.delay
 

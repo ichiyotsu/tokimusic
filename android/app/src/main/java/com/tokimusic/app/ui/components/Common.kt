@@ -41,7 +41,7 @@ import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.theme.monetColorForPlaylist
-import com.tokimusic.app.ui.theme.monetColorForSource
+import com.tokimusic.app.ui.theme.sourceBadgeBackground
 
 /**
  * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
@@ -215,7 +215,8 @@ fun resolveArtistTap(
  * 源徽标（第六轮第二批第 21 项）：只在双源都启用时显示——单源无歧义。
  * 0.1.13 第 1 / 2 项：图标换各源专属矢量（网易云 mingcute
  * netease-music-line、QQ mingcute music-3-line、本地 mdi
- * folder-music-outline）；第 12 项：底色换莫奈色（按源取色板前三色），
+ * folder-music-outline）；0.1.16 第 1 项：底色改用户指定的品牌底
+ * （网易云 #ff5757、QQ #879101，本地仍取莫奈色板 colors[2]），
  * 来源仍由图标形状区分。
  */
 @Composable
@@ -226,7 +227,7 @@ fun SourceBadge(source: MusicSource, size: Int = 20, paletteIndex: Int = 0, modi
         MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Box(
-        modifier.size(size.dp).clip(CircleShape).background(monetColorForSource(source, paletteIndex)),
+        modifier.size(size.dp).clip(CircleShape).background(sourceBadgeBackground(source, paletteIndex)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

@@ -120,6 +120,7 @@ import com.tokimusic.app.update.UpdatePrompt
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -731,21 +732,15 @@ fun TokiMusicApp(
                             // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
                             // 实测：sheet 本身不渐变，只有遮罩渐变），API
                             // 关不掉。改成透明 scrim（见 SettingsSheet）
-                            // + 这里一层静态 32% 黑遮罩（与 M3 默认 scrim
-                            // 同色同透明度），开关瞬间出现 / 消失，只有
-                            // sheet 本身滑动；点遮罩关闭仍走原生 scrim
-                            // 的手势（Dialog 窗口在上层接手势）。
-                            if (showSettings) {
-                                // 0.1.15 第 13 项：设置打开时背景加磨砂模糊
-                                // （与底栏 / 标题同款 tokiGlass 配方；玻璃
-                                // 关闭时 chromeBlurActive 关掉不画），让设置
-                                // 页更突出。0.1.14 第 3 条的静态 32% 黑遮罩
-                                // 不动，模糊层在遮罩之下（先模糊、再压暗）。
-                                if (chromeBlurActive(theme.backdropBlur)) {
-                                    Box(Modifier.fillMaxSize().tokiGlass(hazeState))
-                                }
-                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
-                            }
+                            // + 这里一层 32% 黑遮罩（与 M3 默认 scrim 同色
+                            // 同透明度）；点遮罩关闭仍走原生 scrim 的手势
+                            // （Dialog 窗口在上层接手势）。渐进动画见
+                            // SettingsBackdrop（0.1.16 第 3 条）。
+                            SettingsBackdrop(
+                                visible = showSettings,
+                                backdropBlur = theme.backdropBlur,
+                                hazeState = hazeState,
+                            )
                         }
                     }
                 }
@@ -805,6 +800,37 @@ fun TokiMusicApp(
                 onDismiss = dismissOptimize,
             )
         }
+    }
+}
+
+/**
+ * 设置背景的模糊 + 压暗层（0.1.16 第 3 条）——单独抽成顶层 composable，
+ * 否则在页面 Row 里调 AnimatedVisibility 会撞 RowScope 的 DSL 作用域
+ * 限制（编译失败；同款前例见下面的 NavBarSlot）。
+ */
+@Composable
+private fun SettingsBackdrop(
+    visible: Boolean,
+    backdropBlur: Boolean,
+    hazeState: HazeState,
+) {
+    // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 300ms，
+    // 与 sheet 滑入匹配）——之前是 if 开关瞬间出现 / 消失。手势不变：
+    // 黑遮罩层仍在 Dialog 窗口之下、不接手势，关闭仍走原生 scrim /
+    // 返回键；玻璃关闭时只渐隐黑遮罩。
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(300)),
+        exit = fadeOut(animationSpec = tween(300)),
+        label = "settings-backdrop",
+    ) {
+        // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
+        // tokiGlass 配方；玻璃关闭时 chromeBlurActive 关掉不画），让设置
+        // 页更突出。模糊层在遮罩之下（先模糊、再压暗）。
+        if (chromeBlurActive(backdropBlur)) {
+            Box(Modifier.fillMaxSize().tokiGlass(hazeState))
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
     }
 }
 
