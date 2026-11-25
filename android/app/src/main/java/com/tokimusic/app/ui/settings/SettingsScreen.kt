@@ -953,6 +953,28 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+    // 0.1.18 第 15 项：算法推荐开关（测试功能，默认关），与播放行为
+    // 开关同组（听歌记录上报之后）。
+    item {
+        var algorithmRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("算法推荐（测试功能）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = algorithmRecommend,
+                    onCheckedChange = { algorithmRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            "开启后，应用会在本机记录播放历史、分析你常听的歌手，并在主页推荐可能合口味的歌单；数据只存本机、不上传。关闭后停止记录，也不再显示推荐区。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     // 0.1.16 第 2 条：健康状态为空时不发 item——之前空 item 仍占
     // spacedBy，两组之间只剩 8dp；现在没状态就是 12dp 组间距。
     if (health != null) item {
@@ -1058,27 +1080,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
                 )
             }
         }
-    }
-    // 0.1.18 第 15 项：算法推荐开关（测试功能，默认关）。
-    item {
-        var algorithmRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
-        SettingsSubCard {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("算法推荐（测试功能）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = algorithmRecommend,
-                    onCheckedChange = { algorithmRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
-                )
-            }
-        }
-    }
-    item {
-        Text(
-            "开启后，应用会在本机记录播放历史、分析你常听的歌手，并在主页推荐可能合口味的歌单；数据只存本机、不上传。关闭后停止记录，也不再显示推荐区。",
-            Modifier.padding(horizontal = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import android.widget.Toast
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -102,6 +103,7 @@ import com.tokimusic.app.ui.theme.chromeBlurActive
 import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
+import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
 import com.tokimusic.app.ui.theme.tokiGlassFade
 import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiPageBackground
@@ -294,8 +296,11 @@ fun TokiMusicApp(
         val neteaseEnabled by vm.neteaseEnabled.collectAsState()
         val qqEnabled by vm.qqEnabled.collectAsState()
         val hazeState = rememberHazeState()
-        // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 迷你播放器 + 悬浮标题共用。
+        // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 悬浮标题共用。
         val barGlass = tokiContentChromeStrong(hazeState, theme.backdropBlur)
+        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊、
+        // 不上色（无 tint/veil）；玻璃关时 MiniPlayer 不用它、走实色。
+        val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(hazeState)
 
         val playerState by vm.player.state.collectAsState()
         // 第三轮第 21 项：播放器封面取色提升到这里——外层满屏 Box 用它画
@@ -722,6 +727,7 @@ fun TokiMusicApp(
                                 vm = vm,
                                 dest = dest,
                                 glass = barGlass,
+                                miniPlayerGlass = miniPlayerGlass,
                                 solidStroke = !chromeBlurActive(theme.backdropBlur),
                                 glassOn = chromeBlurActive(theme.backdropBlur),
                                 onOpenPlayer = { showPlayer = true },
@@ -871,6 +877,7 @@ private fun BottomChrome(
     vm: AppViewModel,
     dest: Dest,
     glass: Modifier,
+    miniPlayerGlass: Modifier,
     solidStroke: Boolean,
     glassOn: Boolean,
     onOpenPlayer: () -> Unit,
@@ -895,12 +902,26 @@ private fun BottomChrome(
         exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
         modifier = modifier,
     ) {
+        // 0.1.18 第 23 项：MiniPlayer 是最底元素时（子页无底栏、宽屏走
+        // rail），它距底边要与距右边相等——右边距是 MiniPlayer 自带的
+        // 16dp 横向 padding，所以这种放置下底 padding 用 16dp；主页有
+        // 底栏时保持 tokiSpace("sm")（8dp，那是底栏自己的底边距）。
+        // 改前：子页放置底 8dp vs 右 16dp，不等。两值间用 spatial spec
+        // 动画过渡，与底栏槽的伸缩同行，不跳。玻璃开/关都成立（这段
+        // padding 与玻璃无关）。系统导航栏 inset 在 navigationBarsPadding
+        // 里，两态一致，不归 app 控制。
+        val miniPlayerAtBottom = !navVisible || wide
+        val chromeBottomPad by animateDpAsState(
+            targetValue = if (miniPlayerAtBottom) 16.dp else tokiSpace("sm"),
+            animationSpec = scheme.defaultSpatialSpec(),
+            label = "chromeBottomPad",
+        )
         Column(
             Modifier
                 .fillMaxWidth()
                 .onSizeChanged { onHeight(with(density) { it.height.toDp() }) }
                 .navigationBarsPadding()
-                .padding(bottom = tokiSpace("sm")),
+                .padding(bottom = chromeBottomPad),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
@@ -915,7 +936,7 @@ private fun BottomChrome(
                 exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
                 label = "miniPlayer",
             ) {
-                MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
+                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, glassOn = glassOn, coverColors = coverColors)
             }
             NavBarSlot(
                 navVisible = navVisible,

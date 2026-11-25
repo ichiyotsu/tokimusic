@@ -53,15 +53,17 @@ fun chromeBlurActive(backdropBlur: Boolean): Boolean =
 // tokiGlassStrong 无任何调用者，已删（导航胶囊在用下面的
 // tokiContentChromeStrong；固定尺寸面走 tokiGlass）。
 /** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。
- * 0.1.17 第 4 项：底栏色换成主题紫 TokiNavBar（#5C4861）——玻璃开时是
- * 45% 紫 veil 盖在强模糊上，玻璃关时是实色紫（MiniPlayer 与搜索圆钮
- * 共用同一份 barGlass，跟着一起变）。 */
+ * 0.1.18 第 22 项：回 0.1.15 的样子——0.1.17 第 4 项换的主题紫
+ * TokiNavBar（#5C4861）撤掉，两分支都回 surfaceContainer（玻璃开 =
+ * 强模糊 + 45% surfaceContainer veil；玻璃关 = 实色 surfaceContainer，
+ * 底栏另有 3dp 描边/6dp 间距的实色适配）。玻璃关时整页发紫的根因就是
+ * 这一处：全仓只有这里用 TokiNavBar，没有别的紫色来源，常量已删。 */
 @Composable
 fun tokiContentChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
     return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiContentGlassStrong(state).background(TokiNavBar.copy(alpha = TokiGlassParams.strongVeilAlpha))
+        Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
     } else {
-        Modifier.background(TokiNavBar)
+        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
     }
 }
 
@@ -77,6 +79,12 @@ object TokiGlassParams {
     val strongBlurRadius: Dp = 32.dp
     const val strongVeilAlpha: Float = 0.45f
     const val strongDarkTintAlpha: Float = 0.30f
+
+    /**
+     * MiniPlayer 专用档（0.1.18 第 25 项）：模糊半径约 85dp（远强于
+     * strong 的 32dp），且不上色——无 tint、无 veil，纯模糊背后内容。
+     */
+    val miniPlayerBlurRadius: Dp = 85.dp
 
     fun tints(dark: Boolean): List<HazeColorEffect> = if (dark) {
         listOf(HazeColorEffect.tint(Color.White.copy(alpha = 0.20f)))
@@ -145,6 +153,30 @@ fun Modifier.tokiContentGlassStrong(state: HazeState): Modifier {
     return hazeBlur(
         input = HazeInput.Sources(state),
         style = tokiBlurStyle(dark, strong = true),
+        performanceMode = HazePerformanceMode.Quality,
+    )
+}
+
+/**
+ * MiniPlayer 专用玻璃（0.1.18 第 25 项）：85dp 强模糊、零上色——
+ * colorEffects 为空、fallback 也是全透明 tint、无 veil 背景，纯模糊
+ * 背后内容。输入与底栏同走 Sources（MiniPlayer 的显隐/尺寸在动画，
+ * 内容源采样不黑边）。噪点与全应用玻璃同值 0.02（是磨砂质感，
+ * 不是上色）。玻璃关时调用方不套这个 modifier、走实色
+ * TokiMiniPlayer 回退（见 PlayerScreen.MiniPlayer）。
+ */
+@Composable
+fun Modifier.tokiContentGlassMiniPlayer(state: HazeState): Modifier {
+    return hazeBlur(
+        input = HazeInput.Sources(state),
+        style = HazeBlurStyle {
+            blurEnabled(true)
+            blurRadius(TokiGlassParams.miniPlayerBlurRadius)
+            noiseFactor(TokiGlassParams.noise)
+            backgroundColor(Color.Transparent)
+            colorEffects(emptyList())
+            fallbackColorEffect(HazeColorEffect.tint(Color.Transparent))
+        },
         performanceMode = HazePerformanceMode.Quality,
     )
 }

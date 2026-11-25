@@ -11,14 +11,12 @@ import androidx.compose.ui.graphics.Color
 val TokiBlack: Color = Color(0xFF000000)
 val TokiCard: Color = Color(0xFF1C1C1E)
 val TokiMiniPlayer: Color = Color(0xFF2C2C2E)
-/** 选中 tab 的 pill：截图里是比底栏浅的灰紫，图标落在其上为浅紫（0.1.18 第 1 项）。 */
+/** 选中 tab 的 pill：截图里是比底栏浅的灰紫（0.1.15 与现在同值；
+ * 0.1.18 第 22 项用户确认保持 #54545F，不改深紫 #5C4861）。 */
 val TokiPill: Color = Color(0xFF54545F)
-/** 底栏导航 icon：浅紫色（0.1.18 第 1 项）——在 #5C4861 底栏上约 4.1:1、
- * 在 #54545F 选中 pill 上约 3.7:1，选中与未选中都用同一色，选中态靠
- * pill + 实心 icon 区分。 */
+/** 底栏 icon 浅紫（0.1.18 第 1 项；第 22 项一度改白色，用户最终定浅紫）：
+ * 选中与未选中同色，选中态靠 pill + 实心 icon 形状区分。 */
 val TokiNavIcon: Color = Color(0xFFD0A9E8)
-/** 主页底栏色（0.1.17 第 4 项，用户指定 #5C4861）：淡紫色，软件主题色（底栏用）。 */
-val TokiNavBar: Color = Color(0xFF5C4861)
 val TokiSecondary: Color = Color(0xFF8E8E93)
 val TokiPlayKey: Color = Color(0xFFF5E6D3)
 val TokiPlayKeyIcon: Color = Color(0xFF2E1A0C)

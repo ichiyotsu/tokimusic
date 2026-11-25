@@ -144,8 +144,10 @@ import kotlin.math.roundToInt
  * 播放/下一曲两钮，底部 2dp 细进度线。悬浮在导航胶囊上方。
  *
  * 第二轮第 1 项：迷你播放器之前是纯色卡片、完全没有模糊，亮背景下显透。
- * 现在与导航胶囊同配方——加强档磨砂（32dp 模糊 + 45% veil）；玻璃关闭时
- * 回退纯色 #2C2C2E。
+ * 曾与导航胶囊同配方（加强档磨砂 32dp + 45% veil）。
+ * 0.1.18 第 25 项：拆出自己的玻璃（调用方传 tokiContentGlassMiniPlayer）——
+ * 85dp 强模糊、不上色（无 tint、无 veil），纯模糊背后内容；玻璃关闭时
+ * 回退纯色 #2C2C2E（[glass] 只在 glassOn 时才被套用）。
  */
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {

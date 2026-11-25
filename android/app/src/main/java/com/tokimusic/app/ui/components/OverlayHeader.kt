@@ -45,6 +45,7 @@ import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.tokiSpace
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * The one title header for the whole app (TokiStudio 0.1.10).
@@ -89,6 +90,12 @@ fun OverlayTitleHeader(
     val titleShape = RoundedCornerShape(percent = 50)
     Row(
         modifier
+            // 0.1.18 第 17 项：顶栏（标题 + 头像）注册为 haze 源——当前
+            // Android 没有原生 platform backdrop，Haze 的 Backdrop 输入
+            // 回退为只采样 hazeSource 内容；不注册的话设置遮罩糊不到
+            // 顶栏（与 TokiMusicApp 里 SettingsBackdrop 移到 Scaffold
+            // 之上配套，两半缺一不可）。配方不变，只扩采样范围。
+            .hazeSource(hazeState)
             .fillMaxWidth()
             .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .statusBarsPadding()
