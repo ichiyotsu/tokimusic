@@ -26,4 +26,26 @@ class FormatHelpersTest {
         assertEquals(1065L, daysSince(1_000L, 1_000L + 1065L * 86_400_000L))
         assertEquals(0L, daysSince(2_000L, 1_000L))
     }
+    // 大排查 B7：时长格式化显式 Locale.US——“1:01”“2分05秒”在任何
+    // 系统语言下都不变（S11 同类：默认 locale 下阿拉伯语地区会把
+    // 数字变形成本地数字）。用阿拉伯语 locale 锁定这一行为。
+    @Test fun formatDurationBasic() {
+        assertEquals("1:01", formatDuration(61_000L))
+        assertEquals("0:00", formatDuration(0L))
+        assertEquals("10:05", formatDuration(605_000L))
+    }
+    @Test fun formatTotalDurationMsBasic() {
+        assertEquals("62分00秒", formatTotalDurationMs(3_720_000L))
+        assertEquals("0分05秒", formatTotalDurationMs(5_000L))
+    }
+    @Test fun formatDurationIgnoresDefaultLocale() {
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale("ar", "EG"))
+            assertEquals("2:05", formatDuration(125_000L))
+            assertEquals("2分05秒", formatTotalDurationMs(125_000L))
+        } finally {
+            java.util.Locale.setDefault(previous)
+        }
+    }
 }

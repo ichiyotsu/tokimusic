@@ -80,7 +80,7 @@ import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiGlassFade
 
 /**
@@ -239,7 +239,7 @@ fun HomeScreen(
         val showRadar = neteaseEnabled && (!home.loggedIn || home.radar.isNotEmpty())
         if (showDaily || showRadar) {
             item {
-                // Cirro：每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
+                // 每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -299,6 +299,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
+                            source = MusicSource.QQ,
                             paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
@@ -313,6 +314,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
+                            source = MusicSource.QQ,
                             paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
@@ -439,12 +441,12 @@ fun HomeScreen(
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
             ),
         )
     }
@@ -563,6 +565,9 @@ private fun RecommendCard(
     hazeState: dev.chrisbanes.haze.HazeState,
     backdropBlur: Boolean,
     showSourceBadge: Boolean = false,
+    // 大排查 B2：徽标按卡片来源画——QQ 每日/雷达传 QQ，之前这里写死
+    // 网易云，QQ 卡片顶着网易云徽标。
+    source: MusicSource = MusicSource.NETEASE,
     paletteIndex: Int = 0,
     modifier: Modifier = Modifier,
 ) {
@@ -629,10 +634,11 @@ private fun RecommendCard(
                     )
                 }
             }
-            // 第六轮第二批第 21 项：双源都启用时，卡片左上角叠 28dp 网易云徽标。
-            // 0.1.13 第 12 项：徽标底色用莫奈色系。
+            // 第六轮第二批第 21 项：双源都启用时，卡片左上角叠 28dp 源徽标。
+            // 0.1.16 第 1 项起徽标底色是品牌色（网易云 #ff5757、QQ #879101），
+            // 不再是莫奈色系；来源由 source 参数定（B2）。
             if (showSourceBadge) {
-                SourceBadge(MusicSource.NETEASE, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+                SourceBadge(source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
             }
         }
     }

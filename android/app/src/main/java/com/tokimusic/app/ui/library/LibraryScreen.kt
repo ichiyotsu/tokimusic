@@ -56,13 +56,13 @@ import com.tokimusic.app.data.model.Artist
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.Avatar
-import com.tokimusic.app.ui.components.CirroCardRow
+import com.tokimusic.app.ui.components.TokiCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.monetColorForPlaylist
 import com.tokimusic.app.ui.theme.monetPalette
 
@@ -87,7 +87,7 @@ fun resolveLibraryStatsSource(neteaseEnabled: Boolean, qqEnabled: Boolean, reque
 }
 
 /**
- * Cirro 资料库页：大标题 + 右上头像（点进设置），5 行深灰卡片
+ * 资料库页：大标题 + 右上头像（点进设置），5 行深灰卡片
  * （喜爱歌曲 / 播放列表 / 艺人 / 专辑 / 歌曲），最近添加双列封面，
  * 下方接听歌排行与统计（原“我的”页的资料部分并入此处）。
  */
@@ -234,21 +234,21 @@ fun LibraryScreen(
             Spacer(Modifier.height(8.dp))
             // 0.1.15 第 11 项：五个分区卡按色板取色（每卡一色，16% 透明，
             // 与歌单行同款配方），换色板后五卡一起变色。
-            CirroCardRow(
+            TokiCardRow(
                 Icons.Rounded.Star, "收藏",
                 if (anyLoggedIn) "$likedCount 首" else "登录后查看",
                 backgroundColor = monetPalette(paletteIndex).colors[0].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
-            CirroCardRow(
+            TokiCardRow(
                 Icons.Rounded.QueueMusic, "歌单",
                 if (anyLoggedIn) "$playlistCount 个歌单" else "登录后查看",
                 backgroundColor = monetPalette(paletteIndex).colors[1].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
-            CirroCardRow(
+            TokiCardRow(
                 // 0.1.13 第 24 项：“艺人”改名“歌手”。
                 Icons.Rounded.Mic, "歌手",
                 if (anyLoggedIn) "我关注的歌手" else "登录后查看",
@@ -256,14 +256,14 @@ fun LibraryScreen(
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
-            CirroCardRow(
+            TokiCardRow(
                 Icons.Rounded.Album, "专辑",
                 if (anyLoggedIn) "我收藏的专辑" else "登录后查看",
                 backgroundColor = monetPalette(paletteIndex).colors[3].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
-            CirroCardRow(
+            TokiCardRow(
                 Icons.Rounded.MusicNote, "歌曲",
                 if (anyLoggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
                 backgroundColor = monetPalette(paletteIndex).colors[4].copy(alpha = 0.16f),
@@ -306,12 +306,12 @@ fun LibraryScreen(
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
             ),
         )
     }

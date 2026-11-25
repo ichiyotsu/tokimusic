@@ -59,7 +59,7 @@ import com.tokimusic.app.ui.components.isTitleScrolledOut
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.components.segmentedCorners
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 private enum class ArtistSection { Songs, Albums }
@@ -101,10 +101,14 @@ fun ArtistScreen(
     var allSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var loadError by remember { mutableStateOf(false) }
+    // 大排查 B4：歌曲是否已拉完（成功或失败都算）——空态只在拉完
+    // 仍无歌时显示，加载中不闪“暂无歌曲”。
+    var songsLoaded by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val isQq = qqMid != null
     LaunchedEffect(artistId, qqMid, reloadKey) {
         loadError = false
+        songsLoaded = false
         if (isQq) {
             val detail = runCatching { vm.qqClient.qqSingerDetail(qqMid!!) }
                 .onFailure { loadError = true }.getOrNull()
@@ -119,6 +123,7 @@ fun ArtistScreen(
                 )
                 allSongs = detail.songs
                 albums = detail.albums
+                songsLoaded = true
             } else {
                 loadError = true
             }
@@ -130,6 +135,7 @@ fun ArtistScreen(
                     .recoverCatching { vm.api.artistTopSongs(artistId) }
                     .getOrDefault(emptyList())
                 albums = runCatching { vm.api.artistAlbums(artistId) }.getOrDefault(emptyList())
+                songsLoaded = true
             }
         }
     }
@@ -161,7 +167,7 @@ fun ArtistScreen(
     val totalCount = if ((a?.musicSize ?: 0) > 0) a!!.musicSize else allSongs.size
     val totalMs = allSongs.sumOf { it.durationMs }
     var section by remember { mutableStateOf(ArtistSection.Songs) }
-    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, TokiBlack)))) {
         // 歌手照片进页占视口 1/3（第五轮第 9 项），完整显示。
         val coverHeight = maxHeight * COLLAPSING_COVER_FRACTION
         if (loadError && a == null) {
@@ -303,6 +309,18 @@ fun ArtistScreen(
                                 SongRow(song, i, onOpenArtist = openArtistForRows, horizontalPadding = 16.dp, onLongPress = { vm.openSongActions(it) }) { vm.play(allSongs, i, a?.name) }
                             }
                         }
+                        // 大排查 B4：加载完成仍无歌曲时给一句空态（之前
+                        // 下方一片空白；“暂无专辑”同款在下面那个分支）。
+                        if (a != null && songsLoaded && allSongs.isEmpty()) {
+                            item {
+                                Text(
+                                    "暂无歌曲",
+                                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = coverColors.onCoverTextDim(),
+                                )
+                            }
+                        }
                     } else if (albums.isNotEmpty()) {
                         item {
                             LazyRow(
@@ -338,7 +356,7 @@ fun ArtistScreen(
                 Box(
                     Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, CirroBlack),
+                            listOf(Color.Transparent, TokiBlack),
                         ),
                     ),
                 )

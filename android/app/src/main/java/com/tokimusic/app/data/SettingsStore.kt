@@ -11,7 +11,7 @@ interface ApiSettings {
     val audioQuality: String get() = "standard"
 }
 
-/** Persists the login cookie, the anonymous device id and theme mode. (Swap SharedPreferences for EncryptedSharedPreferences before release.) */
+/** Persists the login cookie and the anonymous device id. (Swap SharedPreferences for EncryptedSharedPreferences before release.) */
 class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.QqSettings {
     private val prefs = context.getSharedPreferences("tokimusic_settings", Context.MODE_PRIVATE)
     override var cookie: String get() = prefs.getString("cookie", "") ?: ""
@@ -23,19 +23,10 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
             id
         }
         set(v) { prefs.edit().putString("device_id", v).apply() }
-    var themeMode: String get() = prefs.getString("theme_mode", "System") ?: "System"
-        set(v) { prefs.edit().putString("theme_mode", v).apply() }
-    var useDynamicColor: Boolean get() = prefs.getBoolean("use_dynamic_color", true)
-        set(v) { prefs.edit().putBoolean("use_dynamic_color", v).apply() }
-    var seedIndex: Int get() = prefs.getInt("seed_index", 0)
-        set(v) { prefs.edit().putInt("seed_index", v).apply() }
     var reduceMotion: Boolean get() = prefs.getBoolean("reduce_motion", false)
         set(v) { prefs.edit().putBoolean("reduce_motion", v).apply() }
     var backdropBlur: Boolean get() = prefs.getBoolean("backdrop_blur", true)
         set(v) { prefs.edit().putBoolean("backdrop_blur", v).apply() }
-    /** Cirro 外观：锁定深色 + 固定色板（用户 2026-11-21 确认，默认开启）。 */
-    var cirroAppearance: Boolean get() = prefs.getBoolean("cirro_appearance", true)
-        set(v) { prefs.edit().putBoolean("cirro_appearance", v).apply() }
     /** 播放音质偏好：standard / higher / exhigh / lossless。 */
     override var audioQuality: String get() = prefs.getString("audio_quality", "standard") ?: "standard"
         set(v) { prefs.edit().putString("audio_quality", v).apply() }
@@ -143,9 +134,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putBoolean("netease_enabled", v).apply() }
     override var qqEnabled: Boolean get() = prefs.getBoolean("qq_enabled", false)
         set(v) { prefs.edit().putBoolean("qq_enabled", v).apply() }
-    /** 搜索上次用的源（第六轮第二批，搜索源切换记忆）："NETEASE"/"QQ"，默认网易云。 */
-    var lastSearchSource: String get() = prefs.getString("last_search_source", "NETEASE") ?: "NETEASE"
-        set(v) { prefs.edit().putString("last_search_source", v).apply() }
     /** 上次播放队列（第六轮第二批第 2 项）：JSON 数组，元素 {id,name,artist,album,pic,duration,source,sourceId}；冷启动恢复队列不自动播放，MiniPlayer 显示最后一首。 */
     var lastQueueJson: String get() = prefs.getString("last_queue_json", "") ?: ""
         set(v) { prefs.edit().putString("last_queue_json", v).apply() }

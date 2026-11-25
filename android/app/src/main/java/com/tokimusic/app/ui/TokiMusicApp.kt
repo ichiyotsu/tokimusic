@@ -96,7 +96,6 @@ import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
 import com.tokimusic.app.ui.search.SearchSheet
 import com.tokimusic.app.ui.settings.SettingsSheet
-import com.tokimusic.app.ui.theme.ThemeMode
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
@@ -105,7 +104,7 @@ import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiGlassFade
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiPageBackground
 import com.tokimusic.app.ui.theme.tokiSpace
 import com.tokimusic.app.BuildConfig
@@ -120,6 +119,7 @@ import com.tokimusic.app.update.UpdatePrompt
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -177,31 +177,19 @@ fun TokiMusicApp(
     var theme by remember {
         mutableStateOf(
             ThemePreferences(
-                mode = runCatching { ThemeMode.valueOf(vm.store.themeMode) }.getOrDefault(ThemeMode.System),
-                useDynamicColor = vm.store.useDynamicColor,
-                seedIndex = vm.store.seedIndex,
                 reduceMotion = vm.store.reduceMotion,
                 backdropBlur = vm.store.backdropBlur,
-                cirroAppearance = vm.store.cirroAppearance,
             ),
         )
     }
     val updateTheme: (ThemePreferences) -> Unit = { next ->
         theme = next
-        vm.store.themeMode = next.mode.name
-        vm.store.useDynamicColor = next.useDynamicColor
-        vm.store.seedIndex = next.seedIndex
         vm.store.reduceMotion = next.reduceMotion
         vm.store.backdropBlur = next.backdropBlur
-        vm.store.cirroAppearance = next.cirroAppearance
     }
 
     TokiMusicTheme(
-        mode = theme.mode,
-        useDynamicColor = theme.useDynamicColor,
-        seedIndex = theme.seedIndex,
         reduceMotion = theme.reduceMotion,
-        cirroAppearance = theme.cirroAppearance,
     ) {
         var dest by remember { mutableStateOf(Dest.Home) }
         var playlistId by remember { mutableStateOf<Long?>(null) }
@@ -413,6 +401,12 @@ fun TokiMusicApp(
                                         artistId = null
                                         artistFromPlayer = false
                                         albumId = null
+                                        // 大排查 B1：切 tab 时 QQ 歌手 / 专辑页同清——
+                                        // 与底栏 onSelect（0.1.15 第 2 项）同款，之前
+                                        // rail 这里漏了这两行，宽屏下在 QQ 歌手/专辑
+                                        // 页点 tab 切不走，页还盖在上面。
+                                        qqArtistMid = null
+                                        qqAlbumMid = null
                                         librarySection = null
                                         statsOpen = false
                                         searchSheetOpen = false
@@ -457,11 +451,11 @@ fun TokiMusicApp(
                                     titleAlpha = headerAlpha,
                                     titleOffsetY = headerOffsetY,
                                     // 第五轮第 25 项：详情页（歌单/歌手/专辑）滚动后，悬浮标题
-                                    // chip 加不透明底（页面底色 CirroBlack）——封面渐变
+                                    // chip 加不透明底（页面底色 TokiBlack）——封面渐变
                                     // 的上端色会透过半透明磨砂让顶栏看起来还留着封面；
                                     // tab 页不传（标题常显，磨砂是设计的一部分）。
                                     // chip 本身随 titleAlpha 淡入，进页时看不到这层底。
-                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) CirroBlack else null,
+                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) TokiBlack else null,
                                     // 0.1.15 第 3 项：主页 / 资料库左上角的源切换
                                     // 入口已删——源开关只在设置里调。
                                     leading = null,
@@ -731,21 +725,15 @@ fun TokiMusicApp(
                             // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
                             // 实测：sheet 本身不渐变，只有遮罩渐变），API
                             // 关不掉。改成透明 scrim（见 SettingsSheet）
-                            // + 这里一层静态 32% 黑遮罩（与 M3 默认 scrim
-                            // 同色同透明度），开关瞬间出现 / 消失，只有
-                            // sheet 本身滑动；点遮罩关闭仍走原生 scrim
-                            // 的手势（Dialog 窗口在上层接手势）。
-                            if (showSettings) {
-                                // 0.1.15 第 13 项：设置打开时背景加磨砂模糊
-                                // （与底栏 / 标题同款 tokiGlass 配方；玻璃
-                                // 关闭时 chromeBlurActive 关掉不画），让设置
-                                // 页更突出。0.1.14 第 3 条的静态 32% 黑遮罩
-                                // 不动，模糊层在遮罩之下（先模糊、再压暗）。
-                                if (chromeBlurActive(theme.backdropBlur)) {
-                                    Box(Modifier.fillMaxSize().tokiGlass(hazeState))
-                                }
-                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
-                            }
+                            // + 这里一层 32% 黑遮罩（与 M3 默认 scrim 同色
+                            // 同透明度）；点遮罩关闭仍走原生 scrim 的手势
+                            // （Dialog 窗口在上层接手势）。渐进动画见
+                            // SettingsBackdrop（0.1.16 第 3 条）。
+                            SettingsBackdrop(
+                                visible = showSettings,
+                                backdropBlur = theme.backdropBlur,
+                                hazeState = hazeState,
+                            )
                         }
                     }
                 }
@@ -805,6 +793,37 @@ fun TokiMusicApp(
                 onDismiss = dismissOptimize,
             )
         }
+    }
+}
+
+/**
+ * 设置背景的模糊 + 压暗层（0.1.16 第 3 条）——单独抽成顶层 composable，
+ * 否则在页面 Row 里调 AnimatedVisibility 会撞 RowScope 的 DSL 作用域
+ * 限制（编译失败；同款前例见下面的 NavBarSlot）。
+ */
+@Composable
+private fun SettingsBackdrop(
+    visible: Boolean,
+    backdropBlur: Boolean,
+    hazeState: HazeState,
+) {
+    // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 300ms，
+    // 与 sheet 滑入匹配）——之前是 if 开关瞬间出现 / 消失。手势不变：
+    // 黑遮罩层仍在 Dialog 窗口之下、不接手势，关闭仍走原生 scrim /
+    // 返回键；玻璃关闭时只渐隐黑遮罩。
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(300)),
+        exit = fadeOut(animationSpec = tween(300)),
+        label = "settings-backdrop",
+    ) {
+        // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
+        // tokiGlass 配方；玻璃关闭时 chromeBlurActive 关掉不画），让设置
+        // 页更突出。模糊层在遮罩之下（先模糊、再压暗）。
+        if (chromeBlurActive(backdropBlur)) {
+            Box(Modifier.fillMaxSize().tokiGlass(hazeState))
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
     }
 }
 

@@ -38,14 +38,13 @@ import androidx.compose.ui.unit.dp
 import com.tokimusic.app.R
 import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
-import com.tokimusic.app.ui.theme.CirroPill
-import com.tokimusic.app.ui.theme.CirroPillIcon
-import com.tokimusic.app.ui.theme.LocalCirroAppearance
+import com.tokimusic.app.ui.theme.TokiPill
+import com.tokimusic.app.ui.theme.TokiPillIcon
 import com.tokimusic.app.ui.theme.TokiChromeStroke
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
-/** Cirro：底部悬浮胶囊 2 tab，纯图标无文字（主页 / 资料库）。第六轮第 33 项删发现页；搜索不在 tab 里，改走胶囊旁的独立搜索按钮（第二轮第 23 项）。 */
+/** 底部悬浮胶囊 2 tab，纯图标无文字（主页 / 资料库）。第六轮第 33 项删发现页；搜索不在 tab 里，改走胶囊旁的独立搜索按钮（第二轮第 23 项）。 */
 val navEntries = listOf(
     NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Rounded.Home, R.string.nav_home),
     NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, R.string.nav_library),
@@ -162,7 +161,7 @@ fun TokiSideActionButton(
 }
 
 /**
- * Cirro 导航项：纯图标，无文字标签。选中项落在浅灰紫 pill 上（Cirro 外观），
+ * 导航项：纯图标，无文字标签。选中项落在浅灰紫 pill 上，
  * 图标为深色；未选中为细线图标。宽 64dp、高 56dp，图标 24dp。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -172,9 +171,8 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
     val haptic = LocalHapticFeedback.current
     val scheme = MaterialTheme.colorScheme
     val label = stringResource(entry.label)
-    val cirro = LocalCirroAppearance.current
-    val pillColor = if (cirro) CirroPill else scheme.primary
-    val selectedTint = if (cirro) CirroPillIcon else scheme.onPrimary
+    val pillColor = TokiPill
+    val selectedTint = TokiPillIcon
     TokiLongPressLabel(label) {
         Box(
             modifier = Modifier

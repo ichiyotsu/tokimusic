@@ -48,7 +48,7 @@ import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiPillGroup
 import com.tokimusic.app.ui.components.formatHours
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.delay
@@ -236,12 +236,12 @@ fun ListeningStatsScreen(
         }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
             ),
         )
     }

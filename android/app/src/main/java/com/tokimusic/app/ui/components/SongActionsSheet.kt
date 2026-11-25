@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
-import com.tokimusic.app.ui.theme.CirroPlayKey
-import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
+import com.tokimusic.app.ui.theme.TokiPlayKey
+import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 
 /** 长按歌曲的上下文：当前歌单（没有就是 null）；删歌只在自己的歌单里出现。 */
 data class SongActionsContext(val song: Song, val playlistId: Long? = null, val isOwnPlaylist: Boolean = false)
@@ -89,11 +89,11 @@ fun SongActionsSheet(
                     SongActionButton(
                         label = if (liked) "已收藏" else "收藏",
                         icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        tint = if (liked) MaterialTheme.colorScheme.primary else CirroPlayKeyIcon,
+                        tint = if (liked) MaterialTheme.colorScheme.primary else TokiPlayKeyIcon,
                         onClick = onToggleLike,
                     )
-                    SongActionButton(label = "关于", icon = Icons.Rounded.Info, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.About })
-                    SongActionButton(label = "添加", icon = Icons.Rounded.PlaylistAdd, tint = CirroPlayKeyIcon, onClick = { step = SongActionsStep.Add })
+                    SongActionButton(label = "关于", icon = Icons.Rounded.Info, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.About })
+                    SongActionButton(label = "添加", icon = Icons.Rounded.PlaylistAdd, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.Add })
                     if (context.isOwnPlaylist) {
                         SongActionButton(
                             label = "删除",
@@ -145,7 +145,7 @@ fun SongActionsSheet(
 private fun SongActionButton(label: String, icon: ImageVector, tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(56.dp).clip(CircleShape).background(CirroPlayKey).clickable(onClick = onClick),
+            Modifier.size(56.dp).clip(CircleShape).background(TokiPlayKey).clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(28.dp))

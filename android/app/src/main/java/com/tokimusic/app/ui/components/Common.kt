@@ -41,7 +41,7 @@ import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.theme.monetColorForPlaylist
-import com.tokimusic.app.ui.theme.monetColorForSource
+import com.tokimusic.app.ui.theme.sourceBadgeBackground
 
 /**
  * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
@@ -215,7 +215,8 @@ fun resolveArtistTap(
  * 源徽标（第六轮第二批第 21 项）：只在双源都启用时显示——单源无歧义。
  * 0.1.13 第 1 / 2 项：图标换各源专属矢量（网易云 mingcute
  * netease-music-line、QQ mingcute music-3-line、本地 mdi
- * folder-music-outline）；第 12 项：底色换莫奈色（按源取色板前三色），
+ * folder-music-outline）；0.1.16 第 1 项：底色改用户指定的品牌底
+ * （网易云 #ff5757、QQ #879101，本地仍取莫奈色板 colors[2]），
  * 来源仍由图标形状区分。
  */
 @Composable
@@ -226,7 +227,7 @@ fun SourceBadge(source: MusicSource, size: Int = 20, paletteIndex: Int = 0, modi
         MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Box(
-        modifier.size(size.dp).clip(CircleShape).background(monetColorForSource(source, paletteIndex)),
+        modifier.size(size.dp).clip(CircleShape).background(sourceBadgeBackground(source, paletteIndex)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -324,9 +325,9 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
     val model: Any = if (url.startsWith("/")) java.io.File(url) else url
     AsyncImage(model, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
-fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60) }
+fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(java.util.Locale.US, s / 60, s % 60) }
 /** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
-fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(s % 60)}秒" }
+fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(java.util.Locale.US, s % 60)}秒" }
 
 /**
  * 第五轮第 23 项：时长紧凑显示——整小时只显示 "1537h"，有零头时带一位小数
@@ -386,18 +387,16 @@ fun Modifier.fadingEdges(
         canvas.restore()
     }
 }
-fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }
-
 /**
- * Cirro 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
+ * TokiMusic 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
  * 可选说明 + 右侧 chevron，整行可点。圆角 20dp，卡片色 surfaceContainer
- *（Cirro 模式下为 #1C1C1E）。
+ *（为 #1C1C1E）。
  *
  * [horizontalPadding]：弹窗内使用时传 0dp（TokiSheetContainer 容器已有
  * 24dp 内边距）；设置弹窗内的行沿用 4dp 的既有样式。
  */
 @Composable
-fun CirroCardRow(
+fun TokiCardRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String? = null,

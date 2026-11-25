@@ -44,11 +44,15 @@ class MonetTest {
     }
 
     @Test
-    fun sourceMapping() {
-        assertEquals(monetPalettes[0].colors[0], monetColorForSource(MusicSource.NETEASE, 0))
-        assertEquals(monetPalettes[0].colors[1], monetColorForSource(MusicSource.QQ, 0))
-        assertEquals(monetPalettes[0].colors[2], monetColorForSource(MusicSource.LOCAL, 0))
-        assertEquals(monetPalettes[2].colors[1], monetColorForSource(MusicSource.QQ, 2))
+    fun sourceBadgeBackground() {
+        // 0.1.16 第 1 项：网易云 / QQ 用用户指定的品牌底色，不随色板变；
+        // 本地没有指定颜色，仍按色板取 colors[2]。
+        assertEquals(Color(0xFFFF5757), sourceBadgeBackground(MusicSource.NETEASE, 0))
+        assertEquals(Color(0xFFFF5757), sourceBadgeBackground(MusicSource.NETEASE, 2))
+        assertEquals(Color(0xFF879101), sourceBadgeBackground(MusicSource.QQ, 0))
+        assertEquals(Color(0xFF879101), sourceBadgeBackground(MusicSource.QQ, 3))
+        assertEquals(monetPalettes[0].colors[2], sourceBadgeBackground(MusicSource.LOCAL, 0))
+        assertEquals(monetPalettes[2].colors[2], sourceBadgeBackground(MusicSource.LOCAL, 2))
     }
 
     @Test

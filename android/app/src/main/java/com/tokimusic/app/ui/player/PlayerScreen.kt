@@ -124,23 +124,22 @@ import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
 import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.pressScale
-import com.tokimusic.app.ui.theme.CirroMiniPlayer
-import com.tokimusic.app.ui.theme.CirroPlayKey
-import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
+import com.tokimusic.app.ui.theme.TokiMiniPlayer
+import com.tokimusic.app.ui.theme.TokiPlayKey
+import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
-import com.tokimusic.app.ui.theme.LocalCirroAppearance
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import com.tokimusic.app.ui.theme.lyricFontFamily
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * Cirro 迷你播放器：深灰胶囊（#2C2C2E），16dp 边距，小封面 + 歌名/歌手 +
+ * TokiMusic 迷你播放器：深灰胶囊（#2C2C2E），16dp 边距，小封面 + 歌名/歌手 +
  * 播放/下一曲两钮，底部 2dp 细进度线。悬浮在导航胶囊上方。
  *
  * 第二轮第 1 项：迷你播放器之前是纯色卡片、完全没有模糊，亮背景下显透。
  * 现在与导航胶囊同配方——加强档磨砂（32dp 模糊 + 45% veil）；玻璃关闭时
- * 回退纯色 #2C2C2E（Cirro）/ surfaceContainerLow。
+ * 回退纯色 #2C2C2E。
  */
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {
@@ -155,13 +154,12 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
         }
     }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
-    val cirro = LocalCirroAppearance.current
     val scheme = MaterialTheme.colorScheme
-    val shape = if (cirro) RoundedCornerShape(percent = 50) else MaterialTheme.shapes.extraLarge
+    val shape = RoundedCornerShape(percent = 50)
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             .clip(shape)
-            .then(if (glassOn) glass else Modifier.background(if (cirro) CirroMiniPlayer else scheme.surfaceContainerLow))
+            .then(if (glassOn) glass else Modifier.background(TokiMiniPlayer))
             .clickable(onClick = onOpen),
     ) {
         Column {
@@ -214,7 +212,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
  * Immersive full-screen player (a second-level page: no top bar, no bottom bar —
  * the app chrome hides while it is open). The top area flips between the large
  * cover and the full-screen lyrics; the control cluster below is shared.
- * Background is the cover-color warm gradient (Cirro), not blurred artwork.
+ * Background is the cover-color warm gradient, not blurred artwork.
  *
  * 第二轮：圆角面板形态（面板在 TokiMusicApp 里包，顶部圆角 32dp、高度略低
  * 于全屏）；左上返回按钮已删，点空白区域返回（封面/歌词区与控制区有
@@ -276,7 +274,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
     val playLabel = if (state.isPlaying) "暂停" else "播放"
     val liked = song.id in likedIds
     val scheme = MaterialTheme.motionScheme
-    // Cirro：背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。取色由
+    // 背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。取色由
     // TokiMusicApp 传入（第三轮第 21 项：外层满屏 Box 共用同一份取色）。
     // 第 12 项：播放器页文字与按钮底色全部跟随封面取色。
     val onCover = coverColors.onCoverText()
@@ -530,7 +528,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     }
                 }
             }
-                // Cirro 进度条：T 形滑块（竖线手柄穿过横线）。SliderState 版才有
+                // 进度条：T 形滑块（竖线手柄穿过横线）。SliderState 版才有
                 // thumb 插槽；拖拽中不同步播放进度，松手后恢复跟随。
                 val sliderInteraction = remember { MutableInteractionSource() }
                 val sliderDragging by sliderInteraction.collectIsDraggedAsState()
@@ -572,11 +570,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                     Spacer(Modifier.width(28.dp))
                     TokiLongPressLabel(playLabel) {
                         val interaction = remember { MutableInteractionSource() }
-                        val cirro = LocalCirroAppearance.current
                         Box(
                             Modifier.size(width = 128.dp, height = 84.dp)
                                 .clip(RoundedCornerShape(playCorner))
-                                .background(if (cirro) CirroPlayKey else Color.White)
+                                .background(TokiPlayKey)
                                 .clickable(interactionSource = interaction, indication = ripple()) { vm.player.toggle() }
                                 .pressRebound(interaction),
                             contentAlignment = Alignment.Center,
@@ -584,7 +581,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                             Icon(
                                 if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = playLabel,
-                                tint = if (cirro) CirroPlayKeyIcon else Color.Black,
+                                tint = TokiPlayKeyIcon,
                                 modifier = Modifier.size(40.dp),
                             )
                         }
@@ -1017,5 +1014,7 @@ private fun MoreAction(icon: ImageVector, label: String, onClick: () -> Unit) {
 
 private fun formatClock(ms: Long): String {
     val s = ms / 1000
-    return "%02d:%02d".format(s / 60, s % 60)
+    // 大排查 B7：显式 Locale.US——与 formatDuration / formatBytes
+    // 同款（S11 同类），免得数字按系统语言变形成本地数字。
+    return "%02d:%02d".format(java.util.Locale.US, s / 60, s % 60)
 }

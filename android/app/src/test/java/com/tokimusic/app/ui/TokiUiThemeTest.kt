@@ -85,12 +85,13 @@ class TokiUiThemeTest {
         assertTrue(nav.contains("PlainTooltip") || nav.contains("TokiLongPressLabel"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/AppTypeface.kt").readText().contains("R.font.inter"))
         assertFalse(File("src/main/java/com/tokimusic/app/ui/theme/Shape.kt").exists())
-        // TokiStudio 0.1.10 alignment: dark contrast + page gradient, always-on
-        // header frost, emphasized type scale, capsule + side button.
+        // TokiStudio 0.1.10 alignment: always-on header frost, emphasized
+        // type scale, capsule + side button. 颜色不再走 TokiUI 动态取色：
+        // 固定深色取色方案见 TokiMusicColors.kt，页面底为纯黑。
         val color = File("src/main/java/com/tokimusic/app/ui/theme/Color.kt").readText()
-        assertTrue(color.contains("withDarkContrast"))
         assertTrue(color.contains("tokiPageBackground"))
-        assertTrue(color.contains("compositeOver"))
+        assertFalse(color.contains("withDarkContrast"))
+        assertFalse(color.contains("resolveColorScheme"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Theme.kt").readText().contains("Emphasized"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Theme.kt").readText().contains("LocalContentColor"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/Glass.kt").readText().contains("tokiContentGlass"))

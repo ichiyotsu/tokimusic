@@ -48,13 +48,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.TokiSheetContainer
-import com.tokimusic.app.ui.theme.NeteaseRed
-import com.tokimusic.app.ui.theme.QqGreen
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import kotlinx.coroutines.delay
 
@@ -127,6 +127,12 @@ fun SearchSheet(
 @Composable
 private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit, onOpenPlaylist: (Long) -> Unit, onOpenArtist: (Long) -> Unit, modifier: Modifier = Modifier, onOpenQqArtist: (String) -> Unit = {}) {
     val home by vm.home.collectAsState()
+    // 大排查 B5：合并搜索的结果要标来源——双源都开时歌曲行/歌单卡
+    // 叠源徽标（与首页/资料库同款 bothEnabled 规则），之前搜索页
+    // 没传，混源结果分不清是哪家的。
+    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+    val qqEnabled by vm.qqEnabled.collectAsState()
+    val bothEnabled = neteaseEnabled && qqEnabled
     // Debounced: one request per pause in typing, not one per keystroke.
     LaunchedEffect(query) { delay(400); vm.search(query) }
     // 第 16 项用户确认：打开弹窗自动弹键盘（等弹窗滑入动画落定再聚焦）。
@@ -168,6 +174,8 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 song,
                                 onOpenArtist = onOpenArtist,
                                 onLongPress = { vm.openSongActions(it) },
+                                showSourceBadge = bothEnabled,
+                                paletteIndex = vm.store.monetPaletteIndex,
                                 // 第 10 项：行右侧小圆播放钮（时长保留，按钮另加在最右）；
                                 // 点它与点行行为一致（播该首、队列为整份搜索结果），弹窗留着。
                                 trailingAction = {
@@ -185,8 +193,13 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                     }
                     // Sixth round, batch 2, item 18: artist section, between
                     // songs and playlists (order 歌曲 / 歌手 / 歌单).
-                    if (home.searchArtists.isNotEmpty()) {
+                    // 大排查 B5：两源的歌手只出一个“歌手”标题（之前各出
+                    // 一个，两个标题叠在一起）；行尾叠源徽标，双源时
+                    // 才看得出同名歌手是哪家的。
+                    if (home.searchArtists.isNotEmpty() || home.searchQqArtists.isNotEmpty()) {
                         item { Text("歌手", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
+                    }
+                    if (home.searchArtists.isNotEmpty()) {
                         items(home.searchArtists) { artist ->
                             Row(
                                 Modifier.fillMaxWidth().clickable { onClose(); onOpenArtist(artist.id) }
@@ -195,12 +208,12 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 Avatar(artist.picUrl, size = 48)
-                                Text(artist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (bothEnabled) SourceBadge(MusicSource.NETEASE, size = 20, paletteIndex = vm.store.monetPaletteIndex)
                             }
                         }
                     }
                     if (home.searchQqArtists.isNotEmpty()) {
-                        item { Text("歌手", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge) }
                         items(home.searchQqArtists) { artist ->
                             Row(
                                 // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页
@@ -214,7 +227,8 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 Avatar(artist.picUrl, size = 48)
-                                Text(artist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (bothEnabled) SourceBadge(MusicSource.QQ, size = 20, paletteIndex = vm.store.monetPaletteIndex)
                             }
                         }
                     }
@@ -226,7 +240,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 contentPadding = PaddingValues(horizontal = 0.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist, paletteIndex = vm.store.monetPaletteIndex) { onOpenPlaylist(playlist.id) } }
+                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist, showSourceBadge = bothEnabled, paletteIndex = vm.store.monetPaletteIndex) { onOpenPlaylist(playlist.id) } }
                             }
                         }
                     }

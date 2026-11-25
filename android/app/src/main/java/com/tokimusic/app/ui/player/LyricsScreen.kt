@@ -77,7 +77,7 @@ import kotlin.math.roundToInt
  * is white with distance-based alpha: the active line sits anchored about
  * 28% down the viewport, lines further away fade out. Word-by-word: sung
  * characters are solid white, unsung are dimmed. Without YRC the whole line
- * highlights at once. Cirro: active line 28sp Bold, translation 16sp below it.
+ * highlights at once. TokiMusic: active line 28sp Bold, translation 16sp below it.
  *
  * 第二轮：
  * - 第 15 项：逐字高亮固定开启（无开关）；动画优化——位置轮询 200ms → 50ms，

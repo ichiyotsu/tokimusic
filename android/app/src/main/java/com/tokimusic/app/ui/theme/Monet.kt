@@ -8,7 +8,7 @@ import com.tokimusic.app.data.model.MusicSource
  * 每组 5 个同系中色调。个性化里以圆圈色块展示（长按显示名字），
  * 选中那组用于歌单显示的背景色与图标 tile 底色。
  *
- * 颜色是固定的中色调（不是从系统动态取色算的）：Cirro 固定深色下
+ * 颜色是固定的中色调（不是从系统动态取色算的）：固定深色下
  * 系统 Monet 取色不生效，色板必须自带；深色底上用 16% 透明度做
  * 行背景、实色做图标 tile，柔和不抢眼。
  */
@@ -75,14 +75,17 @@ fun monetColorForPlaylist(playlistId: Long, paletteIndex: Int): Color {
 }
 
 /**
- * 来源的莫奈色（纯函数，可单测）：图标 tile 按源固定取色板前三色，
- * 网易云 / QQ / 本地各一色，互不撞号。
+ * 源图标底色（0.1.16 第 1 项，用户指定）：实色底 + 白色图标——
+ * 网易云 #ff5757、QQ #879101；本地没有指定颜色，保持莫奈色板
+ * colors[2]。与旧的 monetColorForSource（莫奈色）不同：徽标 /
+ * 源行用这个，歌单卡片等大面积配色仍用莫奈色板。
  */
-fun monetColorForSource(source: MusicSource, paletteIndex: Int): Color {
-    val colors = monetPalette(paletteIndex).colors
-    return when (source) {
-        MusicSource.NETEASE -> colors[0]
-        MusicSource.QQ -> colors[1]
-        MusicSource.LOCAL -> colors[2]
-    }
+val NeteaseBadgeBackground: Color = Color(0xFFFF5757)
+val QqBadgeBackground: Color = Color(0xFF879101)
+
+/** 来源的图标底色（纯函数，可单测）：网易云 / QQ 用上面的品牌底色，本地按色板取 colors[2]。 */
+fun sourceBadgeBackground(source: MusicSource, paletteIndex: Int): Color = when (source) {
+    MusicSource.NETEASE -> NeteaseBadgeBackground
+    MusicSource.QQ -> QqBadgeBackground
+    MusicSource.LOCAL -> monetPalette(paletteIndex).colors[2]
 }

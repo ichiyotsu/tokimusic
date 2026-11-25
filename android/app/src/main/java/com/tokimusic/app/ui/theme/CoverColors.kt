@@ -72,7 +72,7 @@ fun Color.relativeLuminance(): Double {
     return 0.2126 * lin(red) + 0.7152 * lin(green) + 0.0722 * lin(blue)
 }
 
-val CoverColorsFallback: CoverColors = CoverColors(CirroWarmTop, CirroWarmBottom)
+val CoverColorsFallback: CoverColors = CoverColors(TokiWarmTop, TokiWarmBottom)
 
 /**
  * 从封面像素算渐变（纯函数，可单测，不依赖 Android Bitmap）。
@@ -108,7 +108,7 @@ fun coverGradientFromPixels(pixels: IntArray): Pair<Int, Int> {
 }
 
 private fun fallbackPair(): Pair<Int, Int> =
-    (CirroWarmTop.toArgbInt() to CirroWarmBottom.toArgbInt())
+    (TokiWarmTop.toArgbInt() to TokiWarmBottom.toArgbInt())
 
 private fun Color.toArgbInt(): Int {
     val a = (alpha * 255f).toInt().coerceIn(0, 255)
