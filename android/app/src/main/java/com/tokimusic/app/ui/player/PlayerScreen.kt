@@ -226,9 +226,16 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
             }
             // 第五轮第 9 项：细进度线用当前播放歌曲的封面取色（与播放器页
             // 滑杆同款逻辑）；没传取色时走默认主题色。
+            // 0.1.19 第 2 项：改前进度条 fillMaxWidth 通栏——胶囊两端是
+            // 半圆弧，条的两端伸进弧区、视觉上漏出胶囊轮廓（玻璃开时
+            // 85dp 无色模糊下更明显）。改成横向内收：start 34dp = Row
+            // 横向 padding 9dp + 封面 50dp 的一半，即 0% 正对封面竖直
+            // 中线（也正好是胶囊左半圆的弧心 x≈35dp 处，条从胶囊全高
+            // 位置起步）；end 9dp 与 Row 右侧 padding 一致，100% 停在
+            // 内容内侧右缘。条高 2dp 与颜色不动，外层 Box 的 clip 兜底。
             LinearProgressIndicator(
                 progress = { if (song.durationMs > 0) (pos.toFloat() / song.durationMs).coerceIn(0f, 1f) else 0f },
-                Modifier.fillMaxWidth().height(2.dp),
+                Modifier.fillMaxWidth().padding(start = 34.dp, end = 9.dp).height(2.dp),
                 color = coverColors?.onCoverText() ?: ProgressIndicatorDefaults.linearColor,
                 trackColor = coverColors?.onCoverText()?.copy(alpha = 0.3f) ?: ProgressIndicatorDefaults.linearTrackColor,
             )

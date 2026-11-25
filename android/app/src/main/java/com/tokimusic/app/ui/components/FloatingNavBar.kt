@@ -162,7 +162,7 @@ fun TokiSideActionButton(
 
 /**
  * 导航项：纯图标，无文字标签。选中项落在浅灰紫 pill 上，未选中直接落在
- * 底栏上；两个 icon 都是浅紫（0.1.18 第 1 项，第 22 项最终定浅紫），
+ * 底栏上；两个 icon 都是白色（0.1.19 第 1 项；0.1.18 曾用浅紫），
  * 选中态靠 pill + 实心图标区分。宽 64dp、高 56dp，图标 24dp。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -173,8 +173,8 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
     val scheme = MaterialTheme.colorScheme
     val label = stringResource(entry.label)
     val pillColor = TokiPill
-    // 0.1.18 第 1 项 + 第 22 项最终修正：选中与未选中 icon 同为浅紫
-    // TokiNavIcon；选中态靠 pill + 实心 icon 形状区分。
+    // 0.1.19 第 1 项：选中与未选中 icon 同为白色 TokiNavIcon
+    //（0.1.18 是浅紫 #D0A9E8）；选中态靠 pill + 实心 icon 形状区分。
     val iconTint = TokiNavIcon
     TokiLongPressLabel(label) {
         Box(

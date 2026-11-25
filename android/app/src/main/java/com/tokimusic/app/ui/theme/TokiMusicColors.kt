@@ -14,9 +14,9 @@ val TokiMiniPlayer: Color = Color(0xFF2C2C2E)
 /** 选中 tab 的 pill：截图里是比底栏浅的灰紫（0.1.15 与现在同值；
  * 0.1.18 第 22 项用户确认保持 #54545F，不改深紫 #5C4861）。 */
 val TokiPill: Color = Color(0xFF54545F)
-/** 底栏 icon 浅紫（0.1.18 第 1 项；第 22 项一度改白色，用户最终定浅紫）：
- * 选中与未选中同色，选中态靠 pill + 实心 icon 形状区分。 */
-val TokiNavIcon: Color = Color(0xFFD0A9E8)
+/** 底栏 icon 颜色（0.1.18 第 1 项定浅紫 #D0A9E8；0.1.19 第 1 项用户改定
+ * 白色）：选中与未选中同色，选中态靠 pill + 实心 icon 形状区分。 */
+val TokiNavIcon: Color = Color.White
 val TokiSecondary: Color = Color(0xFF8E8E93)
 val TokiPlayKey: Color = Color(0xFFF5E6D3)
 val TokiPlayKeyIcon: Color = Color(0xFF2E1A0C)

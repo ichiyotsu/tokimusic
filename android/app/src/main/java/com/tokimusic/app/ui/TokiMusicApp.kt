@@ -459,6 +459,10 @@ fun TokiMusicApp(
                                     backdropBlur = theme.backdropBlur,
                                     hazeState = hazeState,
                                     strong = true,
+                                    // 0.1.19 第 1 项：顶栏只在设置打开时才注册
+                                    // 成 haze 源（平时注册会抑制 chip 自身的
+                                    // 磨砂，见 OverlayTitleHeader 的注释）。
+                                    captureForBackdrop = showSettings,
                                     // 第三轮第 5 项：淡入/上移只作用在标题 chip 上
                                     // （titleAlpha/titleOffsetY），返回 chip 一直显示。
                                     titleAlpha = headerAlpha,

@@ -84,18 +84,27 @@ fun OverlayTitleHeader(
     // 第六轮第 1 项：标题组最左侧的插槽（主页左上角源切换下拉入口）——
     // 只在主页双源都启用时传，放在返回 chip 之前，与标题 chip 同样 12dp 间距。
     leading: (@Composable () -> Unit)? = null,
+    // 0.1.19 第 1 项：仅设置打开时为 true——顶栏此时才注册成 haze 源，
+    // 让 SettingsBackdrop 糊到标题与头像（见 Row 上的注释）。
+    captureForBackdrop: Boolean = false,
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
     val titleShape = RoundedCornerShape(percent = 50)
     Row(
         modifier
-            // 0.1.18 第 17 项：顶栏（标题 + 头像）注册为 haze 源——当前
-            // Android 没有原生 platform backdrop，Haze 的 Backdrop 输入
-            // 回退为只采样 hazeSource 内容；不注册的话设置遮罩糊不到
-            // 顶栏（与 TokiMusicApp 里 SettingsBackdrop 移到 Scaffold
-            // 之上配套，两半缺一不可）。配方不变，只扩采样范围。
-            .hazeSource(hazeState)
+            // 0.1.18 第 17 项曾无条件把顶栏注册为 haze 源，好让设置遮罩
+            // 糊到标题与头像；0.1.19 第 1 项定位到这正是标题模糊在正常
+            // 使用时消失的根因：hazeSource 子树录进 HazeState 内容层时，
+            // 子树内部的 hazeBlur 会被抑制（防递归），而标题 chip / 返回
+            // chip 的磨砂（tokiContentGlass，Sources 输入）正好在这个
+            // Row 里面——平时 chip 只剩 45% veil 平涂、没有模糊。
+            // 改成条件式：只在设置打开（captureForBackdrop）时才注册为
+            // 源——那时整个窗口本来就被 SettingsBackdrop 的模糊 + 压暗
+            // 盖住，chip 自身磨砂被抑制看不出来，标题与头像照样进设置
+            // 模糊（第 17 项的覆盖不丢）；平时不注册，chip 恢复对页面
+            // 内容源的正常磨砂。配方不变，只改注册时机。
+            .then(if (captureForBackdrop) Modifier.hazeSource(hazeState) else Modifier)
             .fillMaxWidth()
             .onSizeChanged { onHeightMeasured(with(density) { it.height.toDp() }) }
             .statusBarsPadding()

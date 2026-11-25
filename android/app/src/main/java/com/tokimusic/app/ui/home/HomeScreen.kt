@@ -91,10 +91,11 @@ import com.tokimusic.app.ui.theme.tokiGlassFade
  * The pinned overlay title is hidden on this page (see TokiMusicApp).
  *
  * Sixth round, batch 2: dual-source display + Home rearrangement —
- * order 每日推荐 → 最近播放 → 推荐歌单 3 行 → 推荐新歌 2 列（0.1.18
+ * order 每日推荐 → 最近播放 → 推荐歌单 3 行 → 推荐新歌（0.1.18
  * 第 13 项：排行榜分区已从主页删除）；推荐歌单 3 行横向网格（网易云 +
- * QQ 同一网格，卡片带源角标）；推荐新歌 2 列横向网格（时长 → 播放钮 →
- * 来源 icon）；下拉刷新（PullToRefreshBox）与冷启动共用 loadHome；
+ * QQ 同一网格，卡片带源角标）；推荐新歌 0.1.19 第 1 项起分网易云 / QQ
+ * 两个板块，每块 3 行横向网格，来源 icon 在歌名之后；下拉刷新
+ * （PullToRefreshBox）与冷启动共用 loadHome；
  * 两源都关时只留本地音乐区（MediaStore 扫描 + 本地播放）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -398,12 +399,11 @@ fun HomeScreen(
             }
         }
         // Sixth round, batch 2, items 8 + 21: recommended new songs.
-        // 0.1.18 第 2 项：改回多列横向网格（0.1.17 第 9 项的 10 行垂直列表
-        // 只有一列、右滑不出更多列）——恢复 0.1.16 的 LazyHorizontalGrid
-        // Fixed(6)，取全部歌曲，右滑出更多列；每行仍是 0.1.17 的 SongRow
-        // 形态（来源 icon 无背景放标题前、尾部只留圆形播放钮）。
-        val allNewSongs = home.newSongs + home.qqNewSongs
-        if (allNewSongs.isNotEmpty()) {
+        // 0.1.18 第 2 项：改回多列横向网格（Fixed(6) 混源一网格）。
+        // 0.1.19 第 1 项：分两个板块——先网易云、后 QQ，各带源小标题，
+        // 每块 3 行网格（NewSongsGrid Fixed(3)）；某源无歌（未启用时 VM
+        // 返回空）整块隐藏；大节标题与顶栏标题追踪（newSongsTitleY）不变。
+        if (home.newSongs.isNotEmpty() || home.qqNewSongs.isNotEmpty()) {
             item {
                 Text(
                     "推荐新歌",
@@ -411,8 +411,18 @@ fun HomeScreen(
                         .onGloballyPositioned { newSongsTitleY = it.positionInRoot().y },
                     style = MaterialTheme.typography.titleLarge,
                 )
-                Spacer(Modifier.height(8.dp))
-                NewSongsGrid(allNewSongs, vm, onOpenArtist, onOpenQqArtist)
+                if (home.newSongs.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    NewSongsSourceLabel("网易云音乐")
+                    Spacer(Modifier.height(8.dp))
+                    NewSongsGrid(home.newSongs, vm, onOpenArtist, onOpenQqArtist)
+                }
+                if (home.qqNewSongs.isNotEmpty()) {
+                    Spacer(Modifier.height(if (home.newSongs.isNotEmpty()) 20.dp else 8.dp))
+                    NewSongsSourceLabel("QQ音乐")
+                    Spacer(Modifier.height(8.dp))
+                    NewSongsGrid(home.qqNewSongs, vm, onOpenArtist, onOpenQqArtist)
+                }
             }
         }
     }
@@ -431,25 +441,46 @@ fun HomeScreen(
 }
 
 
-/** Recommended new songs: multi-column horizontal grid (0.1.18 第 2 项：
- * 恢复 0.1.16 的 LazyHorizontalGrid Fixed(6)，取全部歌曲、右滑出更多列；
- * 0.1.17 的 10 行垂直列表只有一列）。一列是一整行宽的 SongRow（屏宽减
- * 左右 24dp 边距）；每行仍是 0.1.17 形态：来源 icon 无背景（SourceIcon，
- * 品牌色 tint）放在标题文字之前（SongRow leading 槽）；尾部只留圆形播放钮。 */
+/** 推荐新歌分源小标题（0.1.19 第 1 项）：源命名与 SourceBadge /
+ * SourceIcon 的无障碍文案一致（网易云音乐 / QQ音乐）。 */
+@Composable
+private fun NewSongsSourceLabel(text: String) {
+    Text(
+        text,
+        Modifier.padding(horizontal = 24.dp),
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** Recommended new songs, one source block (0.1.19 第 1 项：每块
+ * LazyHorizontalGrid Fixed(3)——3 行、每列 3 首、右滑出更多列；0.1.18
+ * 是 Fixed(6) 混源一网格）。一列是一整行宽的 SongRow（屏宽减左右 24dp
+ * 边距）；来源 icon 无背景（SourceIcon，品牌色 tint）放在歌名文字之后
+ * （SongRow titleTrailing 槽），边长 = 歌名行高（titleMedium lineHeight，
+ * 与歌名等高）；尾部只留圆形播放钮。 */
 @Composable
 private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
-    // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（混源列表，
-    // 用 resolveArtistTap 分流）。
+    // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（按行所在
+    // 列表分流——0.1.19 起每块是单源列表，逻辑不变）。
     val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(songs, id, onOpenArtist, onOpenQqArtist) }
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    // 来源 icon 与歌名等高：边长取 titleMedium 的行高（默认排版 24sp →
+    // 24dp）；行高未指定（value 为 NaN）时回落 24。
+    val titleLineHeight = MaterialTheme.typography.titleMedium.lineHeight
+    val titleIconSize = if (titleLineHeight.value.isFinite()) {
+        with(LocalDensity.current) { titleLineHeight.toDp().value.toInt() }
+    } else {
+        24
+    }
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(6),
-        modifier = Modifier.fillMaxWidth().height(448.dp),
+        rows = GridCells.Fixed(3),
+        modifier = Modifier.fillMaxWidth().height(220.dp),
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // 混源列表：NetEase 真实 id 与 QQ 合成 id 理论上可能碰撞，key 用下标。
+        // 单源列表内 id 唯一（网易云真实 id / QQ 合成 id 各自不重复），key 用下标保险。
         items(count = songs.size, key = { it }) { index ->
             val song = songs[index]
             Box(Modifier.width(screenWidth - 48.dp)) {
@@ -458,7 +489,7 @@ private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Lon
                     onOpenArtist = openArtistForRows,
                     onLongPress = { vm.openSongActions(it) },
                     horizontalPadding = 0.dp,
-                    leading = { SourceIcon(song.source, size = 20) },
+                    titleTrailing = { SourceIcon(song.source, size = titleIconSize) },
                     trailingAction = { SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") } },
                 ) { vm.play(songs, index, "推荐新歌") }
             }
