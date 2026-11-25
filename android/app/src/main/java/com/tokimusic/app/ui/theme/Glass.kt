@@ -52,13 +52,16 @@ fun chromeBlurActive(backdropBlur: Boolean): Boolean =
 // 大排查 D2/D3：tokiChrome / tokiContentChrome / tokiChromeStrong /
 // tokiGlassStrong 无任何调用者，已删（导航胶囊在用下面的
 // tokiContentChromeStrong；固定尺寸面走 tokiGlass）。
-/** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。 */
+/** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。
+ * 0.1.17 第 4 项：底栏色换成主题紫 TokiNavBar（#5C4861）——玻璃开时是
+ * 45% 紫 veil 盖在强模糊上，玻璃关时是实色紫（MiniPlayer 与搜索圆钮
+ * 共用同一份 barGlass，跟着一起变）。 */
 @Composable
 fun tokiContentChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
     return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
+        Modifier.tokiContentGlassStrong(state).background(TokiNavBar.copy(alpha = TokiGlassParams.strongVeilAlpha))
     } else {
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
+        Modifier.background(TokiNavBar)
     }
 }
 

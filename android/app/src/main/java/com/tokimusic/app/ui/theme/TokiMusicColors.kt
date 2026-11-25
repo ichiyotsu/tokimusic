@@ -14,6 +14,8 @@ val TokiMiniPlayer: Color = Color(0xFF2C2C2E)
 /** 选中 tab 的 pill：截图里是比底栏浅的灰紫，图标落在其上为深色。 */
 val TokiPill: Color = Color(0xFF54545F)
 val TokiPillIcon: Color = Color(0xFF131318)
+/** 主页底栏色（0.1.17 第 4 项，用户指定 #5C4861）：淡紫色，软件主题色（底栏用）。 */
+val TokiNavBar: Color = Color(0xFF5C4861)
 val TokiSecondary: Color = Color(0xFF8E8E93)
 val TokiPlayKey: Color = Color(0xFFF5E6D3)
 val TokiPlayKeyIcon: Color = Color(0xFF2E1A0C)

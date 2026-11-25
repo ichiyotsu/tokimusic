@@ -26,6 +26,7 @@ import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.model.*
 import com.tokimusic.app.data.playlistFavoriteKey
+import com.tokimusic.app.player.LiveLyricLine
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.player.shuffleStartIndex
 import com.tokimusic.app.ui.components.SongActionsContext
@@ -89,13 +90,77 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList()); val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
     private val _mine = MutableStateFlow(MineUiState()); val mine: StateFlow<MineUiState> = _mine
+    // 0.1.17 第 17 项：本周收听排行（/user/record type=1，weekData），
+    // 收听报告页按需拉取；累计排行复用 mine.record（type=0，allData）。
+    private val _weeklyRecord = MutableStateFlow<List<RecordItem>>(emptyList())
+    val weeklyRecord: StateFlow<List<RecordItem>> = _weeklyRecord
+    private var weeklyRecordUid: Long = -1L
+
+    /** 0.1.17 第 17 项：拉本周收听排行；换账号时重拉，失败留空不弹错。 */
+    fun loadWeeklyRecord(force: Boolean = false) {
+        val uid = _profile.value?.uid ?: return
+        if (!force && uid == weeklyRecordUid && _weeklyRecord.value.isNotEmpty()) return
+        viewModelScope.launch {
+            val result = runCatching { api.userRecord(uid, weekly = true) }.getOrDefault(emptyList())
+            _weeklyRecord.value = result
+            weeklyRecordUid = uid
+        }
+    }
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList()); val lyrics: StateFlow<List<LyricLine>> = _lyrics
     private val _likedIds = MutableStateFlow<Set<Long>>(emptySet()); val likedIds: StateFlow<Set<Long>> = _likedIds
     /** 0.1.12 歌单页收藏星星：本地收藏态（SettingsStore 持久化），初值从 store 读。 */
     private val _favoritePlaylistIds = MutableStateFlow(store.favoritePlaylistIds); val favoritePlaylistIds: StateFlow<Set<String>> = _favoritePlaylistIds
+    /**
+     * 0.1.17 第 3 项：服务端已订阅歌单 id（“源:id”，与本地收藏同 key）。
+     * 详情页的收藏态 = 本地收藏 || 服务端已订阅（见 PlaylistsScreen）。
+     * 只做并集累积（myPlaylists / QQ 资料库 / 详情加载播种），移除只走
+     * toggle 成功路径；退出登录时清空。
+     */
+    private val _subscribedPlaylistIds = MutableStateFlow<Set<String>>(emptySet()); val subscribedPlaylistIds: StateFlow<Set<String>> = _subscribedPlaylistIds
+    private fun refreshSubscribedPlaylistIds() {
+        val fromMine = _myPlaylists.value.filter { it.subscribed }.map { playlistFavoriteKey(it.source, it.id) }
+        val fromQq = _qqLibrary.value?.playlists.orEmpty().map { playlistFavoriteKey(it.source, it.id) }
+        _subscribedPlaylistIds.value = _subscribedPlaylistIds.value + fromMine + fromQq
+    }
+    // 0.1.17 第 3 项：服务端收藏切换进行中的 key——防连续点按重复提交。
+    private val favToggleInFlight = mutableSetOf<String>()
     fun toggleFavoritePlaylist(playlist: Playlist) {
         val key = playlistFavoriteKey(playlist.source, playlist.id)
-        val updated = if (key in _favoritePlaylistIds.value) _favoritePlaylistIds.value - key else _favoritePlaylistIds.value + key
+        val serverSubbed = key in _subscribedPlaylistIds.value
+        val localFav = key in _favoritePlaylistIds.value
+        // QQ 服务端已订阅的歌单没有取消收藏接口（见 NOTES.md 第 3 项），
+        // 在这里取消不掉——诚实提示，不改状态。
+        if (playlist.source == MusicSource.QQ && serverSubbed) {
+            showMessage("QQ 歌单需在 QQ 音乐内取消收藏")
+            return
+        }
+        // 网易云、已登录、非自己建的、真实歌单：走服务端订阅/取消订阅
+        // （方向按服务端态，不按显示态——本地星标不代表服务端已订阅）。
+        if (playlist.source == MusicSource.NETEASE && _profile.value != null && playlist.id > 0 && playlist.creatorId != _profile.value?.uid) {
+            if (!favToggleInFlight.add(key)) return
+            viewModelScope.launch {
+                try {
+                    val ok = api.playlistSub(playlist.id, !serverSubbed)
+                    if (!ok) {
+                        showMessage("收藏失败，请检查网络后重试")
+                        return@launch
+                    }
+                    val favUpdated = if (!serverSubbed) _favoritePlaylistIds.value + key else _favoritePlaylistIds.value - key
+                    store.favoritePlaylistIds = favUpdated
+                    _favoritePlaylistIds.value = favUpdated
+                    _subscribedPlaylistIds.value = if (!serverSubbed) _subscribedPlaylistIds.value + key else _subscribedPlaylistIds.value - key
+                    // 资料库“我收藏的歌单”分组按 subscribed 过滤——同步改
+                    // _myPlaylists 里这一项的 subscribed，让资料库立即一致
+                    // （不等下次拉取）。
+                    _myPlaylists.value = _myPlaylists.value.map { if (it.id == playlist.id && it.source == MusicSource.NETEASE) it.copy(subscribed = !serverSubbed) else it }
+                } finally {
+                    favToggleInFlight.remove(key)
+                }
+            }
+            return
+        }
+        // 其余情况（未登录 / 自己的歌单 / 虚拟歌单 / QQ 未订阅）：只翻本地收藏。
+        val updated = if (localFav) _favoritePlaylistIds.value - key else _favoritePlaylistIds.value + key
         store.favoritePlaylistIds = updated
         _favoritePlaylistIds.value = updated
     }
@@ -129,10 +194,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // 0.1.13 第 24 项：已关注歌手 id（/artist/sublist 的缓存）；关注
     // 按钮的状态与切换都走它，不直接读资料库的 artists 列表。
     private val _followedArtistIds = MutableStateFlow<Set<Long>>(emptySet()); val followedArtistIds: StateFlow<Set<Long>> = _followedArtistIds
-    // 0.1.13 第 23 项：QQ 与本地的资料库统计。QQ 暂无等级 / 时长接口：
-    // 等级固定 Lv.1（用户确认“等级后面再做，现在都显示 Lv.1”），
-    // 时长为 null（显示 "—"）；本地等级同样 Lv.1，时长读本地累计。
-    val qqStats = MutableStateFlow(SourceStats(level = 1, minutes = null))
+    // 0.1.13 第 23 项：本地的资料库统计——等级固定 Lv.1，时长读本地累计。
+    // 0.1.17 第 14 项：QQ 统计（qqStats，等级固定 Lv.1、时长恒 null）已删——
+    // QQ 那行换成了 tokimusic 行，QQ 统计再无用量。
     private val _localStats = MutableStateFlow(SourceStats(level = 1, minutes = 0L)); val localStats: StateFlow<SourceStats> = _localStats
     fun refreshLocalStats() {
         _localStats.value = SourceStats(level = 1, minutes = player.statsStore.totalMinutes())
@@ -171,7 +235,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // 大排查 B6：加载成功才记 loaded——之前先记 true 再请求，
             // 网络失败就永久空列表（直到退出重登），下次进资料库也不重试。
             runCatching { qqClient.qqLibrary() }
-                .onSuccess { _qqLibrary.value = it; qqLibraryLoaded = true }
+                .onSuccess { _qqLibrary.value = it; qqLibraryLoaded = true; refreshSubscribedPlaylistIds() }
                 .onFailure { _qqLibrary.value = QqClient.QqLibrary() }
         }
     }
@@ -205,6 +269,78 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         refreshSession()
         refreshQqSession()
+        // 0.1.17 第 12 / 13 项：实时歌词推送 + 听歌上报累计（同一 500ms 循环）。
+        startPlaybackSideEffects()
+    }
+
+    /**
+     * 0.1.17 第 12 / 13 项：播放副作用循环（500ms 一 tick，只在播放时累计）。
+     * - 实时歌词：当前歌词行文本变化时推给 LiveLyricLine，播放服务据此改
+     *   通知标题；切歌 / 无歌词时推 null（标题恢复歌名）；暂停时保留上一行。
+     * - 听歌上报：只报网易云源、只在登录网易云且开关开时报；累计播放时长
+     *   首次达到 min(歌曲时长, 240 秒) 即报，切歌时上一首累计 ≥ 30 秒未报
+     *   也补报（与上游 playend 语义一致：手动切歌后累计 ≥ 30 秒同样算一次
+     *   有效收听）。失败静默，不影响播放。
+     */
+    private fun startPlaybackSideEffects() = viewModelScope.launch {
+        var liveLastLine: String? = null
+        var liveLastSongId: Long = -1L
+        var scrSong: Song? = null
+        var scrPlayedMs: Long = 0L
+        var scrReported: Boolean = false
+        while (true) {
+            delay(500)
+            val st = player.state.value
+            val song = st.queue.getOrNull(st.index)
+            // --- 实时歌词（第 12 项）---
+            if (song == null || song.id != liveLastSongId) {
+                liveLastSongId = song?.id ?: -1L
+                if (liveLastLine != null) {
+                    liveLastLine = null
+                    LiveLyricLine.update(null)
+                }
+            }
+            if (store.liveLyricsEnabled && song != null && st.isPlaying) {
+                val lines = _lyrics.value
+                val idx = YrcParser.activeLineIndex(lines, player.currentPosition())
+                val text = if (idx >= 0) {
+                    lines[idx].words.joinToString("") { it.text }.trim().takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+                if (text != liveLastLine) {
+                    liveLastLine = text
+                    LiveLyricLine.update(text)
+                }
+            }
+            // --- 听歌上报（第 13 项）---
+            val neteaseLoggedIn = _profile.value != null
+            if (song?.id != scrSong?.id) {
+                val prev = scrSong
+                if (prev != null && store.scrobbleEnabled && neteaseLoggedIn && prev.source == MusicSource.NETEASE) {
+                    scrobbleReportSeconds(scrPlayedMs, prev.durationMs, scrReported, ended = true)?.let { secs ->
+                        reportScrobble(prev, secs)
+                    }
+                }
+                scrSong = song
+                scrPlayedMs = 0L
+                scrReported = false
+            }
+            if (song != null && st.isPlaying && store.scrobbleEnabled && neteaseLoggedIn &&
+                song.source == MusicSource.NETEASE && !scrReported
+            ) {
+                scrPlayedMs += 500
+                scrobbleReportSeconds(scrPlayedMs, song.durationMs, scrReported, ended = false)?.let { secs ->
+                    scrReported = true
+                    reportScrobble(song, secs)
+                }
+            }
+        }
+    }
+
+    /** 0.1.17 第 13 项：上报静默发送（runCatching，不 toast、不重试）。 */
+    private fun reportScrobble(song: Song, seconds: Int) = viewModelScope.launch {
+        runCatching { api.scrobble(song.id, 0L, seconds) }
     }
 
     /** Sixth round, batch 2, item 2: restores the last queue on cold start WITHOUT autoplay (MiniPlayer shows the last song). Local songs already carry their content URI; network songs load lazily on tap. */
@@ -252,7 +388,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val p = api.loginStatus()
             if (p == null) {
                 _profile.value = null; _authState.value = AuthState.LoggedOut
-                _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet()
+                _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); _subscribedPlaylistIds.value = emptySet()
             } else {
                 _profile.value = p; _authState.value = AuthState.LoggedIn
                 // 第五轮第 24 项：首次登录时间只记一次——扫码登录成功与已登录
@@ -279,6 +415,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         val recent = recentD.await()
                         _profile.value = detail
                         _myPlaylists.value = pls
+                        // 0.1.17 第 3 项：播种服务端已订阅歌单 id。
+                        refreshSubscribedPlaylistIds()
                         _likedIds.value = likes.toSet()
                         // Listening time is estimated: sum(duration * playCount) from /user/record — labelled as such in UI.
                         val minutes = record.sumOf { it.song.durationMs * it.playCount } / 60_000
@@ -293,7 +431,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // user with no cookie at all is simply logged out.
                     val hadCookie = store.cookie.isNotBlank()
                     api.clearSession()
-                    _profile.value = null; _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet()
+                    _profile.value = null; _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); _subscribedPlaylistIds.value = emptySet()
                     _authState.value = if (hadCookie) AuthState.Expired else AuthState.LoggedOut
                     if (hadCookie) _userMessage.value = "登录已过期，请重新扫码登录"
                 }
@@ -378,7 +516,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val (title, songs) = qqClient.toplistDetail(topId)
             return Playlist(id = id, name = title, source = MusicSource.QQ, sourceId = topId.toString()) to songs
         }
-        return api.playlistDetail(id)
+        // 0.1.17 第 3 项：详情返回的 subscribed 是服务端态——播种进已订阅集合，
+        // 详情页星标据此显示已收藏（不等资料库拉取）。
+        return api.playlistDetail(id).also { (pl, _) ->
+            if (pl.subscribed) _subscribedPlaylistIds.value += playlistFavoriteKey(pl.source, pl.id)
+        }
     }
 
     /** 0.1.15 第 3 项：搜索不再分源——所有启用的源并行搜，结果合并
@@ -732,13 +874,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         qqClient.clearSession(); _qqProfile.value = null; _qqAuthState.value = AuthState.LoggedOut
         _qqLoggedIn.value = false
         _qqLibrary.value = null; qqLibraryLoaded = false
+        // 0.1.17 第 3 项：QQ 退出时清掉已订阅集合里的 QQ key（key 是“源:id”）。
+        _subscribedPlaylistIds.value = _subscribedPlaylistIds.value.filterNot { it.startsWith("QQ:") }.toSet()
         store.qqEnabled = false; _qqEnabled.value = false
         refreshHome()
     }
     fun testConnection() = viewModelScope.launch { _health.value = api.apiHealth() }
     fun logout() {
         api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
-        _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); viewModelScope.launch { loadHome() }
+        _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); _subscribedPlaylistIds.value = emptySet(); viewModelScope.launch { loadHome() }
         _likedSongs.value = emptyList(); likedSongsLoaded = false
         _artists.value = emptyList(); artistsLoaded = false
         _albums.value = emptyList(); albumsLoaded = false
@@ -819,4 +963,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             result.onFailure { _toplist.value = emptyList() }
         }
     }
+}
+
+/**
+ * 0.1.17 第 13 项：听歌上报时机纯函数。累计播放时长首次达到
+ * min(歌曲时长, 240 秒) 时上报；自然播完（切歌）时累计 ≥ 30 秒
+ * 未上报也上报；否则返回 null。返回值为要上报的已播秒数。
+ * 时长未知（durationMs ≤ 0）时阈值按 240 秒算。
+ */
+internal fun scrobbleReportSeconds(playedMs: Long, durationMs: Long, reported: Boolean, ended: Boolean): Int? {
+    if (reported) return null
+    val thresholdMs = minOf(durationMs.takeIf { it > 0 } ?: 240_000L, 240_000L)
+    if (playedMs >= thresholdMs) return (playedMs / 1000).toInt()
+    if (ended && playedMs >= 30_000) return (playedMs / 1000).toInt()
+    return null
 }

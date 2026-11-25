@@ -504,9 +504,10 @@ private fun LyricLineRow(
                 )
             }
             // 第五轮第 26 项：罗马音行夹在原文与翻译之间（原文 → 罗马音 →
-            // 翻译），与翻译行同款式（bodyLarge 粗体、同色同透明度、同
-            // 10dp 下边距），不参与逐字高亮；开了罗马音后三行叠加，行高
-            // 随内容长——滚动锚点按行号算，不依赖固定行高，无需另改。
+            // 翻译），与翻译行同款式（bodyLarge 粗体、同色同透明度），不参与逐字高亮；
+            // 0.1.17 第 1 项：三行之间不另加间距——罗马音/翻译行不再带
+            // 下边距，行与行之间只剩正常行高；开关罗马音/翻译时条件组合
+            // 本来就会收掉/撑开那行，块间距只由主文本的 vertical padding 给。
             if (showRomaji && !line.romaji.isNullOrBlank()) Text(
                 line.romaji!!,
                 textAlign = TextAlign.Start,
@@ -516,7 +517,7 @@ private fun LyricLineRow(
                 // 0.1.15 第 1 项：已播放行的翻译/罗马音同比例再淡（0.4 → 0.3，
                 // 即整行透明度 ×0.75）。
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
                 line.translation!!,
@@ -525,7 +526,7 @@ private fun LyricLineRow(
                 fontWeight = FontWeight.Bold,
                 fontFamily = fontFamily,
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         // 第六轮第 27 项：点歌词行跳到行首（行级跳转，第五轮第 6 项）——

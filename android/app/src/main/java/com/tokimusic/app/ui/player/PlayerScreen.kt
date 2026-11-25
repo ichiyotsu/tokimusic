@@ -52,6 +52,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -64,6 +65,9 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -129,7 +133,7 @@ import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
-import com.tokimusic.app.ui.theme.lyricFontFamily
+import com.tokimusic.app.ui.theme.TokiBlack
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -165,10 +169,15 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
         Column {
             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 // 0.1.13 第 9 项：迷你封面 48dp → 56dp。
-                AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                // 0.1.17 第 5 项：封面圆角与外层大圆角匹配——外层是
+                // percent 50 的 pill（高约 78dp、半径约 39dp），同心
+                // 规则下封面半径 39−10 = 29dp，夹到 56dp 的一半 28dp，
+                // 实质上就是圆形；直接用 percent 50。
+                AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(percent = 50)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-                    Text(song.artistText, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // 0.1.17 第 5 项：歌手名颜色 #d9d9d9。
+                    Text(song.artistText, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = Color(0xFFD9D9D9))
                 }
                 // 第六轮第 32 项：迷你播放器的播放 / 下一曲钮也按压回弹（计划里
                 // 写的“星标/更多”在 MiniPlayer 里不存在——这里只有播放与下一曲
@@ -420,8 +429,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 immersive = immersiveLyrics,
                                 // 第三轮第 8 项：切页时行 stagger 入场。
                                 animateEntrance = true,
-                                // 第三轮第 16 项：歌词字体预设（设置 → 歌词）。
-                                fontFamily = lyricFontFamily(vm.store.lyricFontPreset),
+                                // 0.1.17 第 8 项：歌词字体功能删除——歌词默认
+                                // Inter（LyricsView 的 fontFamily 默认值）。
                                 // 底部淡出端色取歌词区底部位置的真实背景色（黑条修复）。
                                 bottomFadeColor = bottomFadeColor,
                                 // 第五轮第 6 项：点歌词行跳到该行开头；暂停时只
@@ -917,8 +926,10 @@ private fun MoreSheet(
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // 0.1.17 第 6 项：时长放歌手名后面（“歌手名 · 时长”），
+                    // 专辑退出这行；独立的时长行删掉。时长为 0 时只有歌手名。
                     Text(
-                        listOf(song.artistText, song.albumName).filter { it.isNotBlank() }.joinToString(" · "),
+                        listOf(song.artistText, if (song.durationMs > 0) formatDuration(song.durationMs) else "").filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -933,32 +944,24 @@ private fun MoreSheet(
             MoreAction(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
             MoreAction(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (liked) "取消喜欢" else "喜欢", onToggleLike)
             MoreAction(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
-            if (song.durationMs > 0) {
-                Text(
-                    "时长 ${formatDuration(song.durationMs)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            }
             // 0.1.15 第 5 项：歌词设置放进更多页（与设置 → 歌词同一开关，
             // 改完立即生效）；第 6 项：逐字时序偏移滑杆。
+            // 0.1.17 第 1 项：“歌词”小标题去掉（开关本身保留）。
             Spacer(Modifier.height(12.dp))
-            Text(
-                "歌词",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-            MoreSwitch("翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
-            MoreSwitch("罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
-            MoreSwitch("逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+            // 0.1.17 第 6 项：四个设定行各加一个 icon，与上面 MoreAction
+            // 的行对齐（Icon + 16dp 间隔 + label）。
+            MoreSwitch(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
+            MoreSwitch(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
+            MoreSwitch(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+            // 0.1.17 第 6 项：时序行也加 Timer icon，与三行对齐；纵向
+            // padding 8dp → 4dp——switch→switch 的文字间隔是 4 + 4 + 4
+            // = 12dp，switch→时序原来是 4 + 4 + 8 = 16dp，改后两段一致。
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                Icon(Icons.Rounded.Timer, contentDescription = null)
                 Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Text(
                     formatTimingOffset(vm.store.lyricTimingOffsetMs),
@@ -989,12 +992,13 @@ fun formatTimingOffset(offsetMs: Int): String =
     if (offsetMs == 0) "0ms" else "${if (offsetMs > 0) "+" else ""}$offsetMs" + "ms"
 
 @Composable
-private fun MoreSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCheckedChange(!checked) }.padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Icon(icon, contentDescription = null)
         Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }

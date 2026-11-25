@@ -60,10 +60,19 @@ private fun latinVariableFont(resId: Int, weight: FontWeight): Font {
 }
 
 /**
+ * CJK 粗体优先的字体族（0.1.17 第 2 项）：只有三个 CJK 静态 Bold 文件，
+ * 不含 Inter——给 CJK 为主的标题用（如推荐歌单卡片标题），绕开
+ * AndroidFontListTypeface 的 firstOrNull 匹配（见 NOTES.md 第 2 项：
+ * InterFamily 里 Inter 条目排在 CJK 之前，Bold 请求永远解析成 Inter，
+ * CJK 静态 Bold 文件从未被选中）。标题里的少量拉丁文走 SC Bold 的拉丁字形。
+ */
+val CjkBoldFamily: FontFamily = FontFamily(cjkBoldFonts())
+
+/**
  * 第五轮第 2 项（用户 2026-11-23 定稿“Google Inter 字体”）：全局字体搭配 =
  * Google Inter（Google Fonts 上的 Inter）+ 思源黑体粗体。西文全局继续用
- * Inter，不改用 Google Sans——Google Sans 只留在歌词预设 (b) 里
- * （LyricFontGoogleSansNotoBold），TokiUiThemeTest 的全局禁令不动。
+ * Inter，不改用 Google Sans——0.1.17 第 8 项起歌词字体预设已删，
+ * 该字体文件只留在 res/font 里未被引用（见 NOTES.md 第 8 项）。
  * 日 / 韩 / 繁中一律思源黑体 Bold，见下面的 variableFonts 回退链。
  */
 val InterFamily: FontFamily = FontFamily(
@@ -73,29 +82,3 @@ val InterFamily: FontFamily = FontFamily(
         // 任意字重请求都落到它，全局粗体）。
         cjkBoldFonts(),
 )
-
-/**
- * 第三轮第 16 项：歌词字体预设（两个预设均为粗体字重；默认 inter_pingfang）。
- * (a) Inter Bold + PingFang Bold：西文 Inter 变量字体 wght 700，中文
- *     PingFang Bold 静态字体。
- * (b) GoogleSans Bold + 思源黑体粗体：西文 GoogleSans Bold 静态字体，
- *     中文思源黑体（Noto Sans SC 变量字体 wght 700，已随应用打包）。
- * 字体文件来源：PingFang Bold 与 GoogleSans Bold 取自 Tokifonts 仓库
- * （Pro 分支，见 PLAN.md §5.16）；与 InterFamily 同款“西文 + 中文”
- * 双字体结构，逐字形回退。
- */
-val LyricFontInterPingFangBold: FontFamily = FontFamily(
-    listOf(latinVariableFont(R.font.inter, FontWeight.Bold)) +
-        cjkBoldFonts() +
-        listOf(Font(R.font.pingfang_bold, FontWeight.Bold)),
-)
-
-val LyricFontGoogleSansNotoBold: FontFamily = FontFamily(
-    listOf(Font(R.font.google_sans_bold, FontWeight.Bold)) + cjkBoldFonts(),
-)
-
-/** 歌词字体预设的存储值（SettingsStore.lyricFontPreset）。 */
-fun lyricFontFamily(preset: String): FontFamily = when (preset) {
-    "google_noto" -> LyricFontGoogleSansNotoBold
-    else -> LyricFontInterPingFangBold
-}
