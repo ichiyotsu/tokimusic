@@ -128,6 +128,36 @@ class CoverColorsTest {
     }
 
     @Test
+    fun miniPlayerVeilLightensOnBlackAndDeepensOnWhite() {
+        // 0.1.19 第 5 项：MiniPlayer 动态底的两个极端——
+        // 近黑封面（L≈0）→ 白色 α0.25（黑底上看得见）；
+        // 近白封面（L≈1）→ 深灰 #2C2C2E α0.35（与白色分得开）。
+        val onBlack = miniPlayerGlassVeil(
+            androidx.compose.ui.graphics.Color.Black,
+            androidx.compose.ui.graphics.Color.Black,
+        )
+        assertEquals(0.25f, onBlack.alpha, 0.001f)
+        assertEquals(1f, onBlack.red, 0.001f)
+        assertEquals(1f, onBlack.green, 0.001f)
+        assertEquals(1f, onBlack.blue, 0.001f)
+        val onWhite = miniPlayerGlassVeil(
+            androidx.compose.ui.graphics.Color.White,
+            androidx.compose.ui.graphics.Color.White,
+        )
+        assertEquals(0.35f, onWhite.alpha, 0.001f)
+        assertEquals(0x2C / 255f, onWhite.red, 0.001f)
+        assertEquals(0x2E / 255f, onWhite.blue, 0.001f)
+        // 中间调（暖棕回退封面，L 低）→ 偏亮的一端：alpha 接近 0.25、
+        // 颜色明显比深灰亮。
+        val warm = miniPlayerGlassVeil(
+            androidx.compose.ui.graphics.Color(0xFF5A2A12),
+            androidx.compose.ui.graphics.Color(0xFF2E1A0C),
+        )
+        assertTrue(warm.alpha in 0.25f..0.28f)
+        assertTrue(warm.red > 0.8f)
+    }
+
+    @Test
     fun totalDurationKeepsMinutesPastOneHour() {
         // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))

@@ -72,6 +72,32 @@ fun Color.relativeLuminance(): Double {
     return 0.2126 * lin(red) + 0.7152 * lin(green) + 0.0722 * lin(blue)
 }
 
+/**
+ * MiniPlayer 专用玻璃的动态底色（0.1.19 第 5 项，纯函数，可单测）。
+ *
+ * 0.1.18 第 25 项的纯模糊（无 tint、无 veil）在完全黑色的背景上糊
+ * 出来也是黑，MiniPlayer 整个看不见。加一层底：基准是 25% 透明度
+ * 的深灰（#2C2C2E，与玻璃关时的实色回退 TokiMiniPlayer 同色），再
+ * 按当前歌曲封面渐变的平均相对亮度 L（top/bottom 两端均值）动态调：
+ * - L ≤ 0.04（近黑）：底提亮为白色、alpha 0.25——黑底上是一块
+ *   可见的浅灰面；
+ * - L ≥ 0.65（近白）：底为深灰 #2C2C2E、alpha 加深到 0.35——与
+ *   白色背景分得开；
+ * - 两锚点之间线性插值（颜色 White → #2C2C2E，alpha 0.25 → 0.35）。
+ *
+ * 信号与局限：MiniPlayer 的真实底景是它下面的页面内容，应用不做
+ * 逐像素采样；这里用已算好、且本来就传给 MiniPlayer 的当前歌曲
+ * 封面取色（CoverColors）作明暗代理——在封面渐变即页面背景的场合
+ * 与底景一致，在固定深色的 tab 页上则跟着歌曲封面色调走、与身后
+ * 列表内容只是近似（详见 0.1.19 NOTES.md 第 5 项）。
+ */
+fun miniPlayerGlassVeil(top: Color, bottom: Color): Color {
+    val l = (top.relativeLuminance() + bottom.relativeLuminance()) / 2.0
+    val f = ((l - 0.04) / (0.65 - 0.04)).coerceIn(0.0, 1.0).toFloat()
+    val base = lerp(Color.White, Color(0xFF2C2C2E), f)
+    return base.copy(alpha = 0.25f + (0.35f - 0.25f) * f)
+}
+
 val CoverColorsFallback: CoverColors = CoverColors(TokiWarmTop, TokiWarmBottom)
 
 /**

@@ -148,6 +148,9 @@ import kotlin.math.roundToInt
  * 0.1.18 第 25 项：拆出自己的玻璃（调用方传 tokiContentGlassMiniPlayer）——
  * 85dp 强模糊、不上色（无 tint、无 veil），纯模糊背后内容；玻璃关闭时
  * 回退纯色 #2C2C2E（[glass] 只在 glassOn 时才被套用）。
+ * 0.1.19 第 5 项：纯模糊在纯黑背景上看不见——调用方在模糊之上叠一层
+ * 动态底（25% 深灰基准、按封面亮度提亮/加深，见 miniPlayerGlassVeil），
+ * 本组件的形状/布局不变。
  */
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {

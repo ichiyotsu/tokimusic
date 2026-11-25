@@ -82,7 +82,10 @@ object TokiGlassParams {
 
     /**
      * MiniPlayer 专用档（0.1.18 第 25 项）：模糊半径约 85dp（远强于
-     * strong 的 32dp），且不上色——无 tint、无 veil，纯模糊背后内容。
+     * strong 的 32dp）。0.1.19 第 5 项起不再是零底色：纯模糊在纯黑
+     * 背景上不可见，另加一层动态底（见 miniPlayerGlassVeil），底色
+     * 不进 Haze 的 colorEffects、由 tokiContentGlassMiniPlayer 以
+     * background 形式叠在模糊之上。
      */
     val miniPlayerBlurRadius: Dp = 85.dp
 
@@ -158,15 +161,17 @@ fun Modifier.tokiContentGlassStrong(state: HazeState): Modifier {
 }
 
 /**
- * MiniPlayer 专用玻璃（0.1.18 第 25 项）：85dp 强模糊、零上色——
- * colorEffects 为空、fallback 也是全透明 tint、无 veil 背景，纯模糊
- * 背后内容。输入与底栏同走 Sources（MiniPlayer 的显隐/尺寸在动画，
- * 内容源采样不黑边）。噪点与全应用玻璃同值 0.02（是磨砂质感，
- * 不是上色）。玻璃关时调用方不套这个 modifier、走实色
- * TokiMiniPlayer 回退（见 PlayerScreen.MiniPlayer）。
+ * MiniPlayer 专用玻璃（0.1.18 第 25 项）：85dp 强模糊；Haze 样式
+ * 本身仍不上色（colorEffects 为空、fallback 全透明）。0.1.19 第 5 项：
+ * 纯模糊在完全黑色的背景上糊出来也是黑、MiniPlayer 看不见——在
+ * 模糊之上叠一层动态底 [veil]（background 形式，与
+ * tokiContentChromeStrong 的 veil 同款叠法）：基准 25% 深灰，按
+ * 当前歌曲封面亮度动态提亮/加深（见 miniPlayerGlassVeil）。噪点与
+ * 全应用玻璃同值 0.02（磨砂质感，不是上色）。玻璃关时调用方不套
+ * 这个 modifier、走实色 TokiMiniPlayer 回退（见 PlayerScreen.MiniPlayer）。
  */
 @Composable
-fun Modifier.tokiContentGlassMiniPlayer(state: HazeState): Modifier {
+fun Modifier.tokiContentGlassMiniPlayer(state: HazeState, veil: Color): Modifier {
     return hazeBlur(
         input = HazeInput.Sources(state),
         style = HazeBlurStyle {
@@ -178,7 +183,7 @@ fun Modifier.tokiContentGlassMiniPlayer(state: HazeState): Modifier {
             fallbackColorEffect(HazeColorEffect.tint(Color.Transparent))
         },
         performanceMode = HazePerformanceMode.Quality,
-    )
+    ).background(veil)
 }
 
 object TokiGlassFade {

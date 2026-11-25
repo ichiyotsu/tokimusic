@@ -104,6 +104,7 @@ import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
+import com.tokimusic.app.ui.theme.miniPlayerGlassVeil
 import com.tokimusic.app.ui.theme.tokiGlassFade
 import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiPageBackground
@@ -298,9 +299,6 @@ fun TokiMusicApp(
         val hazeState = rememberHazeState()
         // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 悬浮标题共用。
         val barGlass = tokiContentChromeStrong(hazeState, theme.backdropBlur)
-        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊、
-        // 不上色（无 tint/veil）；玻璃关时 MiniPlayer 不用它、走实色。
-        val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(hazeState)
 
         val playerState by vm.player.state.collectAsState()
         // 第三轮第 21 项：播放器封面取色提升到这里——外层满屏 Box 用它画
@@ -308,6 +306,14 @@ fun TokiMusicApp(
         // 它；PlayerScreen 复用同一份取色，不再各自取色。
         val playerSong = playerState.current
         val playerCoverColors = rememberCoverColors(playerSong?.id ?: 0L, playerSong?.picUrl ?: "")
+        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊；
+        // 玻璃关时 MiniPlayer 不用它、走实色。0.1.19 第 5 项：模糊之上
+        // 叠一层动态底（miniPlayerGlassVeil，按封面亮度调，纯黑背景
+        // 提亮、纯白背景加深），免得纯模糊在纯黑背景上看不见。
+        val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(
+            hazeState,
+            miniPlayerGlassVeil(playerCoverColors.top, playerCoverColors.bottom),
+        )
         val playerView = LocalView.current
         LaunchedEffect(showPlayer, playerCoverColors) {
             val window = (playerView.context as? Activity)?.window ?: return@LaunchedEffect
