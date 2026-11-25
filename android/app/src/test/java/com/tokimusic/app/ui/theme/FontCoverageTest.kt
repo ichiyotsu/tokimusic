@@ -159,8 +159,10 @@ class FontCoverageTest {
 
     @Test
     fun notoSansJpSubsetCoversWhatPingFangLacks() {
-        // 0.1.18 第 3 项：JP 子集仍排第二——苹方没有半角片假名与 FA6D，
-        // 只有 JP 子集补；FA10 苹方自己有（SC 时代没有，JP 是为它补的）。
+        // JP 子集的覆盖面（0.1.19 第 3 项起排回退链第一）：苹方没有半角
+        // 片假名与 FA6D，只有 JP 子集补；共用字形（假名、FA10）现在也
+        // 优先取 JP 的形状（日文默认 JP）。FA10 苹方自己有（SC 时代
+        // 没有，JP 是为它补的）。
         // JP 子集（假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F，1,074 字形），
         // 0.1.15 第 8 项起为静态 Bold（无 fvar）。
         val bytes = fontFile("noto_sans_jp_bold.ttf").readBytes()
@@ -179,10 +181,12 @@ class FontCoverageTest {
     }
 
     @Test
-    fun cjkFallbackOrderIsPingFangThenJpThenKr() {
-        // 0.1.18 第 3 项：回退链顺序锁死——共用字形只取苹方的形状，JP 只补缺口。
+    fun cjkFallbackOrderIsJpThenPingFangThenKr() {
+        // 0.1.19 第 3 项：回退链顺序锁死——JP 第一（日文假名/兼容字默认
+        // 走 JP Bold）、苹方第二（一般汉字不在 JP 子集里，仍落苹方）、
+        // KR 最后（谚文）。0.1.18 时是苹方 → JP → KR，假名被苹方抢走。
         assertEquals(
-            listOf(com.tokimusic.app.R.font.pingfang_bold, com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.noto_sans_kr),
+            listOf(com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.pingfang_bold, com.tokimusic.app.R.font.noto_sans_kr),
             cjkFallbackOrder,
         )
     }

@@ -40,18 +40,26 @@ import com.tokimusic.app.R
  * 0.1.16 歌词字体预设同款 `Font(R.font.pingfang_bold, FontWeight.Bold)`，
  * 用户当时已看过这个文件的渲染效果，沿用即是他要的样子。
  *
- * 日 / 韩 / 繁中回退分工（0.1.18 第 3 项）：
- * - 中文走 PingFang SC Bold（第一位，共用字形只取苹方的形状）。
- * - PingFang SC 不含半角片假名与 FA6D，仍由 JP 子集补——
- *   noto_sans_jp_bold.ttf（假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F
- *   共 1,074 字形）排在第二位。
- * - PingFang SC 不含谚文音节，韩文由 noto_sans_kr.ttf 补——
- *   Noto Sans KR 的谚文子集（音节 11,172 全 + 谚文字母），排在最后。
- *   注意：者 U+FAD6 与 﨑 U+FAD0 在 PingFang 与全部 Noto 字体里都没有，
+ * 日 / 韩 / 繁中回退分工（0.1.18 第 3 项定链，0.1.19 第 3 项换序）：
+ * 0.1.18 时链序是苹方 → JP → KR，逐字回退“先中者胜”——假名在苹方里
+ * 也有，于是日文假名实际走苹方字形，不是 JP。0.1.19 第 3 项（用户：
+ * 日语字体默认且仅用粗体）把 JP 提到第一位：
+ * - 假名、半角片假名、F900–FAFF、CJK 兼容字（2F800–2FA1F）——即
+ *   noto_sans_jp_bold.ttf 子集的 1,074 字形——默认走 Noto JP Bold。
+ * - 一般汉字不在 JP 子集里，仍落苹方 SC Bold：中文不受影响（汉字
+ *   照旧苹方形状）；日文文本里的一般汉字同理落苹方，这是子集字库 +
+ *   逐字回退机制下能做到的范围（JP 完整版字体不在包内）。
+ * - 谚文音节 JP 与苹方都没有，由 noto_sans_kr.ttf 补（排最后）。
+ *   注意：者 U+FAD6 与 﨑 U+FAD0 在苹方与全部 Noto 字体里都没有，
  *   这两字仍走系统回退。
+ * 三个文件全部保留在包内、且只以 FontWeight.Bold 声明（见
+ * cjkBoldFonts）——CJK 全程只有粗体，全仓没有任何常规字重的 JP
+ * 字体引用（0.1.19 改前 grep 核实：AppTypeface 之外无 FontFamily
+ * 声明、无 noto_sans_jp 的其它引用）。
  */
-/** CJK 回退链顺序（0.1.18 第 3 项：PingFang SC 在前、JP 在后、KR 最后，可单测）。 */
-internal val cjkFallbackOrder = listOf(R.font.pingfang_bold, R.font.noto_sans_jp_bold, R.font.noto_sans_kr)
+/** CJK 回退链顺序（0.1.19 第 3 项：JP 第一、苹方第二、KR 最后，可单测）。
+ * 0.1.18 时是苹方 → JP → KR，日文假名被苹方抢走；换序后日文默认 JP。 */
+internal val cjkFallbackOrder = listOf(R.font.noto_sans_jp_bold, R.font.pingfang_bold, R.font.noto_sans_kr)
 
 /** CJK 静态粗体（0.1.15 第 8 项）：三个文件本身就是 Bold 字形（Noto 两个
  * usWeightClass 700；PingFang 的 OS/2 写 400 但族名与轮廓都是 Bold，见上），

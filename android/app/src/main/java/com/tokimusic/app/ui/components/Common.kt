@@ -130,7 +130,7 @@ fun resolveArtistTap(
     else if (song.source != MusicSource.QQ) onOpenArtist(id)
 }
 
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, titleTrailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -162,14 +162,25 @@ fun resolveArtistTap(
             if (showSourceBadge) SourceBadge(song.source, size = 20, modifier = Modifier.align(Alignment.TopStart).padding(2.dp))
         }
         Spacer(Modifier.width(12.dp))
-        // 0.1.17 第 9 项：leading 槽——只推荐新歌用，放封面与标题之间、
-        // 标题文字之前（来源 icon，见 SourceIcon）；与标题顶对齐。
+        // 0.1.17 第 9 项：leading 槽——曾只推荐新歌用（来源 icon 放封面与
+        // 标题之间）；0.1.19 第 1 项推荐新歌改走 titleTrailing（歌名之后），
+        // 此槽保留备用，当前无调用点。
         if (leading != null) {
             Box(Modifier.align(Alignment.Top).padding(top = 4.dp)) { leading() }
             Spacer(Modifier.width(8.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // 0.1.19 第 1 项：titleTrailing 槽——只推荐新歌用，来源 icon 放在
+            // 歌名文字之后（0.1.17/0.1.18 的 leading 前置位撤掉），与歌名
+            // 同一行、居中对齐；歌名 weight(fill=false) 先量，长名截断后
+            // icon 仍紧贴可见文字之后。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(song.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (titleTrailing != null) {
+                    Spacer(Modifier.width(6.dp))
+                    titleTrailing()
+                }
+            }
             if (onOpenArtist != null) {
                 ClickableText(
                     text = subtitle,
@@ -262,8 +273,9 @@ fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifi
 }
 
 /**
- * 裸来源 icon（0.1.17 第 9 项）：只有图标本身、无背景圆——推荐新歌行
- * 里放在标题文字之前；来源用品牌色 tint 区分（与徽标底色同色）。
+ * 裸来源 icon（0.1.17 第 9 项）：只有图标本身、无背景圆。0.1.19 第 1 项起
+ * 推荐新歌行里放在歌名文字之后（SongRow titleTrailing 槽），边长与歌名
+ * 行高相等；来源用品牌色 tint 区分（与徽标底色同色）。
  */
 @Composable
 fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
