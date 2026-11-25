@@ -52,8 +52,8 @@ android {
         // TokiUI Android target is Android 16+ (minSdk 36), same as TokiStudio.
         minSdk = 36
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.1.17"
+        versionCode = 19
+        versionName = "0.1.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
