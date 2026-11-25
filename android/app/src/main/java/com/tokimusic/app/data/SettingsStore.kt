@@ -143,9 +143,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putBoolean("netease_enabled", v).apply() }
     override var qqEnabled: Boolean get() = prefs.getBoolean("qq_enabled", false)
         set(v) { prefs.edit().putBoolean("qq_enabled", v).apply() }
-    /** 搜索上次用的源（第六轮第二批，搜索源切换记忆）："NETEASE"/"QQ"，默认网易云。 */
-    var lastSearchSource: String get() = prefs.getString("last_search_source", "NETEASE") ?: "NETEASE"
-        set(v) { prefs.edit().putString("last_search_source", v).apply() }
     /** 上次播放队列（第六轮第二批第 2 项）：JSON 数组，元素 {id,name,artist,album,pic,duration,source,sourceId}；冷启动恢复队列不自动播放，MiniPlayer 显示最后一首。 */
     var lastQueueJson: String get() = prefs.getString("last_queue_json", "") ?: ""
         set(v) { prefs.edit().putString("last_queue_json", v).apply() }

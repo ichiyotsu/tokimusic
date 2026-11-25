@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -249,6 +250,12 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     // 记在这里（sheet 作用域）；二级页切换会重建 LazyColumn，回来
     // 时已播过的组直接显示（切换本身已有 AnimatedContent 过渡）。
     val shownGroups = remember { mutableStateSetOf<String>() }
+    // 大排查 B3：各页滚动位置分开记——AnimatedContent 切换会重建
+    // LazyColumn，0.1.16 第 2 条之前滚动回到顶部（0.1.15 时是同一
+    // 个列表切内容，位置保留的）。状态记在 sheet 作用域的 map 里、
+    // 按 sub 取（null = 一级页），切页时恢复各自的位置；过渡本身
+    // 不受影响（新旧内容各拿各的状态）。
+    val listStates = remember { mutableMapOf<SettingsSub?, LazyListState>() }
     // 0.1.15 第 12 项：二级页手势返回先退回一级页（BackHandler 在
     // sheet 内、sub != null 时启用，优先于 ModalBottomSheet 的
     // onDismissRequest）；一级页时不启用，手势返回照常关弹窗。
@@ -348,8 +355,12 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 modifier = Modifier.fillMaxSize(),
             ) { targetSub ->
             Box(Modifier.fillMaxSize()) {
+            // 大排查 B3：本页的滚动状态从 sheet 作用域的 map 里取（没有
+            // 就新建一个记进去），进出二级页不再丢位置。
+            val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
             LazyColumn(
-                Modifier.fillMaxSize(),
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
                 // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
                 // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
@@ -960,8 +971,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
                 }
             }
             // 0.1.13 第 21 项：莫奈配色——四组配色圆点（长按显示配色名），
-            // 点选后写入 monetPaletteIndex；歌单行底色与 icon tile 底色
-            // （见第 12 项）按所选配色取色。
+            // 点选后写入 monetPaletteIndex；歌单行底色（见第 12 项）按
+            // 所选配色取色。源徽标底色不跟配色走——0.1.16 第 1 项起是
+            // 固定的品牌色（网易云 #ff5757、QQ #879101）。
             var paletteIndex by remember { mutableStateOf(vm.store.monetPaletteIndex) }
             // 0.1.15 第 21 项：个性化组末项。
             SettingsSubCard(SegmentPosition.Last) {

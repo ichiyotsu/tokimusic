@@ -1017,5 +1017,7 @@ private fun MoreAction(icon: ImageVector, label: String, onClick: () -> Unit) {
 
 private fun formatClock(ms: Long): String {
     val s = ms / 1000
-    return "%02d:%02d".format(s / 60, s % 60)
+    // 大排查 B7：显式 Locale.US——与 formatDuration / formatBytes
+    // 同款（S11 同类），免得数字按系统语言变形成本地数字。
+    return "%02d:%02d".format(java.util.Locale.US, s / 60, s % 60)
 }

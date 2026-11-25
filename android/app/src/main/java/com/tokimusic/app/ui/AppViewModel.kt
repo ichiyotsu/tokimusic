@@ -167,9 +167,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var qqLibraryLoaded = false
     fun loadQqLibrary() {
         if (qqLibraryLoaded || !_qqLoggedIn.value) return
-        qqLibraryLoaded = true
         viewModelScope.launch {
-            _qqLibrary.value = runCatching { qqClient.qqLibrary() }.getOrNull() ?: QqClient.QqLibrary()
+            // 大排查 B6：加载成功才记 loaded——之前先记 true 再请求，
+            // 网络失败就永久空列表（直到退出重登），下次进资料库也不重试。
+            runCatching { qqClient.qqLibrary() }
+                .onSuccess { _qqLibrary.value = it; qqLibraryLoaded = true }
+                .onFailure { _qqLibrary.value = QqClient.QqLibrary() }
         }
     }
     private var searchJob: Job? = null
@@ -747,21 +750,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 喜爱歌曲：喜欢的 id 列表 + /song/detail 分批取详情（一次最多 100 个 id）。 */
     fun loadLikedSongs() {
         if (likedSongsLoaded) return
-        likedSongsLoaded = true
         viewModelScope.launch {
             val ids = _likedIds.value.toList()
-            if (ids.isEmpty()) { _likedSongs.value = emptyList(); return@launch }
+            if (ids.isEmpty()) { _likedSongs.value = emptyList(); likedSongsLoaded = true; return@launch }
+            // 大排查 B6：同 loadQqLibrary——分块里任何一块失败都不记
+            // loaded（已拿到手的块照常显示），下次进本区再试。
+            var ok = true
             _likedSongs.value = ids.chunked(100).flatMap { chunk ->
-                runCatching { api.songDetail(chunk) }.getOrDefault(emptyList())
+                runCatching { api.songDetail(chunk) }.getOrNull() ?: run { ok = false; emptyList() }
             }
+            if (ok) likedSongsLoaded = true
         }
     }
 
     fun loadArtists() {
         if (artistsLoaded) return
-        artistsLoaded = true
         viewModelScope.launch {
-            _artists.value = runCatching { api.artistSublist() }.getOrDefault(emptyList())
+            // 大排查 B6：同 loadQqLibrary——成功才记 loaded。
+            runCatching { api.artistSublist() }
+                .onSuccess { _artists.value = it; artistsLoaded = true }
+                .onFailure { _artists.value = emptyList() }
             // 0.1.13 第 24 项：关注态与关注列表同源。
             _followedArtistIds.value = _artists.value.map { it.id }.toSet()
         }
@@ -786,20 +794,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadAlbums() {
         if (albumsLoaded) return
-        albumsLoaded = true
-        viewModelScope.launch { _albums.value = runCatching { api.albumSublist() }.getOrDefault(emptyList()) }
+        viewModelScope.launch {
+            // 大排查 B6：同 loadQqLibrary——成功才记 loaded。
+            runCatching { api.albumSublist() }
+                .onSuccess { _albums.value = it; albumsLoaded = true }
+                .onFailure { _albums.value = emptyList() }
+        }
     }
 
     /** Sixth round, batch 2, item 23's split lives on Home now; the Library toplist row follows the enabled source (NetEase first, else QQ). */
     fun loadToplist(force: Boolean = false) {
         if (toplistLoaded && !force) return
-        toplistLoaded = true
         viewModelScope.launch {
-            _toplist.value = when {
-                _neteaseEnabled.value -> runCatching { api.toplist() }.getOrDefault(emptyList())
-                _qqEnabled.value -> runCatching { qqClient.toplist() }.getOrDefault(emptyList())
-                else -> emptyList()
+            // 大排查 B6：同 loadQqLibrary——成功才记 loaded；无源可查
+            // 的空列表也是成功（记 true，不反复请求）。
+            val result = runCatching {
+                when {
+                    _neteaseEnabled.value -> api.toplist()
+                    _qqEnabled.value -> qqClient.toplist()
+                    else -> emptyList()
+                }
             }
+            result.onSuccess { _toplist.value = it; toplistLoaded = true }
+            result.onFailure { _toplist.value = emptyList() }
         }
     }
 }

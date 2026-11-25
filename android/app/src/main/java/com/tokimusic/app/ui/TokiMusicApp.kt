@@ -414,6 +414,12 @@ fun TokiMusicApp(
                                         artistId = null
                                         artistFromPlayer = false
                                         albumId = null
+                                        // 大排查 B1：切 tab 时 QQ 歌手 / 专辑页同清——
+                                        // 与底栏 onSelect（0.1.15 第 2 项）同款，之前
+                                        // rail 这里漏了这两行，宽屏下在 QQ 歌手/专辑
+                                        // 页点 tab 切不走，页还盖在上面。
+                                        qqArtistMid = null
+                                        qqAlbumMid = null
                                         librarySection = null
                                         statsOpen = false
                                         searchSheetOpen = false

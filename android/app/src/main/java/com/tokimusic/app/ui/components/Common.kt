@@ -325,9 +325,9 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
     val model: Any = if (url.startsWith("/")) java.io.File(url) else url
     AsyncImage(model, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
-fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60) }
+fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(java.util.Locale.US, s / 60, s % 60) }
 /** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
-fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(s % 60)}秒" }
+fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(java.util.Locale.US, s % 60)}秒" }
 
 /**
  * 第五轮第 23 项：时长紧凑显示——整小时只显示 "1537h"，有零头时带一位小数
@@ -387,8 +387,6 @@ fun Modifier.fadingEdges(
         canvas.restore()
     }
 }
-fun formatPlayCount(n: Long): String = when { n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0); n >= 10_000 -> "%.1f万".format(n / 10_000.0); else -> n.toString() }
-
 /**
  * Cirro 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
  * 可选说明 + 右侧 chevron，整行可点。圆角 20dp，卡片色 surfaceContainer

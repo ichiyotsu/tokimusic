@@ -101,10 +101,14 @@ fun ArtistScreen(
     var allSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var loadError by remember { mutableStateOf(false) }
+    // 大排查 B4：歌曲是否已拉完（成功或失败都算）——空态只在拉完
+    // 仍无歌时显示，加载中不闪“暂无歌曲”。
+    var songsLoaded by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val isQq = qqMid != null
     LaunchedEffect(artistId, qqMid, reloadKey) {
         loadError = false
+        songsLoaded = false
         if (isQq) {
             val detail = runCatching { vm.qqClient.qqSingerDetail(qqMid!!) }
                 .onFailure { loadError = true }.getOrNull()
@@ -119,6 +123,7 @@ fun ArtistScreen(
                 )
                 allSongs = detail.songs
                 albums = detail.albums
+                songsLoaded = true
             } else {
                 loadError = true
             }
@@ -130,6 +135,7 @@ fun ArtistScreen(
                     .recoverCatching { vm.api.artistTopSongs(artistId) }
                     .getOrDefault(emptyList())
                 albums = runCatching { vm.api.artistAlbums(artistId) }.getOrDefault(emptyList())
+                songsLoaded = true
             }
         }
     }
@@ -301,6 +307,18 @@ fun ArtistScreen(
                                     .background(coverColors.onCoverButtonBg()),
                             ) {
                                 SongRow(song, i, onOpenArtist = openArtistForRows, horizontalPadding = 16.dp, onLongPress = { vm.openSongActions(it) }) { vm.play(allSongs, i, a?.name) }
+                            }
+                        }
+                        // 大排查 B4：加载完成仍无歌曲时给一句空态（之前
+                        // 下方一片空白；“暂无专辑”同款在下面那个分支）。
+                        if (a != null && songsLoaded && allSongs.isEmpty()) {
+                            item {
+                                Text(
+                                    "暂无歌曲",
+                                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = coverColors.onCoverTextDim(),
+                                )
                             }
                         }
                     } else if (albums.isNotEmpty()) {

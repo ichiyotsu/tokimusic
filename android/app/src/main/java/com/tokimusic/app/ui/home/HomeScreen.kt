@@ -299,6 +299,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
+                            source = MusicSource.QQ,
                             paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
@@ -313,6 +314,7 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
+                            source = MusicSource.QQ,
                             paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
@@ -563,6 +565,9 @@ private fun RecommendCard(
     hazeState: dev.chrisbanes.haze.HazeState,
     backdropBlur: Boolean,
     showSourceBadge: Boolean = false,
+    // 大排查 B2：徽标按卡片来源画——QQ 每日/雷达传 QQ，之前这里写死
+    // 网易云，QQ 卡片顶着网易云徽标。
+    source: MusicSource = MusicSource.NETEASE,
     paletteIndex: Int = 0,
     modifier: Modifier = Modifier,
 ) {
@@ -629,10 +634,11 @@ private fun RecommendCard(
                     )
                 }
             }
-            // 第六轮第二批第 21 项：双源都启用时，卡片左上角叠 28dp 网易云徽标。
-            // 0.1.13 第 12 项：徽标底色用莫奈色系。
+            // 第六轮第二批第 21 项：双源都启用时，卡片左上角叠 28dp 源徽标。
+            // 0.1.16 第 1 项起徽标底色是品牌色（网易云 #ff5757、QQ #879101），
+            // 不再是莫奈色系；来源由 source 参数定（B2）。
             if (showSourceBadge) {
-                SourceBadge(MusicSource.NETEASE, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+                SourceBadge(source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
             }
         }
     }

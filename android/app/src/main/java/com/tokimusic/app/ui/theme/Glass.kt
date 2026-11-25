@@ -49,51 +49,14 @@ object TokiBlurCapability {
 fun chromeBlurActive(backdropBlur: Boolean): Boolean =
     backdropBlur && TokiBlurCapability.canSampleInWindow
 
-/**
- * Fixed-size glass surface (side button, floating toolbar): Haze background
- * blur when on and sampleable, else opaque surfaceContainer. Frosted glass
- * also carries a 22% surfaceContainer veil, as in TokiStudio 0.1.10.
- */
-@Composable
-fun tokiChrome(state: HazeState, backdropBlur: Boolean): Modifier {
-    return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiGlass(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.22f))
-    } else {
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
-    }
-}
-
-/**
- * Chrome for size-changing surfaces (floating nav capsule): same treatment
- * as [tokiChrome] (frost + 22% surface veil, opaque fallback), only the
- * sampling switches to the content source ([tokiContentGlass]) — the capsule
- * width animates as its label expands, and window-backdrop sampling black-edges
- * during that size animation while content-source sampling does not.
- */
-@Composable
-fun tokiContentChrome(state: HazeState, backdropBlur: Boolean): Modifier {
-    return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiContentGlass(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.22f))
-    } else {
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
-    }
-}
-
+// 大排查 D2/D3：tokiChrome / tokiContentChrome / tokiChromeStrong /
+// tokiGlassStrong 无任何调用者，已删（导航胶囊在用下面的
+// tokiContentChromeStrong；固定尺寸面走 tokiGlass）。
 /** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。 */
 @Composable
 fun tokiContentChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
     return if (chromeBlurActive(backdropBlur)) {
         Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
-    } else {
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
-    }
-}
-
-/** 加强档 chrome（固定尺寸面，见 [tokiChrome]）。 */
-@Composable
-fun tokiChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
-    return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
     } else {
         Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
     }
@@ -178,17 +141,6 @@ fun Modifier.tokiContentGlassStrong(state: HazeState): Modifier {
     val dark = LocalDarkTheme.current
     return hazeBlur(
         input = HazeInput.Sources(state),
-        style = tokiBlurStyle(dark, strong = true),
-        performanceMode = HazePerformanceMode.Quality,
-    )
-}
-
-/** 加强档窗口背景玻璃（固定尺寸面，见 [TokiGlassParams]）。 */
-@Composable
-fun Modifier.tokiGlassStrong(state: HazeState): Modifier {
-    val dark = LocalDarkTheme.current
-    return hazeBlur(
-        input = HazeInput.Backdrop(state),
         style = tokiBlurStyle(dark, strong = true),
         performanceMode = HazePerformanceMode.Quality,
     )

@@ -503,6 +503,10 @@ class QqMqttClient(
                 }
             }
         } finally {
+            // 大排查 D9：断开前发 DISCONNECT 包再关 socket——之前只
+            // 关 socket，mqttBuildDisconnect 只有单测在用；服务端按
+            // 正常断开处理，不再当异常掉线记。
+            runCatching { socket.send(mqttBuildDisconnect().toByteString()) }
             runCatching { socket.close(1000, null) }
             events.close()
         }

@@ -208,6 +208,18 @@ fun AlbumDetailScreen(
                         // 曲目的歌手 mid 后进 QQ 歌手页（0.1.15 第 2 项）。
                         val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }
                         itemsIndexed(tracks) { i, song -> SongRow(song, i, onOpenArtist = openArtistForRows, onLongPress = { vm.openSongActions(it) }) { vm.play(tracks, i, album.name) } }
+                        // 大排查 B4：专辑加载成功但无曲目时给一句空态
+                        // （之前只有标题区，下方一片空白）。
+                        if (detail != null && tracks.isEmpty()) {
+                            item {
+                                Text(
+                                    "暂无歌曲",
+                                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = coverColors.onCoverTextDim(),
+                                )
+                            }
+                        }
                     }
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
