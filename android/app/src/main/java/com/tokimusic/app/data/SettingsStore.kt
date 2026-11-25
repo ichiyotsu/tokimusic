@@ -30,6 +30,9 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 播放音质偏好：standard / higher / exhigh / lossless。 */
     override var audioQuality: String get() = prefs.getString("audio_quality", "standard") ?: "standard"
         set(v) { prefs.edit().putString("audio_quality", v).apply() }
+    /** 搜索源偏好（0.1.18 第 9 项恢复）：上次选的搜索源，NETEASE / QQ。 */
+    var lastSearchSource: String get() = prefs.getString("last_search_source", "NETEASE") ?: "NETEASE"
+        set(v) { prefs.edit().putString("last_search_source", v).apply() }
     /** 歌词逐字高亮开关（与播放器内的麦克风按钮同步）。0.1.15 第 5/6 项：
      * 改成 Compose 状态驱动——之前是 SharedPreferences 直值，播放器
      * 更多页里翻动后歌词视图不重组（与 0.1.14 大排查 S13 同根因）。 */
@@ -71,6 +74,11 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */
     var scrobbleEnabled: Boolean get() = prefs.getBoolean(SCROBBLE_KEY, true)
         set(v) { prefs.edit().putBoolean(SCROBBLE_KEY, v).apply() }
+    /** 算法推荐开关（0.1.18 第 15 项，测试功能，默认关）：开时才把播放
+     * 事件写进本地数据库（PlayEventLog）并在主页显示算法推荐区；
+     * 关时不写库、不展示。数据只存本机，不上传。 */
+    var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", false)
+        set(v) { prefs.edit().putBoolean("algorithm_recommend_enabled", v).apply() }
 
     /** 播放服务监听开关变化，开关翻动时立即刷新媒体通知。 */
     fun registerLiveUpdatesListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
@@ -164,6 +172,19 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 自定义 ID（0.1.13 第 18 项）；空 = 用 UID。 */
     var profileCustomId: String get() = prefs.getString("profile_custom_id", "") ?: ""
         set(v) { prefs.edit().putString("profile_custom_id", v).apply() }
+    /**
+     * 关注歌手的时间（0.1.18 第 21 项）：/artist/sublist 只返回 id/name/头像，
+     * 没有关注时间字段，所以本地存——点关注成功时记下当前时间；已关注但
+     * 没有本地记录的（升级前就关注的），以 app 首次在 sublist 里看到该 id
+     * 的时间为准（loadArtists 首次加载时补记）。0 = 无记录。
+     */
+    fun artistFollowTimeMs(artistId: Long): Long = prefs.getLong("artist_follow_time_$artistId", 0L)
+    fun setArtistFollowTimeMs(artistId: Long, ms: Long) {
+        prefs.edit().putLong("artist_follow_time_$artistId", ms).apply()
+    }
+    fun clearArtistFollowTimeMs(artistId: Long) {
+        prefs.edit().remove("artist_follow_time_$artistId").apply()
+    }
 }
 
 /** 歌单收藏的存储键（纯函数，JVM 单测覆盖）：源 + id，避免跨源 id 撞号。 */

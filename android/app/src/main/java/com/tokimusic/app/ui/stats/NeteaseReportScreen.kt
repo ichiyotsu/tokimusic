@@ -31,13 +31,14 @@ import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.TokiPillGroup
 import com.tokimusic.app.ui.theme.TokiBlack
 
-private enum class ReportRange(val label: String) { Week("周"), Month("月"), Year("年") }
+private enum class ReportRange(val label: String) { Week("周"), Year("年") }
 
 /**
  * 0.1.17 第 17 项：网易云收听报告——资料库网易云听歌时长入口点进来的页。
  * 框架沿用原先的 userRecord + 听歌排行：周 = 本周榜单（/user/record
- * type=1，weekData），年 = 累计榜单（type=0，allData）；网易云接口没有
- * 按月切片，月档位显示累计榜单并在页内注明。
+ * type=1，weekData），年 = 累计榜单（type=0，allData）。0.1.18 第 5 项：
+ * 月档位删除——网易云接口只提供本周与累计两档，没有按月切片，月档位之前
+ * 是累计榜单 + 一段说明，现在整个档位拿掉，只留周、年。
  * 内容以接口实际返回为准：时长是按播放次数 × 时长估算的（与资料库数字
  * 同款算法），榜单是歌曲排行（右侧播放次数）——接口不返回歌单，所以
  * 没有“歌单”一栏；用户猜的“时长和歌单”里只有时长能从接口拿到。
@@ -53,16 +54,13 @@ fun NeteaseReportScreen(
     val weekly by vm.weeklyRecord.collectAsState()
     var range by remember { mutableStateOf(ReportRange.Week) }
     LaunchedEffect(Unit) { vm.loadWeeklyRecord() }
-    // 月档位无接口：显示累计榜单（与年档位同一份），页内注明。
     val records = when (range) {
         ReportRange.Week -> weekly
-        ReportRange.Month -> mine.record
         ReportRange.Year -> mine.record
     }
     val totalMs = records.sumOf { it.song.durationMs * it.playCount }
     val totalLabel = when (range) {
         ReportRange.Week -> "本周预估听歌时长"
-        ReportRange.Month -> "累计预估听歌时长"
         ReportRange.Year -> "累计预估听歌时长"
     }
 
@@ -97,13 +95,6 @@ fun NeteaseReportScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (range == ReportRange.Month) {
-                        Text(
-                            "网易云接口只提供本周与累计两档记录，没有按月切片；这里显示累计榜单。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
             if (records.isEmpty()) {

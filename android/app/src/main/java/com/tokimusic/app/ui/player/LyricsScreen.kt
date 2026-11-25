@@ -3,8 +3,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -129,6 +127,9 @@ import kotlin.math.roundToInt
 ) {
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.7f)
+    // 0.1.18 第 6 项：本页动画统一走 MD3E motionScheme（空间类 spatial、
+    // 颜色/透明度类 effects）。
+    val scheme = MaterialTheme.motionScheme
     if (lines.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("暂无歌词", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = dimColor)
@@ -176,8 +177,8 @@ import kotlin.math.roundToInt
         springRunning = true
         springOffsetY.snapTo(with(density) { 120.dp.toPx() })
         springAlpha.snapTo(0f)
-        launch { springOffsetY.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 400f)) }
-        springAlpha.animateTo(1f, tween(400))
+        launch { springOffsetY.animateTo(0f, scheme.defaultSpatialSpec()) }
+        springAlpha.animateTo(1f, scheme.defaultEffectsSpec())
         springRunning = false
     }
     // 第六轮第 26 项：按屏上位置淡化——只有上下 64dp 渐隐带内的行才模糊/
@@ -284,15 +285,22 @@ import kotlin.math.roundToInt
         // 点它恢复跟随（userBrowsing=false 后上面的 LaunchedEffect 自会滚回去）。
         // 第五轮第 17 项：沉浸式下按钮弹到最底（16dp，跟歌词区一起撑满全屏）。
         // 第六轮第 17 项：文字 pill 改 48dp 圆形图标钮——当前行在可视区上方
-        // 用上箭头、下方用下箭头；放在 More 按钮正上方、右对齐（end 24dp，
-        // bottom 4dp / 沉浸 16dp）；长按提示“回到当前行”。
+        // 用上箭头、下方用下箭头；长按提示“回到当前行”。
+        // 0.1.18 第 4 项：与更多按钮同一条竖线。根因：歌词区容器本身已有
+        // horizontal 24dp 边距（PlayerScreen.kt LyricsView 的 modifier），
+        // 按钮再 end 24dp，右边缘落在屏右 −48dp、中心在屏右 −72dp；而标题
+        // 行更多钮在控制区容器（horizontal 24dp）内，右边缘屏右 −24dp、
+        // 中心屏右 −48dp——两中心 x 差 24dp。修法：end 改 0dp，按钮右边缘
+        // 贴歌词区右边缘（屏右 −24dp），中心屏右 −48dp，与更多钮同竖线；
+        // 沉浸/非沉浸歌词区横向边距相同，x 对齐两者都成立（bottom 边距
+        // 仍按沉浸 16dp / 非沉浸 4dp 各自取）。
         // 0.1.13 第 15 项：非沉浸底边距 80dp → 4dp——按钮 48dp 高 + 4dp
         // 底边距 + 控制区 8dp 顶边距 = 到 More 按钮 12dp，与左侧收藏钮
         // 到 More 的 12dp 间距对齐。
         if (userBrowsing && active >= 0) {
             val backToCurrentBottom by animateDpAsState(
                 targetValue = if (immersive) 16.dp else 4.dp,
-                animationSpec = tween(300),
+                animationSpec = scheme.defaultSpatialSpec(),
                 label = "backToCurrentBottom",
             )
             val arrowUp by remember {
@@ -314,7 +322,7 @@ import kotlin.math.roundToInt
             // 是 TopStart），按钮实际落在左上角；现在 align + padding
             // 放在作为歌词区直接子元素的普通 Box 上，TooltipBox 只包按钮本身。
             Box(
-                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = backToCurrentBottom),
+                Modifier.align(Alignment.BottomEnd).padding(end = 0.dp, bottom = backToCurrentBottom),
             ) {
                 TokiLongPressLabel("回到当前行") {
                     Box(
@@ -385,6 +393,8 @@ private fun LyricLineRow(
 ) {
     val pos = if (isActive) posState.value else 0L
     val density = LocalDensity.current
+    // 0.1.18 第 6 项：本行动画统一走 MD3E motionScheme。
+    val scheme = MaterialTheme.motionScheme
     // 第六轮第 27 项：文本实宽（onTextLayout 量），可点区 = 实宽 + 8dp、
     // 贴向文本一侧；右侧空白不接点击，透传给父级手势（单击回封面、双击沉浸）。
     var textWidthPx by remember { mutableIntStateOf(0) }
@@ -394,14 +404,14 @@ private fun LyricLineRow(
     val blurPx = fade.first
     val rowAlpha = fade.second
     // 0.1.13 第 6 项：当前行进出时的缩放过渡——当前行 1f、非当前行
-    // 约 0.8f，300ms tween，锚点左中。
+    // 约 0.8f，走 spatial spec（0.1.18 第 6 项：之前手写 tween(300)），锚点左中。
     // 0.1.14 第 11 条：缩放只做视觉，行高（排版）两态必须一致——之前
     // 非当前行用 22sp、当前行 28sp，行一激活整行行高变化，下面的行
     // 全跟着上下跳（截图里的间距箭头）。现在两态都按 28sp 排版，
     // 视觉大小差只由 graphicsLayer 的 0.8 缩放给，行距不再变。
     val rowScale by animateFloatAsState(
         targetValue = if (isActive) 1f else 0.8f,
-        animationSpec = tween(300),
+        animationSpec = scheme.defaultSpatialSpec(),
         label = "lyricRowScale",
     )
     // 第三轮第 8 项：切页入场——窗口期内组成的行从透明 + 24px 下移
@@ -411,8 +421,9 @@ private fun LyricLineRow(
     LaunchedEffect(Unit) {
         if (!entranceWindow) return@LaunchedEffect
         delay(entranceDelayMs)
-        launch { enterAlpha.animateTo(1f, tween(300)) }
-        launch { enterOffsetY.animateTo(0f, tween(300)) }
+        // 0.1.18 第 6 项：透明度走 effects spec、位移走 spatial spec。
+        launch { enterAlpha.animateTo(1f, scheme.defaultEffectsSpec()) }
+        launch { enterOffsetY.animateTo(0f, scheme.defaultSpatialSpec()) }
     }
     Box(
         Modifier.fillMaxWidth()

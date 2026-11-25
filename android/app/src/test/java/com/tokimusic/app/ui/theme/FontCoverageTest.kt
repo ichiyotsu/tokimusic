@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 日 / 韩 / 繁中必须走思源黑体 Bold：直接读 res/font 里的字体文件，解析
+ * 日 / 韩 / 繁中必须走粗体 CJK 文件：直接读 res/font 里的字体文件，解析
  * cmap 与 OS/2 表，断言覆盖与静态 Bold 字重。有人把完整版换回子集、或子集漏了
  * 谚文，这里会立刻失败（0.1.7 的 noto_sans_sc 只有 7,630 个字形、0 个谚文）。
  *
@@ -16,6 +16,10 @@ import org.junit.Test
  * Bold（usWeightClass 700，无 fvar/gvar）——Compose 资源字体加载不走
  * FontVariation，旧的“fvar 里 wght 最大值 ≥700”断言随之作废，改断
  * usWeightClass == 700 且无 fvar 表。
+ *
+ * 0.1.18 第 3 项：中文从思源黑体 SC 换成苹方 SC Bold（pingfang_bold.ttf）。
+ * 该文件 OS/2.usWeightClass 写的是 400（族名虽是 Bold，元数据仍标 Regular），
+ * 所以苹方不断 usWeightClass，改断族名 == "PingFang SC Bold" 且无 fvar 表。
  */
 class FontCoverageTest {
     private fun fontFile(name: String): File {
@@ -81,16 +85,49 @@ class FontCoverageTest {
         return buf.getShort(off + 4).toInt() and 0xFFFF
     }
 
+    /** name 表的族名（nameID 1）：优先 Windows 平台 UTF-16BE 记录，退到 Mac 记录。 */
+    private fun familyName(bytes: ByteArray): String {
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+        val off = tableOffset(bytes, "name")
+        require(off >= 0) { "没有 name 表" }
+        val count = buf.getShort(off + 2).toInt()
+        // stringOffset 是相对 name 表表头的偏移（不再加 6——多加 6 会让
+        // UTF-16BE 族名前 3 个字符被切掉，实测读出 "gFang SC Bold; 1"）。
+        val stringBase = off + (buf.getShort(off + 4).toInt() and 0xFFFF)
+        var fallback: String? = null
+        for (i in 0 until count) {
+            val rec = off + 6 + i * 12
+            val platform = buf.getShort(rec).toInt()
+            val encoding = buf.getShort(rec + 2).toInt()
+            val nameId = buf.getShort(rec + 6).toInt()
+            if (nameId != 1) continue
+            val len = buf.getShort(rec + 8).toInt()
+            val strOff = stringBase + buf.getShort(rec + 10).toInt()
+            val raw = bytes.copyOfRange(strOff, strOff + len)
+            if (platform == 3 && encoding == 1) return String(raw, Charsets.UTF_16BE)
+            if (fallback == null) fallback = String(raw, Charsets.US_ASCII)
+        }
+        return requireNotNull(fallback) { "name 表里没有族名记录" }
+    }
+
     private fun assertStaticBold(bytes: ByteArray) {
         assertTrue("应为静态 Bold 文件（无 fvar 表）", tableOffset(bytes, "fvar") < 0)
         assertEquals(700, usWeightClass(bytes))
     }
 
+    /** 苹方 Bold 的断言：无 fvar 表 + 族名即 "PingFang SC Bold"（其 OS/2
+     * usWeightClass 写的是 400，不断它，见文件头注释）。 */
+    private fun assertPingFangBold(bytes: ByteArray) {
+        assertTrue("应为静态文件（无 fvar 表）", tableOffset(bytes, "fvar") < 0)
+        assertEquals("PingFang SC Bold", familyName(bytes))
+    }
+
     private fun covers(ranges: List<IntRange>, cp: Int): Boolean = ranges.any { cp in it }
 
     @Test
-    fun notoSansScCoversJapaneseAndTraditional() {
-        val bytes = fontFile("noto_sans_sc.ttf").readBytes()
+    fun pingFangScCoversJapaneseAndTraditional() {
+        // 0.1.18 第 3 项：中文主字体换成苹方 SC Bold——假名、繁体、日文汉字都在内。
+        val bytes = fontFile("pingfang_bold.ttf").readBytes()
         val ranges = cmapRanges(bytes)
         assertTrue(covers(ranges, 0x3042)) // あ
         assertTrue(covers(ranges, 0x30A2)) // ア
@@ -99,7 +136,7 @@ class FontCoverageTest {
         assertTrue(covers(ranges, 0x8FBB)) // 辻
         assertTrue(covers(ranges, 0x51EA)) // 凪
         assertTrue(covers(ranges, 0x4E2D)) // 中
-        assertStaticBold(bytes)
+        assertPingFangBold(bytes)
     }
 
     @Test
@@ -114,35 +151,38 @@ class FontCoverageTest {
     }
 
     @Test
-    fun notoSansScDoesNotCoverHangul() {
-        // 注明分工：SC 连完整版也不含谚文音节，韩文必须走 KR 文件。
-        val ranges = cmapRanges(fontFile("noto_sans_sc.ttf").readBytes())
+    fun pingFangScDoesNotCoverHangul() {
+        // 注明分工：苹方 SC 不含谚文音节，韩文必须走 KR 文件。
+        val ranges = cmapRanges(fontFile("pingfang_bold.ttf").readBytes())
         assertTrue(!covers(ranges, 0xAC00))
     }
 
     @Test
-    fun notoSansJpSubsetCoversCompatibilityIdeographsScLacks() {
-        // 第六轮第 4 项：JP 子集（假名 + F900–FAFF + 2F800–2FA1F，1,074 字形）
-        // 补 SC 所缺的兼容表意字；0.1.15 第 8 项起为静态 Bold（无 fvar）。
+    fun notoSansJpSubsetCoversWhatPingFangLacks() {
+        // 0.1.18 第 3 项：JP 子集仍排第二——苹方没有半角片假名与 FA6D，
+        // 只有 JP 子集补；FA10 苹方自己有（SC 时代没有，JP 是为它补的）。
+        // JP 子集（假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F，1,074 字形），
+        // 0.1.15 第 8 项起为静态 Bold（无 fvar）。
         val bytes = fontFile("noto_sans_jp_bold.ttf").readBytes()
         val ranges = cmapRanges(bytes)
         assertTrue(covers(ranges, 0x3042)) // あ
         assertTrue(covers(ranges, 0x30A2)) // ア
         assertTrue(covers(ranges, 0xFF76)) // ｶ 半角片假名
-        assertTrue(covers(ranges, 0xFA10)) // 塚：SC 没有，JP 有
-        assertTrue(covers(ranges, 0xFA6D)) // 舘：SC 没有，JP 有
+        assertTrue(covers(ranges, 0xFA10)) // 塚
+        assertTrue(covers(ranges, 0xFA6D)) // 舘：苹方没有，JP 有
         assertStaticBold(bytes)
-        // SC 的缺口对照：这两个兼容字确实不在 SC 里，JP 子集就是为它们补的。
-        val scRanges = cmapRanges(fontFile("noto_sans_sc.ttf").readBytes())
-        assertTrue(!covers(scRanges, 0xFA10))
-        assertTrue(!covers(scRanges, 0xFA6D))
+        // 苹方对照：FA10 在苹方里，FA6D 与半角片假名不在——JP 子集仍不可少。
+        val pingFangRanges = cmapRanges(fontFile("pingfang_bold.ttf").readBytes())
+        assertTrue(covers(pingFangRanges, 0xFA10))
+        assertTrue(!covers(pingFangRanges, 0xFA6D))
+        assertTrue(!covers(pingFangRanges, 0xFF76))
     }
 
     @Test
-    fun cjkFallbackOrderIsScThenJpThenKr() {
-        // 第六轮第 4 项：回退链顺序锁死——共用字形只取 SC 的形状，JP 只补缺口。
+    fun cjkFallbackOrderIsPingFangThenJpThenKr() {
+        // 0.1.18 第 3 项：回退链顺序锁死——共用字形只取苹方的形状，JP 只补缺口。
         assertEquals(
-            listOf(com.tokimusic.app.R.font.noto_sans_sc, com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.noto_sans_kr),
+            listOf(com.tokimusic.app.R.font.pingfang_bold, com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.noto_sans_kr),
             cjkFallbackOrder,
         )
     }

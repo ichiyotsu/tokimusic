@@ -94,7 +94,7 @@ class QqMqttWatchTest {
         server.start()
         settings = FakeSettings()
         val base = server.url("/").toString().trimEnd('/')
-        qqClient = QqClient(settings, QqHosts(base, base, base, base, base))
+        qqClient = QqClient(settings, QqHosts(base, base))
         val wsBase = base.replace("http://", "ws://")
         mqttClient = QqMqttClient(qqClient, wsBase)
     }

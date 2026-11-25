@@ -54,6 +54,7 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
+import com.tokimusic.app.ui.components.sourceBadgeBackground
 import com.tokimusic.app.ui.components.TokiSheetContainer
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
 import kotlinx.coroutines.delay
@@ -75,8 +76,12 @@ fun SearchSheet(
     // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页。
     onOpenQqArtist: (String) -> Unit = {},
 ) {
-    // 0.1.15 第 3 项：源选项已删——搜索改查所有启用的源并合并结果，
-    // 源开关只在设置里调；查询只留本地 state。
+    // 0.1.18 第 9 项：源选项恢复（0.1.15 第 3 项删掉的）——双源都开时
+    // 标题行可切网易云 / QQ；查询只留本地 state。
+    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+    val qqEnabled by vm.qqEnabled.collectAsState()
+    val searchSource by vm.searchSource.collectAsState()
+    val bothEnabled = neteaseEnabled && qqEnabled
     var query by remember { mutableStateOf("") }
     // 0.1.17 第 18 项：搜索页背景 90% 不透明度（alpha 0.90，透出背后
     // 内容 10%）的毛玻璃透明效果——“90%”按设计工具惯例取不透明度，
@@ -109,6 +114,25 @@ fun SearchSheet(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                // Sixth round, batch 2, item 24 (0.1.18 第 9 项恢复）: two
+                // 40dp round source icons between the title chip and the
+                // close chip (both sources on only); tapping one switches
+                // the search source and re-runs the current query with
+                // the new source.
+                if (bothEnabled) {
+                    Row(
+                        Modifier.padding(start = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SearchSourceButton(MusicSource.NETEASE, searchSource == MusicSource.NETEASE) {
+                            vm.search(query, MusicSource.NETEASE)
+                        }
+                        SearchSourceButton(MusicSource.QQ, searchSource == MusicSource.QQ) {
+                            vm.search(query, MusicSource.QQ)
+                        }
+                    }
+                }
                 Box(
                     Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
                         .clickable { onClose() },
@@ -128,6 +152,26 @@ fun SearchSheet(
             }
             SearchContent(vm, query, { query = it }, onClose, onOpenPlaylist, onOpenArtist, Modifier.weight(1f), onOpenQqArtist)
         }
+    }
+}
+
+/** 40dp round source icon (item 24; 0.1.18 第 9 项恢复）: selected = solid source colour + white note, unselected = container + greyed note. Brand tint is sourceBadgeBackground (NeteaseRed/QqGreen tokens were removed with Monet in 0.1.17; same hex). */
+@Composable
+private fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Unit) {
+    val tint = sourceBadgeBackground(source)
+    Box(
+        Modifier.size(40.dp).clip(CircleShape)
+            .background(if (selected) tint else MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // 0.1.13 第 1 / 2 项：搜索源钮换各源专属矢量。
+        Icon(
+            painterResource(if (source == MusicSource.NETEASE) R.drawable.ic_source_netease else R.drawable.ic_source_qq),
+            contentDescription = if (source == MusicSource.NETEASE) "用网易云搜索" else "用 QQ 搜索",
+            tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 

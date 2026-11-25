@@ -6,7 +6,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +59,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -91,8 +91,8 @@ import com.tokimusic.app.ui.theme.tokiGlassFade
  * The pinned overlay title is hidden on this page (see TokiMusicApp).
  *
  * Sixth round, batch 2: dual-source display + Home rearrangement —
- * order 每日推荐 → 最近播放 → 排行榜 → 推荐歌单 3 行 → 推荐新歌 2 列；
- * 排行榜按源分开（网易云在上、QQ 在下）；推荐歌单 3 行横向网格（网易云 +
+ * order 每日推荐 → 最近播放 → 推荐歌单 3 行 → 推荐新歌 2 列（0.1.18
+ * 第 13 项：排行榜分区已从主页删除）；推荐歌单 3 行横向网格（网易云 +
  * QQ 同一网格，卡片带源角标）；推荐新歌 2 列横向网格（时长 → 播放钮 →
  * 来源 icon）；下拉刷新（PullToRefreshBox）与冷启动共用 loadHome；
  * 两源都关时只留本地音乐区（MediaStore 扫描 + 本地播放）。
@@ -112,25 +112,28 @@ fun HomeScreen(
     // 0.1.15 第 2 项：QQ 歌曲的歌手按 mid 进 QQ 歌手页。
     onOpenQqArtist: (String) -> Unit = {},
     // Round 3 item 20: reports the section whose in-page title has scrolled
-    // under the top bar ("主页" / "排行榜" / "推荐歌单" / "推荐新歌"); TokiMusicApp swaps
+    // under the top bar ("主页" / "推荐歌单" / "推荐新歌"); TokiMusicApp swaps
     // the floating title chip to match.
     onSectionTitle: (String) -> Unit = {},
 ) {
     val home by vm.home.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
+    // 0.1.18 第 15 项：算法推荐（开关 + 结果在组合层收集；候选或开关
+    // 变化时重算，VM 里开关关时直接返回）。
+    val algorithmEnabled by vm.algorithmRecommendEnabled.collectAsState()
+    val algorithmPlaylists by vm.algorithmPlaylists.collectAsState()
+    LaunchedEffect(algorithmEnabled, home.playlists, home.qqPlaylists) {
+        if (algorithmEnabled) vm.refreshAlgorithmRecommendations()
+    }
     val bothEnabled = neteaseEnabled && qqEnabled
-    val toplist by vm.toplist.collectAsState()
-    // Sixth round, batch 2, item 33: the toplist now lives on Home —
-    // load it here (force on source toggle so a switch re-fetches).
-    LaunchedEffect(neteaseEnabled, qqEnabled) { vm.loadToplist(force = true) }
     var entered by remember { mutableStateOf(false) }
-    val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = tween(300), label = "homeEnter")
+    // 0.1.18 第 6 项：进场淡入走 effects spec（之前手写 tween(300)）。
+    val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "homeEnter")
     LaunchedEffect(Unit) { entered = true }
     // Round 3 item 20: track the section titles' top edges; the last one
     // at or above the top bar's bottom edge owns the floating title.
     val density = LocalDensity.current
-    var toplistTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     var playlistsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     var newSongsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     val topBarBottomPx = with(density) { topPadding.toPx() }
@@ -139,7 +142,6 @@ fun HomeScreen(
             when {
                 newSongsTitleY <= topBarBottomPx -> "推荐新歌"
                 playlistsTitleY <= topBarBottomPx -> "推荐歌单"
-                toplistTitleY <= topBarBottomPx -> "排行榜"
                 else -> "主页"
             }
         }
@@ -147,8 +149,8 @@ fun HomeScreen(
     LaunchedEffect(activeSection) { onSectionTitle(activeSection) }
     val hasContent = home.daily.isNotEmpty() || home.radar.isNotEmpty() || home.recent.isNotEmpty() ||
         home.playlists.isNotEmpty() || home.newSongs.isNotEmpty() ||
-        home.qqToplist.isNotEmpty() || home.qqPlaylists.isNotEmpty() || home.qqNewSongs.isNotEmpty() ||
-        toplist.isNotEmpty() || home.localMode
+        home.qqPlaylists.isNotEmpty() || home.qqNewSongs.isNotEmpty() ||
+        home.localMode
     val pullState = rememberPullToRefreshState()
     // Sixth round, batch 2, item 20: local-mode audio permission + scan.
     // The launcher lives here (not in the section) because the local song
@@ -273,8 +275,9 @@ fun HomeScreen(
         }
         // 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（与网易云双列同款
         // 布局，单独一行；只在对应列表非空时出现。每日需 QQ 登录，
-        // 未登录时 qqDaily 为空所以不显示；雷达匿名可用。标题与网易
-        // 云卡片相同，源徽标固定显示（QQ），与网易云卡片区分；
+        // 未登录时 qqDaily 为空所以不显示；雷达匿名可用。0.1.18 第 8 项：
+        // QQ 两张卡改名 Daily 30 / For You（网易云卡片仍叫每日推荐 /
+        // 私人雷达）；源徽标固定显示（QQ），与网易云卡片区分；
         // 点开走虚拟歌单 -3（QQ 每日）/ -4（QQ 雷达）。）
         val showQqDaily = qqEnabled && home.qqDaily.isNotEmpty()
         val showQqRadar = qqEnabled && home.qqRadar.isNotEmpty()
@@ -286,7 +289,7 @@ fun HomeScreen(
                 ) {
                     if (showQqDaily) {
                         RecommendCard(
-                            title = "每日推荐",
+                            title = "Daily 30",
                             songs = home.qqDaily,
                             loggedIn = true,
                             onLogin = onOpenLogin,
@@ -300,7 +303,7 @@ fun HomeScreen(
                     }
                     if (showQqRadar) {
                         RecommendCard(
-                            title = "私人雷达",
+                            title = "For You",
                             songs = home.qqRadar,
                             loggedIn = true,
                             onLogin = onOpenLogin,
@@ -346,53 +349,11 @@ fun HomeScreen(
                 }
             }
         }
-        // Sixth round, batch 2, item 33: the toplist moved from Discover
-        // onto Home (after Recent, before recommended playlists), split by
-        // source — NetEase above, QQ below; each a 2-row horizontal grid.
-        val neToplist = toplist
-        val qqToplist = home.qqToplist
-        if (neToplist.isNotEmpty() || qqToplist.isNotEmpty()) {
-            item {
-                Text(
-                    "排行榜",
-                    Modifier.padding(horizontal = 24.dp)
-                        .onGloballyPositioned { toplistTitleY = it.positionInRoot().y },
-                    style = MaterialTheme.typography.titleLarge,
-                )
-            }
-            if (neToplist.isNotEmpty()) {
-                item {
-                    if (qqToplist.isNotEmpty()) {
-                        Text(
-                            "网易云音乐",
-                            Modifier.padding(horizontal = 24.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    ToplistGrid(neToplist, onOpenPlaylist)
-                }
-            }
-            if (qqToplist.isNotEmpty()) {
-                item {
-                    if (neToplist.isNotEmpty()) {
-                        Text(
-                            "QQ音乐",
-                            Modifier.padding(horizontal = 24.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    ToplistGrid(qqToplist, onOpenPlaylist)
-                }
-            }
-        }
         // Sixth round, batch 2, item 33 (overrides item 8's 2 rows):
-        // recommended playlists in a 3-row horizontal grid, NetEase first
-        // then QQ, each card badged with its source when both are on.
-        val allPlaylists = home.playlists + home.qqPlaylists
+        // recommended playlists in a 3-row horizontal grid, each card
+        // badged with its source when both are on. 0.1.18 第 14 项：
+        // 两源歌单 round-robin 交错进同一网格，不再网易云一块、QQ 一块。
+        val allPlaylists = interleavePlaylists(home.playlists, home.qqPlaylists)
         if (allPlaylists.isNotEmpty()) {
             item {
                 Text(
@@ -415,9 +376,32 @@ fun HomeScreen(
                 }
             }
         }
+        // 0.1.18 第 15 项：算法推荐（测试功能）——开关开且有推荐结果时
+        // 才出现；内容是按本地口味画像（播放事件 + 喜欢 + 关注）给两源
+        // 推荐歌单打分选出的歌单，卡片与推荐歌单同款（收集与重算触发
+        // 在组合层，见 HomeScreen 开头）。
+        if (algorithmEnabled && algorithmPlaylists.isNotEmpty()) {
+            item {
+                Text("算法推荐", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                LazyHorizontalGrid(
+                    rows = GridCells.Fixed(1),
+                    modifier = Modifier.fillMaxWidth().height(204.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(algorithmPlaylists, key = { it.id }) { playlist ->
+                        PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) }
+                    }
+                }
+            }
+        }
         // Sixth round, batch 2, items 8 + 21: recommended new songs.
-        // 0.1.17 第 9 项：改成 10 行垂直列表；每行是 SongRow，来源 icon
-        // 无背景放标题前、尾部只留圆形播放钮。
+        // 0.1.18 第 2 项：改回多列横向网格（0.1.17 第 9 项的 10 行垂直列表
+        // 只有一列、右滑不出更多列）——恢复 0.1.16 的 LazyHorizontalGrid
+        // Fixed(6)，取全部歌曲，右滑出更多列；每行仍是 0.1.17 的 SongRow
+        // 形态（来源 icon 无背景放标题前、尾部只留圆形播放钮）。
         val allNewSongs = home.newSongs + home.qqNewSongs
         if (allNewSongs.isNotEmpty()) {
             item {
@@ -446,41 +430,38 @@ fun HomeScreen(
     }
 }
 
-/** Toplist 2-row horizontal grid (Discover's layout, moved onto Home). */
-@Composable
-private fun ToplistGrid(playlists: List<Playlist>, onOpenPlaylist: (Long) -> Unit) {
-    LazyHorizontalGrid(
-        rows = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxWidth().height(424.dp),
-        contentPadding = PaddingValues(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        items(playlists, key = { it.id }) { playlist ->
-            PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
-        }
-    }
-}
 
-/** Recommended new songs: 10-row vertical list (0.1.17 第 9 项：6 行横向网格
- * → 10 行列表，取前 10 首、顺序不变）。每行：来源 icon 无背景（SourceIcon，
- * 品牌色 tint）放在标题文字之前（SongRow leading 槽）；尾部只留圆形播放钮，
- * 旧的 SourceBadge 徽标去掉。 */
+/** Recommended new songs: multi-column horizontal grid (0.1.18 第 2 项：
+ * 恢复 0.1.16 的 LazyHorizontalGrid Fixed(6)，取全部歌曲、右滑出更多列；
+ * 0.1.17 的 10 行垂直列表只有一列）。一列是一整行宽的 SongRow（屏宽减
+ * 左右 24dp 边距）；每行仍是 0.1.17 形态：来源 icon 无背景（SourceIcon，
+ * 品牌色 tint）放在标题文字之前（SongRow leading 槽）；尾部只留圆形播放钮。 */
 @Composable
 private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
     // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（混源列表，
     // 用 resolveArtistTap 分流）。
     val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(songs, id, onOpenArtist, onOpenQqArtist) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        songs.take(10).forEachIndexed { index, song ->
-            SongRow(
-                song,
-                onOpenArtist = openArtistForRows,
-                onLongPress = { vm.openSongActions(it) },
-                horizontalPadding = 0.dp,
-                leading = { SourceIcon(song.source, size = 20) },
-                trailingAction = { SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") } },
-            ) { vm.play(songs, index, "推荐新歌") }
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    LazyHorizontalGrid(
+        rows = GridCells.Fixed(6),
+        modifier = Modifier.fillMaxWidth().height(448.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // 混源列表：NetEase 真实 id 与 QQ 合成 id 理论上可能碰撞，key 用下标。
+        items(count = songs.size, key = { it }) { index ->
+            val song = songs[index]
+            Box(Modifier.width(screenWidth - 48.dp)) {
+                SongRow(
+                    song,
+                    onOpenArtist = openArtistForRows,
+                    onLongPress = { vm.openSongActions(it) },
+                    horizontalPadding = 0.dp,
+                    leading = { SourceIcon(song.source, size = 20) },
+                    trailingAction = { SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") } },
+                ) { vm.play(songs, index, "推荐新歌") }
+            }
         }
     }
 }
@@ -644,4 +625,17 @@ private fun RecentCard(song: Song, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** 0.1.18 第 14 项：两源推荐歌单 round-robin 交错——网易云、QQ 各取一张轮流排，某源取完后剩下的另一源接在后面；来源仍由卡片上的 SourceBadge 区分。纯函数，JVM 单测覆盖。 */
+internal fun interleavePlaylists(first: List<Playlist>, second: List<Playlist>): List<Playlist> {
+    if (first.isEmpty()) return second
+    if (second.isEmpty()) return first
+    val out = ArrayList<Playlist>(first.size + second.size)
+    val n = maxOf(first.size, second.size)
+    for (i in 0 until n) {
+        if (i < first.size) out.add(first[i])
+        if (i < second.size) out.add(second[i])
+    }
+    return out
 }

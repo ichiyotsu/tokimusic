@@ -17,8 +17,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -276,14 +274,17 @@ fun TokiMusicApp(
             playlistId != null -> detailHeaderVisible
             else -> true
         }
+        // 0.1.18 第 6 项：标题显隐动画走 motionScheme（透明度 effects、
+        // 位移 spatial；之前手写 tween(300)）。
+        val scheme = MaterialTheme.motionScheme
         val headerAlpha by animateFloatAsState(
             targetValue = if (albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null || topDetailHeaderVisible) 1f else 0f,
-            animationSpec = tween(300),
+            animationSpec = scheme.defaultEffectsSpec(),
             label = "detailHeaderAlpha",
         )
         val headerOffsetY by animateFloatAsState(
             targetValue = if (albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null || topDetailHeaderVisible) 0f else with(density) { -8.dp.toPx() },
-            animationSpec = tween(300),
+            animationSpec = scheme.defaultSpatialSpec(),
             label = "detailHeaderOffset",
         )
         val profile by vm.profile.collectAsState()
@@ -366,7 +367,6 @@ fun TokiMusicApp(
         var measuredChrome by remember { mutableStateOf(0.dp) }
         val topPadding = if (topBarHeight > 0.dp) topBarHeight else statusBarHeight + 64.dp
         val bottomPadding = measuredChrome + contentGap
-        val scheme = MaterialTheme.motionScheme
 
         // Page identity drives the transitions: the player slides up from the
         // bottom, a playlist detail slides in from the right, tabs crossfade.
@@ -567,19 +567,21 @@ fun TokiMusicApp(
                                         } else 0
                                         when {
                                             // 第六轮第 13 项：播放器面板从 MiniPlayer 处弹出——
-                                            // 缩放 0.95→1 + 淡入 + 弹簧（阻尼 0.8、刚度 500，
-                                            // 约 350ms）；关闭反向（缩放 1→0.95 + 淡出，取代
-                                            // 原来的底部滑出）。
-                                            toPlayer -> (scaleIn(spring(dampingRatio = 0.8f, stiffness = 500f), initialScale = 0.95f) + fadeIn(scheme.defaultEffectsSpec())) togetherWith
+                                            // 缩放 0.95→1 + 淡入 + 弹簧；关闭反向（缩放 1→0.95 +
+                                            // 淡出，取代原来的底部滑出）。0.1.18 第 6 项：弹簧
+                                            // 改 MD3E spatial spec（之前手写 spring(0.8, 500)）。
+                                            toPlayer -> (scaleIn(scheme.defaultSpatialSpec(), initialScale = 0.95f) + fadeIn(scheme.defaultEffectsSpec())) togetherWith
                                                 fadeOut(scheme.defaultEffectsSpec())
                                             fromPlayer -> fadeIn(scheme.defaultEffectsSpec()) togetherWith
-                                                (scaleOut(spring(dampingRatio = 0.8f, stiffness = 500f), targetScale = 0.95f) + fadeOut(scheme.defaultEffectsSpec()))
+                                                (scaleOut(scheme.defaultSpatialSpec(), targetScale = 0.95f) + fadeOut(scheme.defaultEffectsSpec()))
                                             toDetail -> (slideInHorizontally(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
                                                 (fadeOut(scheme.defaultEffectsSpec()) + scaleOut(scheme.defaultSpatialSpec(), 0.98f))
                                             fromDetail -> (fadeIn(scheme.defaultEffectsSpec()) + scaleIn(scheme.defaultSpatialSpec(), 0.98f)) togetherWith
                                                 (slideOutHorizontally(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()))
-                                            isTabSwitch -> (slideInHorizontally(tween(300)) { tabDir * tabSlidePx } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
-                                                (slideOutHorizontally(tween(300)) { -tabDir * tabSlidePx } + fadeOut(scheme.defaultEffectsSpec()))
+                                            // 0.1.18 第 6 项：tab 滑入滑出走 spatial spec
+                                            //（之前手写 tween(300)）。
+                                            isTabSwitch -> (slideInHorizontally(scheme.defaultSpatialSpec()) { tabDir * tabSlidePx } + fadeIn(scheme.defaultEffectsSpec())) togetherWith
+                                                (slideOutHorizontally(scheme.defaultSpatialSpec()) { -tabDir * tabSlidePx } + fadeOut(scheme.defaultEffectsSpec()))
                                             else -> fadeIn(scheme.defaultEffectsSpec()) togetherWith fadeOut(scheme.defaultEffectsSpec())
                                         }
                                     },
@@ -741,22 +743,29 @@ fun TokiMusicApp(
                                 onSearch = { searchSheetOpen = true },
                                 onHeight = { if (chromeVisible) measuredChrome = it },
                             )
-                            // 0.1.14 第 3 条：设置弹窗的遮罩不淡入淡出——
-                            // 原生 ModalBottomSheet 的 scrim 带
-                            // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
-                            // 实测：sheet 本身不渐变，只有遮罩渐变），API
-                            // 关不掉。改成透明 scrim（见 SettingsSheet）
-                            // + 这里一层 32% 黑遮罩（与 M3 默认 scrim 同色
-                            // 同透明度）；点遮罩关闭仍走原生 scrim 的手势
-                            // （Dialog 窗口在上层接手势）。渐进动画见
-                            // SettingsBackdrop（0.1.16 第 3 条）。
-                            SettingsBackdrop(
-                                visible = showSettings,
-                                backdropBlur = theme.backdropBlur,
-                                hazeState = hazeState,
-                            )
                         }
                     }
+                    // 0.1.14 第 3 条：设置弹窗的遮罩不淡入淡出——
+                    // 原生 ModalBottomSheet 的 scrim 带
+                    // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
+                    // 实测：sheet 本身不渐变，只有遮罩渐变），API
+                    // 关不掉。改成透明 scrim（见 SettingsSheet）
+                    // + 一层 32% 黑遮罩（与 M3 默认 scrim 同色同透明度）；
+                    // 点遮罩关闭仍走原生 scrim 的手势（Dialog 窗口在上层
+                    // 接手势）。渐进动画见 SettingsBackdrop（0.1.16 第 3 条）。
+                    // 0.1.18 第 17 项：这一层从 Scaffold 的内容 Box 里移到
+                    // Scaffold 之外（同一外层 Box 内、画在 Scaffold 之后）——
+                    // 之前它在内容层里，Scaffold 的 topBar（主页 / 资源库的
+                    // 标题 + 头像）画在它上面，进设置时不进模糊；移到
+                    // Scaffold 之上后，tokiGlass 的 Backdrop 采样把整个
+                    // Scaffold（页面内容 + 顶栏）都算进去，标题和头像
+                    // 一起糊。配方（tokiGlass + 32% 黑）与渐进动画不变，
+                    // 只扩大范围。
+                    SettingsBackdrop(
+                        visible = showSettings,
+                        backdropBlur = theme.backdropBlur,
+                        hazeState = hazeState,
+                    )
                 }
             }
         }
@@ -828,14 +837,15 @@ private fun SettingsBackdrop(
     backdropBlur: Boolean,
     hazeState: HazeState,
 ) {
-    // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 300ms，
-    // 与 sheet 滑入匹配）——之前是 if 开关瞬间出现 / 消失。手势不变：
+    // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 走 effects
+    // spec，与 sheet 滑入匹配）——之前是 if 开关瞬间出现 / 消失。手势不变：
     // 黑遮罩层仍在 Dialog 窗口之下、不接手势，关闭仍走原生 scrim /
     // 返回键；玻璃关闭时只渐隐黑遮罩。
+    val scheme = MaterialTheme.motionScheme
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(300)),
-        exit = fadeOut(animationSpec = tween(300)),
+        enter = fadeIn(animationSpec = scheme.defaultEffectsSpec()),
+        exit = fadeOut(animationSpec = scheme.defaultEffectsSpec()),
         label = "settings-backdrop",
     ) {
         // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
@@ -895,7 +905,18 @@ private fun BottomChrome(
             verticalArrangement = Arrangement.spacedBy(tokiSpace("sm")),
         ) {
             // 第五轮第 9 项：MiniPlayer 从导航胶囊里拆出来。
-            if (showMiniPlayer) MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
+            // 0.1.18 第 6 项：显隐补纵向滑入 + 淡入（之前 if 瞬切）；滑入
+            // 滑出走 spatial spec、淡入淡出走 effects spec。代价：隐藏后
+            // AnimatedVisibility 仍占 0 高度布局位，Column 的 spacedBy(sm)
+            // 会多留 8dp，onHeight 随之多报 8dp（内容底边距多 8dp，可忽略）。
+            AnimatedVisibility(
+                visible = showMiniPlayer,
+                enter = slideInVertically(scheme.defaultSpatialSpec()) { it } + fadeIn(scheme.defaultEffectsSpec()),
+                exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
+                label = "miniPlayer",
+            ) {
+                MiniPlayer(playerState, vm, onOpenPlayer, glass = glass, glassOn = glassOn, coverColors = coverColors)
+            }
             NavBarSlot(
                 navVisible = navVisible,
                 wide = wide,

@@ -25,4 +25,22 @@ class QueueRowStateTest {
     fun noCurrentIndexMeansAllUpcoming() {
         assertEquals(QueueRowState.Upcoming, queueRowState(currentIndex = -1, rowIndex = 0))
     }
+
+    @Test
+    fun reverseRowsAfterCurrentArePlayed() {
+        // 0.1.18 第 10 项：倒序播放顺序反向——已播放的是当前行之后的行。
+        assertEquals(QueueRowState.Played, queueRowState(currentIndex = 3, rowIndex = 4, reverse = true))
+        assertEquals(QueueRowState.Played, queueRowState(currentIndex = 3, rowIndex = 5, reverse = true))
+    }
+
+    @Test
+    fun reverseRowsBeforeCurrentAreUpcoming() {
+        assertEquals(QueueRowState.Upcoming, queueRowState(currentIndex = 3, rowIndex = 0, reverse = true))
+        assertEquals(QueueRowState.Upcoming, queueRowState(currentIndex = 3, rowIndex = 2, reverse = true))
+    }
+
+    @Test
+    fun reverseCurrentRowIsStillCurrent() {
+        assertEquals(QueueRowState.Current, queueRowState(currentIndex = 3, rowIndex = 3, reverse = true))
+    }
 }

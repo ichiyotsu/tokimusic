@@ -7,8 +7,8 @@ import androidx.compose.ui.text.font.FontWeight
 import com.tokimusic.app.R
 
 /**
- * Latin is Inter. Chinese is Source Han Sans, bundled as official Noto Sans SC.
- * Both files are committed in src/main/res/font (spec 0.2.0-b1, see android/tokiui/SYNC.md).
+ * Latin is Inter. Chinese is PingFang SC Bold. Japanese is Noto Sans JP Bold.
+ * All three files are committed in src/main/res/font (spec 0.2.0-b1, see android/tokiui/SYNC.md).
  * Titles and labels use wght 700. Body and captions use wght 700 as well
  * (user 2026-11-21: global Bold; the TokiUI 0.2.0-b1 body-Regular rule is
  * intentionally not followed here).
@@ -30,25 +30,31 @@ import com.tokimusic.app.R
  * 静态文件不需要它。Inter 仍是可变字体（拉丁文 400 + 合成粗体看着够粗，
  * 用户没报，暂不动）。
  *
- * 日 / 韩 / 繁中一律思源黑体 Bold：
- * - noto_sans_sc.ttf 是完整版（假名、全部 CJK 统一汉字（含繁体专用字如
- *   說、日文汉字如 辻）都在内；旧的 4.1MB 子集缺了大半汉字与全部谚文，
- *   已换成完整版（Google Fonts，NotoSansSC[wght].ttf）。
- * - 思源黑体 SC 连完整版也不含谚文音节，韩文由 noto_sans_kr.ttf 补——
- *   Noto Sans KR 的谚文子集（音节 11,172 全 + 谚文字母）。
- *   回退顺序永远是 SC 在前、KR 在后，共用字形只取 SC 的形状。
- * - 第六轮第 4 项：SC 只有 122 个 CJK 兼容表意字（F900–FAFF），日文
- *   数据里常见的兼容字（如 FA10 塚、FA6D）会落到系统字体；JP 子集
+ * 0.1.18 第 3 项（用户定全局字体 Inter + PingFangSC + NotoJP，默认 bold）：
+ * 中文从思源黑体 SC 换成苹方 SC Bold（pingfang_bold.ttf，10,923,212 B，
+ * 从 0.1.16 的 git 历史原样恢复，见 NOTES.md 第 3 项）。fontTools 实测：
+ * 族名 "PingFang SC Bold"、42,199 字形、无 fvar/gvar；假名・繁体・辻・凪
+ * 都在内，兼容字 FA10 塚 也在内（SC 没有它）；不含谚文、半角片假名、
+ * FA6D 与 FAD0/FAD6。注意该文件 OS/2.usWeightClass 写的是 400（族名虽
+ * 是 Bold，元数据仍标 Regular）——文件未做任何改动：声明沿用 0.1.15/
+ * 0.1.16 歌词字体预设同款 `Font(R.font.pingfang_bold, FontWeight.Bold)`，
+ * 用户当时已看过这个文件的渲染效果，沿用即是他要的样子。
+ *
+ * 日 / 韩 / 繁中回退分工（0.1.18 第 3 项）：
+ * - 中文走 PingFang SC Bold（第一位，共用字形只取苹方的形状）。
+ * - PingFang SC 不含半角片假名与 FA6D，仍由 JP 子集补——
  *   noto_sans_jp_bold.ttf（假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F
- *   共 1,074 字形）补在 SC 之后、KR 之前，共用字形仍取 SC 的形状。
- *   注意：者 U+FAD6 与 﨑 U+FAD0 在全部 Noto 字体里都没有（Google Fonts
- *   变量版与 Adobe 完整 OTF 均实测缺失），这两字仍走系统回退；JP 子集
- *   修的是其余 240 个 SC 所缺的兼容字。
+ *   共 1,074 字形）排在第二位。
+ * - PingFang SC 不含谚文音节，韩文由 noto_sans_kr.ttf 补——
+ *   Noto Sans KR 的谚文子集（音节 11,172 全 + 谚文字母），排在最后。
+ *   注意：者 U+FAD6 与 﨑 U+FAD0 在 PingFang 与全部 Noto 字体里都没有，
+ *   这两字仍走系统回退。
  */
-/** CJK 回退链顺序（第六轮第 4 项，可单测）：SC 在前、JP 在后、KR 最后。 */
-internal val cjkFallbackOrder = listOf(R.font.noto_sans_sc, R.font.noto_sans_jp_bold, R.font.noto_sans_kr)
+/** CJK 回退链顺序（0.1.18 第 3 项：PingFang SC 在前、JP 在后、KR 最后，可单测）。 */
+internal val cjkFallbackOrder = listOf(R.font.pingfang_bold, R.font.noto_sans_jp_bold, R.font.noto_sans_kr)
 
-/** CJK 静态粗体（0.1.15 第 8 项）：三个文件本身就是 Bold（usWeightClass 700），
+/** CJK 静态粗体（0.1.15 第 8 项）：三个文件本身就是 Bold 字形（Noto 两个
+ * usWeightClass 700；PingFang 的 OS/2 写 400 但族名与轮廓都是 Bold，见上），
  * 声明时只给 weight，不传 variationSettings——静态文件没有 fvar 可调，
  * 传了也会被资源字体加载路径忽略。 */
 private fun cjkBoldFonts(): List<Font> =
@@ -64,16 +70,16 @@ private fun latinVariableFont(resId: Int, weight: FontWeight): Font {
  * 不含 Inter——给 CJK 为主的标题用（如推荐歌单卡片标题），绕开
  * AndroidFontListTypeface 的 firstOrNull 匹配（见 NOTES.md 第 2 项：
  * InterFamily 里 Inter 条目排在 CJK 之前，Bold 请求永远解析成 Inter，
- * CJK 静态 Bold 文件从未被选中）。标题里的少量拉丁文走 SC Bold 的拉丁字形。
+ * CJK 静态 Bold 文件从未被选中）。标题里的少量拉丁文走 PingFang SC Bold 的拉丁字形。
  */
 val CjkBoldFamily: FontFamily = FontFamily(cjkBoldFonts())
 
 /**
- * 第五轮第 2 项（用户 2026-11-23 定稿“Google Inter 字体”）：全局字体搭配 =
- * Google Inter（Google Fonts 上的 Inter）+ 思源黑体粗体。西文全局继续用
- * Inter，不改用 Google Sans——0.1.17 第 8 项起歌词字体预设已删，
- * 该字体文件只留在 res/font 里未被引用（见 NOTES.md 第 8 项）。
- * 日 / 韩 / 繁中一律思源黑体 Bold，见下面的 variableFonts 回退链。
+ * 第五轮第 2 项（用户 2026-11-23 定稿“Google Inter 字体”）；0.1.18 第 3 项
+ * 用户定全局字体搭配 = Google Inter（Google Fonts 上的 Inter）+ 苹方 SC
+ * 粗体 + 思源黑体 JP 粗体。西文全局继续用 Inter，不改用 Google Sans——
+ * 歌词字体预设已在 0.1.17 第 8 项删除，其 Bold 字体文件随之删除。
+ * 日 / 韩 / 繁中回退链见文件头注释。
  */
 val InterFamily: FontFamily = FontFamily(
     listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)

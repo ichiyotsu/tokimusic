@@ -46,6 +46,15 @@ class SegmentedCornersTest {
         assertEquals(CornerSize(28.dp), shape.bottomEnd)
     }
 
+    @Test fun smallCornerIsConfigurable() {
+        // 0.1.18 第 18 项：详情页脚手架传 small = 8.dp，小圆角变大；默认仍是 4.dp。
+        val shape = segmentedCorners(SegmentPosition.First, 20.dp, small = 8.dp)
+        assertEquals(CornerSize(20.dp), shape.topStart)
+        assertEquals(CornerSize(8.dp), shape.bottomStart)
+        val middle = segmentedCorners(SegmentPosition.Middle, 20.dp, small = 8.dp)
+        assertEquals(CornerSize(8.dp), middle.topStart)
+    }
+
     @Test fun singleIsAllLarge() {
         val shape = segmentedCorners(SegmentPosition.Single, 28.dp)
         assertEquals(CornerSize(28.dp), shape.topStart)

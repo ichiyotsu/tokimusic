@@ -1,7 +1,6 @@
 package com.tokimusic.app.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -132,11 +131,14 @@ fun OverlayTitleHeader(
                 )
                 // Round 3 item 20: the title text crossfades/slides up when the
                 // top-bar title switches (Home sections: 主页 / 推荐歌单 / 推荐新歌).
+                // 0.1.18 第 6 项：淡入淡出走 effects spec、上下滑走 spatial spec
+                //（MD3E motionScheme；之前是手写 tween(300)）。
+                val scheme = MaterialTheme.motionScheme
                 AnimatedContent(
                     targetState = title,
                     transitionSpec = {
-                        (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 4 }) togetherWith
-                            (fadeOut(tween(300)) + slideOutVertically(tween(300)) { -it / 4 })
+                        (fadeIn(scheme.defaultEffectsSpec()) + slideInVertically(scheme.defaultSpatialSpec()) { it / 4 }) togetherWith
+                            (fadeOut(scheme.defaultEffectsSpec()) + slideOutVertically(scheme.defaultSpatialSpec()) { -it / 4 })
                     },
                     label = "headerTitle",
                 ) { currentTitle ->
