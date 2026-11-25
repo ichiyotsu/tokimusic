@@ -78,7 +78,14 @@ fun SearchSheet(
     // 0.1.15 第 3 项：源选项已删——搜索改查所有启用的源并合并结果，
     // 源开关只在设置里调；查询只留本地 state。
     var query by remember { mutableStateOf("") }
-    TokiSheetContainer(onDismiss = onClose) {
+    // 0.1.17 第 18 项：搜索页背景 90% 不透明度（alpha 0.90，透出背后
+    // 内容 10%）的毛玻璃透明效果——“90%”按设计工具惯例取不透明度，
+    // 不是 90% 透明（alpha 0.10 会透得看不清字）。注意：ModalBottomSheet
+    // 是独立窗口，站内 haze 磨砂只能模糊同一窗口内的内容，所以这里
+    // 只有半透明、没有真模糊；真模糊要窗口级 blur-behind 或改成
+    // 窗内弹窗，下一轮再定。淡出色（sheetBg）同步用同一颜色。
+    val sheetBg90 = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.90f)
+    TokiSheetContainer(onDismiss = onClose, containerColor = sheetBg90) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             // 标题行与设置弹窗同款配方：磨砂标题 chip + 36dp 圆形关闭 chip。
             Row(
@@ -143,7 +150,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
         focusRequester.requestFocus()
         keyboardController?.show()
     }
-    val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
+    val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.90f)
     Column(modifier.fillMaxWidth()) {
         OutlinedTextField(
             query,
@@ -175,7 +182,6 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 onOpenArtist = onOpenArtist,
                                 onLongPress = { vm.openSongActions(it) },
                                 showSourceBadge = bothEnabled,
-                                paletteIndex = vm.store.monetPaletteIndex,
                                 // 第 10 项：行右侧小圆播放钮（时长保留，按钮另加在最右）；
                                 // 点它与点行行为一致（播该首、队列为整份搜索结果），弹窗留着。
                                 trailingAction = {
@@ -209,7 +215,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                             ) {
                                 Avatar(artist.picUrl, size = 48)
                                 Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (bothEnabled) SourceBadge(MusicSource.NETEASE, size = 20, paletteIndex = vm.store.monetPaletteIndex)
+                                if (bothEnabled) SourceBadge(MusicSource.NETEASE, size = 20)
                             }
                         }
                     }
@@ -228,7 +234,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                             ) {
                                 Avatar(artist.picUrl, size = 48)
                                 Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (bothEnabled) SourceBadge(MusicSource.QQ, size = 20, paletteIndex = vm.store.monetPaletteIndex)
+                                if (bothEnabled) SourceBadge(MusicSource.QQ, size = 20)
                             }
                         }
                     }
@@ -240,7 +246,7 @@ private fun SearchContent(vm: AppViewModel, query: String, onQueryChange: (Strin
                                 contentPadding = PaddingValues(horizontal = 0.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist, showSourceBadge = bothEnabled, paletteIndex = vm.store.monetPaletteIndex) { onOpenPlaylist(playlist.id) } }
+                                items(home.searchPlaylists) { playlist -> PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) } }
                             }
                         }
                     }

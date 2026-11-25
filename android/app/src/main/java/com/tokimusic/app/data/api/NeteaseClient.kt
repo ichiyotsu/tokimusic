@@ -84,6 +84,13 @@ class NeteaseClient(
         private const val EAPI_UA = "NeteaseMusic 9.0.90/5038 (iPhone; iOS 16.2; zh_CN)"
         private const val PC_OSVER = "Microsoft-Windows-10-Professional-build-19045-64bit"
         private const val PC_APPVER = "3.1.17.204416"
+        /**
+         * 歌单订阅的 checkToken（0.1.17 第 3 项）：上游
+         * NeteaseCloudMusicApi `util/config.json` 里公开的
+         * APP_CONF.checkToken（每个部署都用同一个公开值，不是账号凭证）；
+         * 上游 playlist_subscribe 模块订阅时带它、取消订阅不带。
+         */
+        private const val PLAYLIST_CHECK_TOKEN = "9ca17ae2e6ffcda170e2e6ee8af14fbabdb988f225b3868eb2c15a879b9a83d274a790ac8ff54a97b889d5d42af0feaec3b92af58cff99c470a7eafd88f75e839a9ea7c14e909da883e83fb692a3abdb6b92adee9e"
         /** Login URL the QR code encodes (upstream login_qr_create, pc platform). */
         fun qrLoginUrl(key: String): String = "https://music.163.com/login?codekey=$key"
     }
@@ -549,6 +556,27 @@ class NeteaseClient(
             ).body.optInt("code") == 200
         }.getOrDefault(false)
 
+    // 0.1.17 第 3 项：收藏 / 取消收藏歌单（上游 playlist_subscribe 模块：
+    // /api/playlist/subscribe|unsubscribe，eapi；订阅时带 checkToken，
+    // 取消订阅不带；失败返回 false，不抛异常）。
+    override suspend fun playlistSub(id: Long, subscribe: Boolean): Boolean =
+        runCatching {
+            val data = if (subscribe) obj("id" to id, "checkToken" to PLAYLIST_CHECK_TOKEN) else obj("id" to id)
+            post(
+                if (subscribe) "/api/playlist/subscribe" else "/api/playlist/unsubscribe",
+                data,
+                Crypto.EAPI,
+            ).body.optInt("code") == 200
+        }.getOrDefault(false)
+
+    // 0.1.17 第 13 项：听歌打卡（上游 scrobble 模块：/api/feedback/weblog，
+    // weapi，logs 是 JSON 字符串；失败返回 false，不抛异常——调用方静默）。
+    override suspend fun scrobble(id: Long, sourceId: Long, timeSeconds: Int): Boolean =
+        runCatching {
+            post("/api/feedback/weblog", obj("logs" to scrobbleLogsJson(id, sourceId, timeSeconds)), Crypto.WEAPI)
+                .body.optInt("code") == 200
+        }.getOrDefault(false)
+
     // 第三轮第 12 项：歌手详情 / 热门歌曲 / 专辑列表 / 专辑详情。
     // artist_detail 上游模块未指定 crypto，实测 weapi 可用（2026-11-21，
     // 上游模块直连 music.163.com 验证：plain 与 weapi 均返回 code 200）。
@@ -690,4 +718,25 @@ class NeteaseClient(
         ).body
         return LyricPayload(null, o.optJSONObject("lrc")?.optString("lyric"), o.optJSONObject("tlyric")?.optString("lyric"), o.optJSONObject("romalrc")?.optString("lyric"))
     }
+}
+
+/**
+ * scrobble 的 logs 请求体（0.1.17 第 13 项，纯函数，可单测）：上游
+ * scrobble 模块的 data.logs——JSON 字符串，内含一个 action=play 的条目
+ * （download 0、end playend、id、sourceId、time 已播秒数、type song、
+ * wifi 0、source list、mainsite 1、content 空）。
+ */
+internal fun scrobbleLogsJson(id: Long, sourceId: Long, timeSeconds: Int): String {
+    val json = JSONObject()
+        .put("download", 0)
+        .put("end", "playend")
+        .put("id", id)
+        .put("sourceId", sourceId)
+        .put("time", timeSeconds)
+        .put("type", "song")
+        .put("wifi", 0)
+        .put("source", "list")
+        .put("mainsite", 1)
+        .put("content", "")
+    return JSONArray().put(JSONObject().put("action", "play").put("json", json)).toString()
 }

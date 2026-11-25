@@ -12,11 +12,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -60,6 +63,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -111,16 +115,14 @@ import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.daysSince
+import com.tokimusic.app.ui.components.defaultCustomId
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.segmentedCorners
 import com.tokimusic.app.ui.theme.TokiLogoutRed
-import com.tokimusic.app.ui.theme.NeteaseBadgeBackground
-import com.tokimusic.app.ui.theme.QqBadgeBackground
-import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
-import com.tokimusic.app.ui.theme.LyricFontInterPingFangBold
+import com.tokimusic.app.ui.components.NeteaseBadgeBackground
+import com.tokimusic.app.ui.components.QqBadgeBackground
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiUiHolder
-import com.tokimusic.app.ui.theme.monetPalettes
 import com.tokimusic.app.update.LatestRelease
 import com.tokimusic.app.update.UpdateCheckResult
 import com.tokimusic.app.update.UpdateChecker
@@ -162,17 +164,36 @@ private fun Modifier.sheetTopOutline(color: Color): Modifier = this.drawBehind {
  * position（首上 28 / 下 4，中 4，末上 4 / 下 28，单项 28，
  * 见 ui.components.segmentedCorners）；组内间距由弹窗 LazyColumn
  * 的 spacedBy(4.dp) 给（见 SettingsSheet）。
+ * 0.1.17 第 7 项：[onClick] 非空时用 M3 的 Card(onClick)——涟漪
+ * 按卡片形状裁剪、撑满整个栏位；之前把 clickable 放在行内 Row
+ * 上，涟漪只盖卡片内边距以内的区域。
  */
 private fun SettingsSubCard(
     position: SegmentPosition = SegmentPosition.Single,
+    onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        shape = segmentedCorners(position, 28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
+    val cardModifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+    val cardShape = segmentedCorners(position, 28.dp)
+    val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    val cardContent: @Composable ColumnScope.() -> Unit = {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), content = content)
+    }
+    if (onClick != null) {
+        Card(
+            onClick = onClick,
+            modifier = cardModifier,
+            shape = cardShape,
+            colors = cardColors,
+            content = cardContent,
+        )
+    } else {
+        Card(
+            modifier = cardModifier,
+            shape = cardShape,
+            colors = cardColors,
+            content = cardContent,
+        )
     }
 }
 
@@ -434,6 +455,7 @@ private sealed interface SourceConfirm {
     data class Logout(val source: MusicSource) : SourceConfirm
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     vm: AppViewModel,
     theme: ThemePreferences,
@@ -464,6 +486,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         var editing by remember { mutableStateOf(false) }
+        // 0.1.17 第 16 项：展开 chevron 的旋转角（0° 收起 / 180° 展开），
+        // 放在 Card 外层记，避免在 profile 条件分支里记动画状态。
+        val chevronRotation by animateFloatAsState(
+            targetValue = if (editing) 180f else 0f,
+            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            label = "editChevron",
+        )
         var nameDraft by remember(customDisplayName) { mutableStateOf(customDisplayName) }
         var idDraft by remember(customUserId) { mutableStateOf(customUserId) }
         val avatarPicker = rememberLauncherForActivityResult(
@@ -516,18 +545,37 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     )
                     // ID 在 UID 下方单独一行（自定义 ID 为空时显示 UID；
                     // 源 logo 行下方不再重复显示 ID，见 SourceRow）。
+                    // 0.1.17 第 15 项：自定义 ID 为空时默认显示注册年月日时
+                    //（YYMMDDHH，如 26112511），取自首次登录时间戳；
+                    // 无首次登录记录时回退到 UID。
                     if (profile != null) {
                         Text(
-                            "ID ${customUserId.ifBlank { profile.uid.toString() }}",
+                            "ID ${customUserId.ifBlank { defaultCustomId(vm.store.firstLoginMs, profile.uid) }}",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
                 if (profile != null) {
-                    TextButton(onClick = { editing = !editing }) { Text(if (editing) "收起" else "编辑") }
+                    // 0.1.17 第 16 项：文字“编辑”按钮改成展开 chevron
+                    // icon，旋转 180° 表示展开/收起。
+                    IconButton(onClick = { editing = !editing }) {
+                        Icon(
+                            Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = if (editing) "收起" else "编辑",
+                            modifier = Modifier.graphicsLayer { rotationZ = chevronRotation },
+                        )
+                    }
                 }
             }
-            if (editing && profile != null) {
+            // 0.1.17 第 16 项：编辑区展开/收起用 AnimatedVisibility
+            //（淡入 + 纵向展开 / 淡出 + 纵向收起），不再生硬跳变。
+            AnimatedVisibility(
+                visible = editing && profile != null,
+                enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                    expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+                exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                    shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+            ) {
                 Column(
                     Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -546,7 +594,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 0.1.17 第 16 项：保存/取消按钮居右对齐。
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    ) {
                         Button(
                             onClick = {
                                 vm.setCustomDisplayName(nameDraft.trim())
@@ -725,23 +777,27 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
             profile?.createDays,
             System.currentTimeMillis(),
         )
-        SettingsSubCard {
-            if (entries.isEmpty()) {
-                Text(
-                    "登录后查看加入天数",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                // 两列勋章卡片：每项一张卡，图标当勋章放上方，标题源名，副标题“已加入 X 天”。
-                // 只有一项时右侧补一个等宽 Spacer，保持单卡半宽、两列节奏不变。
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    for (entry in entries) {
-                        JoinedDayMedalCard(entry, Modifier.weight(1f))
-                    }
-                    if (entries.size == 1) {
-                        Spacer(Modifier.weight(1f))
-                    }
+        // 0.1.17 第 8 项：成就单独两列展示，不需要外框——包着两列
+        // 勋章卡的 SettingsSubCard 去掉，勋章卡本身（20dp 圆角卡）保留。
+        if (entries.isEmpty()) {
+            Text(
+                "登录后查看加入天数",
+                Modifier.padding(horizontal = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else {
+            // 两列勋章卡片：每项一张卡，图标当勋章放上方，标题源名，副标题“已加入 X 天”。
+            // 只有一项时右侧补一个等宽 Spacer，保持单卡半宽、两列节奏不变。
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                for (entry in entries) {
+                    JoinedDayMedalCard(entry, Modifier.weight(1f))
+                }
+                if (entries.size == 1) {
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -812,42 +868,92 @@ suspend fun saveProfileAvatar(context: Context, uri: Uri): String? = withContext
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: AppViewModel, health: ApiHealth?) {
-    // 0.1.16 第 2 条：“直连网易云 / 实时通知”是一组，组内 4dp 细缝。
+    // 0.1.17 第 7 项：通用页备注文本全部移到栏外（音频页范式：卡片外
+    // 单独 item 的 bodySmall 说明行）；每行开关一张 Single 卡 + 一条
+    // 栏外备注，不再把说明塞进卡片里。直连网易云的副标题也是备注，
+    // 同样移出栏外。
     item {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-            // 0.1.15 第 21 项：与“实时通知”同组分段圆角（首项）。
-            SettingsSubCard(SegmentPosition.First) {
-                SettingsRow(
-                    "直连网易云",
-                    "无需自建 API 服务，打开就能用",
-                    trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
-                    horizontalPadding = 0.dp,
+        SettingsSubCard {
+            SettingsRow(
+                "直连网易云",
+                trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
+                horizontalPadding = 0.dp,
+            )
+        }
+    }
+    item {
+        Text(
+            "无需自建 API 服务，打开就能用。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 实时通知开关（默认开）：控制系统媒体通知的展示。播放器现走 MediaSession
+    // 接口适配——播放时系统在通知栏 / 锁屏 / 快捷设置显示标准媒体播放器；
+    // 不再另发 Progress 通知冒充 Live Update（Android 16 上 MediaStyle
+    // 本来就升不成 Live Update，状态栏芯片随之没有）。
+    item {
+        var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("实时通知", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = liveUpdates,
+                    onCheckedChange = { liveUpdates = it; vm.store.liveUpdatesEnabled = it },
                 )
             }
-            // 实时通知开关（默认开）：控制系统媒体通知的展示。播放器现走 MediaSession
-            // 接口适配——播放时系统在通知栏 / 锁屏 / 快捷设置显示标准媒体播放器；
-            // 不再另发 Progress 通知冒充 Live Update（Android 16 上 MediaStyle
-            // 本来就升不成 Live Update，状态栏芯片随之没有）。
-            var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
-            // 0.1.15 第 21 项：与“直连网易云”同组分段圆角（末项）。
-            SettingsSubCard(SegmentPosition.Last) {
-                Column {
-                    Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("实时通知", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                        Switch(
-                            checked = liveUpdates,
-                            onCheckedChange = { liveUpdates = it; vm.store.liveUpdatesEnabled = it },
-                        )
-                    }
-                    Text(
-                        "播放时在通知栏、锁屏和快捷设置中显示系统媒体播放器，可直接控制播放；关闭后不显示通知，后台播放可能被系统停止。需要通知权限。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+        }
+    }
+    item {
+        Text(
+            "播放时在通知栏、锁屏和快捷设置中显示系统媒体播放器，可直接控制播放；关闭后不显示通知，后台播放可能被系统停止。需要通知权限。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 0.1.17 第 12 项：实时歌词开关（默认关），在实时通知下方。
+    item {
+        var liveLyrics by remember { mutableStateOf(vm.store.liveLyricsEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("实时歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = liveLyrics,
+                    onCheckedChange = { liveLyrics = it; vm.store.liveLyricsEnabled = it },
+                )
             }
         }
+    }
+    item {
+        Text(
+            "开启后，播放时通知标题实时显示当前唱到的歌词行；没有歌词时显示歌名。需要先开启实时通知。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 0.1.17 第 13 项：听歌记录上报开关（默认开，用户 2026-11-25 定）。
+    item {
+        var scrobble by remember { mutableStateOf(vm.store.scrobbleEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("听歌记录上报", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = scrobble,
+                    onCheckedChange = { scrobble = it; vm.store.scrobbleEnabled = it },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            "开启后，在网易云里听的歌会同步到你的网易云听歌记录；只上报网易云源的歌，需要登录网易云。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     // 0.1.16 第 2 条：健康状态为空时不发 item——之前空 item 仍占
     // spacedBy，两组之间只剩 8dp；现在没状态就是 12dp 组间距。
@@ -868,51 +974,60 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             null -> {}
         }
     }
-    // 0.1.16 第 2 条：更新组四张卡是一组，组内 4dp 细缝。
+    // 0.1.17 第 7 项：启动时检查更新的说明移到栏外（音频页范式），
+    // 卡片只留开关行；检查更新 / 关于 / 导出崩溃日志三行是状态类
+    // 副标题（当前版本 / 已有 N 份记录），留在行内。
+    item {
+        // 第五轮第 15 项：启动时检查更新（默认开）；关掉后只在设置里手动检查。
+        var checkOnLaunch by remember { mutableStateOf(vm.store.checkUpdateOnLaunch) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("启动时检查更新", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = checkOnLaunch,
+                    onCheckedChange = { checkOnLaunch = it; vm.store.checkUpdateOnLaunch = it },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            "每次打开软件时检查一次新版本；关闭后只在设置里手动检查。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 0.1.16 第 2 条：检查更新 / 关于 / 导出崩溃日志三张卡是一组，组内 4dp 细缝。
     item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // 第五轮第 15 项：启动时检查更新（默认开）；关掉后只在设置里手动检查。
-            var checkOnLaunch by remember { mutableStateOf(vm.store.checkUpdateOnLaunch) }
-            // 0.1.15 第 21 项：与检查更新 / 关于 / 导出崩溃日志同组（首项）。
-            SettingsSubCard(SegmentPosition.First) {
-                Column {
-                    Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("启动时检查更新", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                        Switch(
-                            checked = checkOnLaunch,
-                            onCheckedChange = { checkOnLaunch = it; vm.store.checkUpdateOnLaunch = it },
-                        )
-                    }
-                    Text(
-                        "每次打开软件时检查一次新版本；关闭后只在设置里手动检查。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
             // 第三轮第 15 项：手动检查更新（自动检查每次冷启动一次，见 TokiMusicApp）。
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
             var checking by remember { mutableStateOf(false) }
             var update by remember { mutableStateOf<LatestRelease?>(null) }
-            // 0.1.15 第 21 项：更新组中间项。
-            SettingsSubCard(SegmentPosition.Middle) {
+            // 0.1.15 第 21 项：更新组首项。
+            // 0.1.17 第 7 项：整卡可点——点击反馈（涟漪）由卡片本身给，
+            // 撑满整个栏位，不再只盖行内区域。
+            SettingsSubCard(
+                SegmentPosition.First,
+                onClick = {
+                    if (checking) return@SettingsSubCard
+                    checking = true
+                    scope.launch {
+                        when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
+                            is UpdateCheckResult.UpdateAvailable -> update = r.release
+                            UpdateCheckResult.UpToDate -> Toast.makeText(context, "已是最新版本", Toast.LENGTH_SHORT).show()
+                            UpdateCheckResult.Failed -> Toast.makeText(context, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                        }
+                        checking = false
+                    }
+                },
+            ) {
                 SettingsRow(
                     "检查更新",
                     "当前版本 ${vm.versionName}",
                     horizontalPadding = 0.dp,
-                    onClick = {
-                        if (checking) return@SettingsRow
-                        checking = true
-                        scope.launch {
-                            when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
-                                is UpdateCheckResult.UpdateAvailable -> update = r.release
-                                UpdateCheckResult.UpToDate -> Toast.makeText(context, "已是最新版本", Toast.LENGTH_SHORT).show()
-                                UpdateCheckResult.Failed -> Toast.makeText(context, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
-                            }
-                            checking = false
-                        }
-                    },
                 )
             }
             if (update != null) UpdatePrompt(update!!, currentVersion = vm.versionName) { update = null }
@@ -929,16 +1044,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             // 靠它发回定位；没有记录时提示暂无。
             val crashCount = remember { CrashLog.listCrashFiles(context).size }
             // 0.1.15 第 21 项：更新组末项。
-            SettingsSubCard(SegmentPosition.Last) {
+            // 0.1.17 第 7 项：整卡可点（同上）。
+            SettingsSubCard(
+                SegmentPosition.Last,
+                onClick = {
+                    if (!CrashLog.shareLatestCrash(context)) {
+                        Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            ) {
                 SettingsRow(
                     "导出崩溃日志",
                     if (crashCount > 0) "已有 $crashCount 份崩溃记录" else "暂无崩溃记录",
                     horizontalPadding = 0.dp,
-                    onClick = {
-                        if (!CrashLog.shareLatestCrash(context)) {
-                            Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
-                        }
-                    },
                 )
             }
         }
@@ -952,64 +1070,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
 ) {
     // 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
     // 种子色控件随之删除；个性化只剩减少动效与玻璃模糊。
-    // 0.1.16 第 2 条：三张卡是一组，组内 4dp 细缝。
+    // 0.1.17 第 8 项：莫奈配色已删（见下），个性化只剩两张卡。
+    // 0.1.16 第 2 条：两张卡是一组，组内 4dp 细缝。
     item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-            // 0.1.15 第 21 项：与玻璃模糊 / 莫奈配色同组（首项）。
+            // 0.1.15 第 21 项：与玻璃模糊同组（首项）。
             SettingsSubCard(SegmentPosition.First) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
                 }
             }
-            // 0.1.15 第 21 项：个性化组中间项。
-            SettingsSubCard(SegmentPosition.Middle) {
+            // 0.1.15 第 21 项：个性化组末项。
+            SettingsSubCard(SegmentPosition.Last) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("玻璃模糊", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.backdropBlur, onCheckedChange = { onTheme(theme.copy(backdropBlur = it)) })
-                }
-            }
-            // 0.1.13 第 21 项：莫奈配色——四组配色圆点（长按显示配色名），
-            // 点选后写入 monetPaletteIndex；歌单行底色（见第 12 项）按
-            // 所选配色取色。源徽标底色不跟配色走——0.1.16 第 1 项起是
-            // 固定的品牌色（网易云 #ff5757、QQ #879101）。
-            var paletteIndex by remember { mutableStateOf(vm.store.monetPaletteIndex) }
-            // 0.1.15 第 21 项：个性化组末项。
-            SettingsSubCard(SegmentPosition.Last) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("莫奈配色", style = MaterialTheme.typography.bodyLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        monetPalettes.forEachIndexed { index, palette ->
-                            TokiLongPressLabel(palette.name) {
-                                Box(
-                                    Modifier.size(48.dp).clip(CircleShape)
-                                        .background(palette.colors[0])
-                                        .border(
-                                            width = if (paletteIndex == index) 2.dp else 0.dp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            shape = CircleShape,
-                                        )
-                                        .clickable {
-                                            paletteIndex = index
-                                            vm.store.monetPaletteIndex = index
-                                        },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (paletteIndex == index) {
-                                        Icon(
-                                            Icons.Rounded.Check,
-                                            contentDescription = "已选",
-                                            // 大排查 S9：浅色板上白色勾看不见，
-                                            // 按色块亮度取勾色（见 checkTintForSwatch）。
-                                            tint = com.tokimusic.app.ui.theme.checkTintForSwatch(palette.colors[0]),
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1041,9 +1118,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             options.forEachIndexed { index, (key, label) ->
                 // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-                SettingsSubCard(positionOf(index, options.size)) {
+                // 0.1.17 第 7 项：整卡可点——涟漪由卡片给，撑满整个栏位。
+                SettingsSubCard(positionOf(index, options.size), onClick = { onQualityChange(key) }) {
                     Row(
-                        Modifier.fillMaxWidth().clickable { onQualityChange(key) }.padding(vertical = 4.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(selected = quality == key, onClick = { onQualityChange(key) })
@@ -1096,12 +1174,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
     // 大排查 S4：翻译 / 罗马音两个开关直接读 SharedPreferences 直值
     // 当 checked，点按只写偏好不触发重组——开关看起来没动（与音频页
     // 音质单选同款问题）。改成本地 state 驱动。
-    // 0.1.16 第 2 条：三张卡是一组，组内 4dp 细缝。
+    // 0.1.16 第 2 条：两张卡是一组，组内 4dp 细缝。
     item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             var showTranslation by remember { mutableStateOf(vm.store.showTranslation) }
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-            // 0.1.15 第 21 项：与罗马音显示 / 歌词字体同组（首项）。
+            // 0.1.15 第 21 项：与罗马音显示同组（首项）。
+            // 0.1.17 第 8 项：歌词字体入口已删（歌词默认 Inter），本组只剩两张卡。
             SettingsSubCard(SegmentPosition.First) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("翻译显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -1114,82 +1193,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             // 第五轮第 26 项：罗马音显示（默认关；日语歌有服务端 romalrc 才显示，
             // 无数据不显示），与“翻译显示”同款 64dp 开关行。
             var showRomaji by remember { mutableStateOf(vm.store.showRomaji) }
-            // 0.1.15 第 21 项：歌词组中间项。
-            SettingsSubCard(SegmentPosition.Middle) {
+            // 0.1.15 第 21 项：歌词组末项。
+            SettingsSubCard(SegmentPosition.Last) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("罗马音显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(
                         checked = showRomaji,
                         onCheckedChange = { showRomaji = it; vm.store.showRomaji = it },
                     )
-                }
-            }
-            // 0.1.13 第 22 项：歌词字体改成下拉框——Inter / GoogleSans Bold
-            // 两个预设（原单选行改下拉）；选项行内用对应字体实时预览。
-            // 注：不用 ExposedDropdownMenuBox——material3 1.5.0-beta02 的
-            // ExposedDropdownMenu 是作用域成员调用，在这个 LazyListScope
-            // section 函数里解析不到；Box + DropdownMenu 的经典写法等效。
-            var preset by remember { mutableStateOf(vm.store.lyricFontPreset) }
-            var expanded by remember { mutableStateOf(false) }
-            val options = listOf(
-                "inter_pingfang" to "Inter",
-                "google_noto" to "GoogleSans",
-            )
-            // 0.1.15 第 21 项：歌词组末项。
-            SettingsSubCard(SegmentPosition.Last) {
-                Column {
-                    Text("歌词字体", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Box {
-                        OutlinedTextField(
-                            value = options.firstOrNull { it.first == preset }?.second ?: "Inter",
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = {
-                                Icon(
-                                    if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        // 透明点击层：只读输入框本身不接点击，点整行展开下拉框。
-                        Box(
-                            Modifier.matchParentSize().clickable { expanded = !expanded },
-                        )
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false },
-                            // 0.1.15 第 7② 条：按 TokiUI 规范与站内同款下拉
-                            // （SourceDropdown）对齐——菜单圆角用 shape.large
-                            // 28dp（token shape.large = 28），选中项加对勾；
-                            // 菜单视觉规范在 tokens 里只有 menus 场景句
-                            // （“打开菜单并选择一项，选择结果要写回页面”），
-                            // 无更细的视觉条目，故取站内已合规的同款做法。
-                            shape = RoundedCornerShape(28.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            options.forEach { (key, label) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            label,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontFamily = if (key == "inter_pingfang") LyricFontInterPingFangBold else LyricFontGoogleSansNotoBold,
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        if (key == preset) Icon(Icons.Rounded.Check, contentDescription = "已选")
-                                    },
-                                    onClick = {
-                                        preset = key
-                                        vm.store.lyricFontPreset = key
-                                        expanded = false
-                                    },
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }

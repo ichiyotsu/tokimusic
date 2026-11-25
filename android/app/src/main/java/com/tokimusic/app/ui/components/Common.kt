@@ -3,6 +3,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
@@ -34,14 +35,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.tokimusic.app.ui.pressScale
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
-import com.tokimusic.app.ui.theme.monetColorForPlaylist
-import com.tokimusic.app.ui.theme.sourceBadgeBackground
+import com.tokimusic.app.ui.theme.CjkBoldFamily
 
 /**
  * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
@@ -127,7 +130,7 @@ fun resolveArtistTap(
     else if (song.source != MusicSource.QQ) onOpenArtist(id)
 }
 
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -156,9 +159,15 @@ fun resolveArtistTap(
         // 0.1.13 第 23 项：双源同时展示时，封面左上角叠源徽标。
         Box(Modifier.size(48.dp)) {
             AsyncImage(song.picUrl, song.name, Modifier.matchParentSize().clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
-            if (showSourceBadge) SourceBadge(song.source, size = 20, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(2.dp))
+            if (showSourceBadge) SourceBadge(song.source, size = 20, modifier = Modifier.align(Alignment.TopStart).padding(2.dp))
         }
         Spacer(Modifier.width(12.dp))
+        // 0.1.17 第 9 项：leading 槽——只推荐新歌用，放封面与标题之间、
+        // 标题文字之前（来源 icon，见 SourceIcon）；与标题顶对齐。
+        if (leading != null) {
+            Box(Modifier.align(Alignment.Top).padding(top = 4.dp)) { leading() }
+            Spacer(Modifier.width(8.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (onOpenArtist != null) {
@@ -183,31 +192,28 @@ fun resolveArtistTap(
         if (trailingAction != null) { Spacer(Modifier.width(12.dp)); trailingAction() }
     }
 }
-@Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, paletteIndex: Int = 0, onClick: () -> Unit) {
-    // 0.1.15 第 11 项：莫奈色板落到歌单卡片上——整卡 16% 透明底（按歌单 id
-    // 稳定取色，与歌单详情页的歌曲行、资料库歌单行同款配方）。之前色板
-    // 只在双源徽标上出现，单源时首页看不到任何配色变化。封面顶角保持
-    // 20dp（与 28dp 徽标同心），底角收 0、与下方文字区齐平。
-    Box(
-        Modifier.width(140.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(monetColorForPlaylist(playlist.id, paletteIndex).copy(alpha = 0.16f))
-            .clickable(onClick = onClick),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)), contentScale = ContentScale.Crop)
-                // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
-                // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
-                if (showSourceBadge) {
-                    SourceBadge(playlist.source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
-                }
-            }
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text(playlist.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@Composable fun PlaylistCard(playlist: Playlist, showSourceBadge: Boolean = false, onClick: () -> Unit) {
+    // 0.1.17 第 2 项：恢复 0.1.15 之前的形态——歌单名在卡片外面：
+    // 纯 Column（140dp 宽）→ 140dp 封面（20dp 圆角）→ 8dp 间隔 →
+    // 标题 bodyMedium 两行 → 首数 bodySmall。0.1.15 第 11 项的 Monet
+    // 16%  tint 容器与第 8 项的 Monet 删除一并去掉。
+    // 0.1.17 第 2 项：标题与首数用 CJK-Bold-first 的 CjkBoldFamily——
+    // InterFamily 里 Inter 条目排在 CJK 之前，Bold 请求永远解析成 Inter，
+    // CJK 静态 Bold 文件从未被选中，日文假名只剩合成假粗体（见 NOTES.md）。
+    Column(Modifier.width(140.dp).clickable(onClick = onClick)) {
+        Box(Modifier.size(140.dp)) {
+            // 0.1.14 第 4 项：封面圆角改 20dp——与 28dp 源徽标（14dp
+            // 半径）+ 6dp 间距同心等圆角（14 + 6 = 20），视觉统一。
+            AsyncImage(playlist.coverUrl, playlist.name, Modifier.matchParentSize().clip(RoundedCornerShape(20.dp)), contentScale = ContentScale.Crop)
+            // 第六轮第二批第 21 项：双源都启用时，封面左上角叠 28dp 源徽标
+            // （0.1.13 第 1 / 2 / 12 项：图标换各源专属矢量，底色换莫奈色）。
+            if (showSourceBadge) {
+                SourceBadge(playlist.source, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, fontFamily = CjkBoldFamily, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, fontFamily = CjkBoldFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -216,18 +222,30 @@ fun resolveArtistTap(
  * 0.1.13 第 1 / 2 项：图标换各源专属矢量（网易云 mingcute
  * netease-music-line、QQ mingcute music-3-line、本地 mdi
  * folder-music-outline）；0.1.16 第 1 项：底色改用户指定的品牌底
- * （网易云 #ff5757、QQ #879101，本地仍取莫奈色板 colors[2]），
+ * （网易云 #ff5757、QQ #879101，本地用固定色 0xFFA9A8D8——原 Monet
+ * 默认色板 colors[2]，0.1.17 第 8 项 Monet 删除时固化下来），
  * 来源仍由图标形状区分。
  */
+val NeteaseBadgeBackground: Color = Color(0xFFFF5757)
+val QqBadgeBackground: Color = Color(0xFF879101)
+val LocalBadgeBackground: Color = Color(0xFFA9A8D8)
+
+/** 来源的图标底色（纯函数，可单测）：网易云 / QQ 用上面的品牌底色，本地用固定色。 */
+fun sourceBadgeBackground(source: MusicSource): Color = when (source) {
+    MusicSource.NETEASE -> NeteaseBadgeBackground
+    MusicSource.QQ -> QqBadgeBackground
+    MusicSource.LOCAL -> LocalBadgeBackground
+}
+
 @Composable
-fun SourceBadge(source: MusicSource, size: Int = 20, paletteIndex: Int = 0, modifier: Modifier = Modifier) {
+fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
     val iconRes = when (source) {
         MusicSource.NETEASE -> R.drawable.ic_source_netease
         MusicSource.QQ -> R.drawable.ic_source_qq
         MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Box(
-        modifier.size(size.dp).clip(CircleShape).background(sourceBadgeBackground(source, paletteIndex)),
+        modifier.size(size.dp).clip(CircleShape).background(sourceBadgeBackground(source)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -241,6 +259,29 @@ fun SourceBadge(source: MusicSource, size: Int = 20, paletteIndex: Int = 0, modi
             modifier = Modifier.size((size * 0.6).dp),
         )
     }
+}
+
+/**
+ * 裸来源 icon（0.1.17 第 9 项）：只有图标本身、无背景圆——推荐新歌行
+ * 里放在标题文字之前；来源用品牌色 tint 区分（与徽标底色同色）。
+ */
+@Composable
+fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
+    val iconRes = when (source) {
+        MusicSource.NETEASE -> R.drawable.ic_source_netease
+        MusicSource.QQ -> R.drawable.ic_source_qq
+        MusicSource.LOCAL -> R.drawable.ic_local_music
+    }
+    Icon(
+        painterResource(iconRes),
+        contentDescription = when (source) {
+            MusicSource.NETEASE -> "网易云音乐"
+            MusicSource.QQ -> "QQ音乐"
+            MusicSource.LOCAL -> "本地"
+        },
+        tint = sourceBadgeBackground(source),
+        modifier = modifier.size(size.dp),
+    )
 }
 
 /** 40dp 圆形小播放钮（搜索行与推荐新歌行共用：时长保留，钮另加在最右）。 */
@@ -265,24 +306,27 @@ fun SmallRoundPlayButton(onClick: () -> Unit) {
  * 原生分段按钮）：外层 28dp 圆角容器（surfaceContainer 底），内放等宽
  * pill；选中 pill 为 primaryContainer 底 + onPrimaryContainer 色字
  * （titleMedium Bold），未选中 onSurfaceVariant 色字；选中底块随选择
- * 滑动（位置 + 宽度动画）。
+ * 滑动。
+ * 0.1.17 第 10 项（切换动画优化）：指示器只动画 x 偏移一个值（px），
+ * 用 motionScheme.defaultSpatialSpec()（与底栏/播放器同款，走减弱动效
+ * 切换；之前是手写 spring + offset/width 两个 animateDpAsState，会漂移，
+ * 旋转时 width 也被弹簧带一下）；宽度直接由实测容器宽得出，不动画。
+ * 标签颜色用 animateColorAsState + defaultEffectsSpec() 过渡（之前瞬间
+ * 切换）；选项加 pressScale（与底栏/返回 chip 同款按压反馈）。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val motionScheme = MaterialTheme.motionScheme
     var containerWidthPx by remember { mutableStateOf(0) }
     val pillCount = options.size.coerceAtLeast(1)
     val innerPadding = 4.dp
     val pillWidthPx = if (containerWidthPx > 0) (containerWidthPx - with(density) { innerPadding.toPx() } * 2) / pillCount else 0f
-    val indicatorOffset by androidx.compose.animation.core.animateDpAsState(
-        targetValue = with(density) { (pillWidthPx * selectedIndex.coerceIn(0, pillCount - 1)).toDp() },
-        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+    val indicatorOffsetPx by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = pillWidthPx * selectedIndex.coerceIn(0, pillCount - 1),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "pillOffset",
-    )
-    val indicatorWidth by androidx.compose.animation.core.animateDpAsState(
-        targetValue = with(density) { pillWidthPx.toDp() },
-        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
-        label = "pillWidth",
     )
     Box(
         modifier
@@ -294,8 +338,8 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
         if (pillWidthPx > 0f) {
             Box(
                 Modifier
-                    .offset(x = indicatorOffset)
-                    .size(width = indicatorWidth, height = 36.dp)
+                    .offset { IntOffset(indicatorOffsetPx.roundToInt(), 0) }
+                    .size(width = with(density) { pillWidthPx.toDp() }, height = 36.dp)
                     .clip(RoundedCornerShape(percent = 50))
                     .background(MaterialTheme.colorScheme.primaryContainer),
             )
@@ -303,16 +347,23 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
         Row(Modifier.fillMaxWidth()) {
             options.forEachIndexed { index, label ->
                 val selected = index == selectedIndex
+                val interaction = remember { MutableInteractionSource() }
+                val labelColor by androidx.compose.animation.animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = motionScheme.defaultEffectsSpec(),
+                    label = "pillLabelColor",
+                )
                 Box(
                     Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(percent = 50))
-                        .clickable { onSelect(index) },
+                        .clickable(interactionSource = interaction, indication = ripple()) { onSelect(index) }
+                        .pressScale(interaction, 0.96f),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         label,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = labelColor,
                     )
                 }
             }
@@ -343,6 +394,19 @@ fun formatHours(totalMinutes: Long): String {
 
 /** 两个毫秒时间戳之间隔了多少个整天（向下取整；当天为 0 天；时钟回拨时不为负）。第五轮第 24 项。 */
 fun daysSince(firstMs: Long, nowMs: Long): Long = ((nowMs - firstMs) / 86_400_000L).coerceAtLeast(0L)
+
+/**
+ * 自定义 ID 的默认值（0.1.17 第 15 项，纯函数，可单测）：不改就是注册的
+ * 年月日时，格式 YYMMDDHH（如 26112511 = 2026 年 11 月 25 日 11 时注册），
+ * 设备本地时区、精确到小时。注册时间取首次登录时间戳 firstLoginMs
+ * （服务端 createTime 恒 -1 不能用，见 NeteaseClient；首次登录只记一次，
+ * 退出不清除）；未记录（0，如 QQ 单登录）时回落到 uid（旧行为）。
+ */
+fun defaultCustomId(firstLoginMs: Long, uid: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+    if (firstLoginMs > 0L) {
+        java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(firstLoginMs), zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyMMddHH", java.util.Locale.US))
+    } else uid.toString()
 
 /**
  * 边缘淡入淡出（0.1.13 第 16 / 17 项）：内容在上下或左右边缘做 alpha
@@ -438,12 +502,15 @@ fun TokiCardRow(
 fun TokiSheetContainer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    // 0.1.17 第 18 项：底色可传——搜索页用 90% 不透明度的底色做
+    // 模糊透明效果；其他弹窗不传，仍是不透明 surfaceContainerLow。
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        containerColor = containerColor,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         modifier = modifier,
     ) {

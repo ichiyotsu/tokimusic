@@ -32,6 +32,10 @@ interface NeteaseApi {
     suspend fun artistSublist(): List<Artist>         // /artist/sublist （我关注的歌手）
     /** 关注 / 取消关注歌手（0.1.13 第 24 项）：/api/artist/sub|unsub（weapi，上游 artist_sub 模块）；返回是否成功。 */
     suspend fun artistSub(id: Long, subscribe: Boolean): Boolean
+    /** 收藏 / 取消收藏歌单（0.1.17 第 3 项）：/api/playlist/subscribe|unsubscribe（eapi，上游 playlist_subscribe 模块）；返回是否成功。 */
+    suspend fun playlistSub(id: Long, subscribe: Boolean): Boolean
+    /** 听歌打卡（0.1.17 第 13 项）：/api/feedback/weblog（weapi，上游 scrobble 模块，action=play，time=已播秒数）；返回是否成功。 */
+    suspend fun scrobble(id: Long, sourceId: Long, timeSeconds: Int): Boolean
     suspend fun artistDetail(id: Long): Artist        // /artist/head/info/get （第三轮第 12 项，weapi；上游模块未指定 crypto，实测 weapi 可用）
     suspend fun artistTopSongs(id: Long): List<Song>  // /artist/top/song （第三轮第 12 项，weapi，热门 50 首）
     suspend fun artistSongs(id: Long): List<Song>   // /v1/artist/songs （第五轮第 13 项，eapi，分页拉全量 + 去 live + 原唱/单曲优先排序）

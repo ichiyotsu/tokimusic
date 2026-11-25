@@ -37,7 +37,6 @@ import com.tokimusic.app.ui.components.isTitleScrolledOut
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.components.segmentedCorners
-import com.tokimusic.app.ui.theme.monetColorForPlaylist
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 /**
@@ -124,12 +123,20 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
     val count = if (tracks.isNotEmpty()) tracks.size else pl.trackCount
     // 0.1.12：收藏态与播放模式（控制行用）。
     val favoriteIds by vm.favoritePlaylistIds.collectAsState()
+    val subscribedIds by vm.subscribedPlaylistIds.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
     // 0.1.14 第 7 项：单按钮位的按压回弹交互源。
     val modeInteraction = remember { MutableInteractionSource() }
     // 0.1.13 第 25 项：收藏移到顶栏——详情 / 收藏态变化时向外层报告
     // (是否已收藏, 切换)，顶栏右侧显示星星图标按钮（见 TokiMusicApp）。
-    val isFavDetail = detail?.let { playlistFavoriteKey(it.first.source, it.first.id) in favoriteIds } ?: false
+    // 0.1.17 第 3 项：收藏态 = 本地收藏 || 服务端已订阅——资料库“我收藏
+    // 的歌单”里的歌单进详情页不再显示未收藏。QQ 的订阅态只在 QQ 资料库
+    // 里才知道，进 QQ 详情时若还没拉过就拉一次（loadQqLibrary 未加载时
+    // 才请求，已加载/未登录时是空操作）。
+    val isFavDetail = detail?.let { playlistFavoriteKey(it.first.source, it.first.id) in favoriteIds || playlistFavoriteKey(it.first.source, it.first.id) in subscribedIds } ?: false
+    LaunchedEffect(detail?.first?.source) {
+        if (detail?.first?.source == MusicSource.QQ) vm.loadQqLibrary()
+    }
     LaunchedEffect(detail, isFavDetail) {
         onFavoriteAction(if (detail == null) null else isFavDetail to { vm.toggleFavoritePlaylist(pl) })
     }
@@ -255,8 +262,8 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                         }
                     }
                 }
-                // 0.1.13 第 12 项：歌曲行底色改莫奈色系（按歌单 id 稳定取色，
-                // 16% 透明底，20dp 圆角，行间 4dp、页边 16dp）。
+                // 0.1.17 第 8 项：Monet 已删——歌曲行底色改回默认
+                // surfaceContainer（20dp 圆角，行间 4dp、页边 16dp）。
                 // 0.1.15 第 21 项：改分段圆角——首项上 20 / 下 4，中间项
                 // 4dp，末项上 4 / 下 20，单首歌上下都 20dp；行间 4dp 不动。
                 val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }
@@ -265,7 +272,7 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                         Modifier.fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                             .clip(segmentedCorners(positionOf(i, tracks.size), 20.dp))
-                            .background(monetColorForPlaylist(pl.id, vm.store.monetPaletteIndex).copy(alpha = 0.16f)),
+                            .background(MaterialTheme.colorScheme.surfaceContainer),
                     ) {
                         SongRow(song, i, onOpenArtist = openArtistForRows, horizontalPadding = 16.dp, onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) }) { vm.play(tracks, i, pl.name) }
                     }

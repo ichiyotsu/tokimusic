@@ -50,7 +50,7 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     private val showRomajiState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("show_romaji", false))
     /** 歌词逐字时序偏移（毫秒，0.1.15 第 6 项）：逐字高亮与播放之间的时间
      * 偏移，正值让高亮延后（字比声音晚出现）、负值提前；0 = 跟随原时间轴。
-     * 范围 -500..+500，步进 50；状态驱动，与 monetPaletteIndex 同款。 */
+     * 范围 -500..+500，步进 50；状态驱动。 */
     var lyricTimingOffsetMs: Int
         get() = lyricTimingOffsetMsState.intValue
         set(v) {
@@ -63,6 +63,14 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 实时通知（媒体通知）开关（默认开）。 */
     var liveUpdatesEnabled: Boolean get() = prefs.getBoolean(LIVE_UPDATES_KEY, true)
         set(v) { prefs.edit().putBoolean(LIVE_UPDATES_KEY, v).apply() }
+    /** 实时歌词开关（0.1.17 第 12 项，默认关）：开启后通知标题实时
+     * 显示当前唱到的歌词行；关闭后恢复歌名。只在实时通知开启时生效。 */
+    var liveLyricsEnabled: Boolean get() = prefs.getBoolean(LIVE_LYRICS_KEY, false)
+        set(v) { prefs.edit().putBoolean(LIVE_LYRICS_KEY, v).apply() }
+    /** 听歌记录上报开关（0.1.17 第 13 项，默认开——用户 2026-11-25 定）：
+     * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */
+    var scrobbleEnabled: Boolean get() = prefs.getBoolean(SCROBBLE_KEY, true)
+        set(v) { prefs.edit().putBoolean(SCROBBLE_KEY, v).apply() }
 
     /** 播放服务监听开关变化，开关翻动时立即刷新媒体通知。 */
     fun registerLiveUpdatesListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
@@ -75,6 +83,10 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     companion object {
         /** 实时通知开关的偏好 key。 */
         const val LIVE_UPDATES_KEY = "live_updates_enabled"
+        /** 实时歌词开关的偏好 key（0.1.17 第 12 项）。 */
+        const val LIVE_LYRICS_KEY = "live_lyrics_enabled"
+        /** 听歌记录上报开关的偏好 key（0.1.17 第 13 项）。 */
+        const val SCROBBLE_KEY = "scrobble_enabled"
     }
     /** 空间音频开关（第二轮第 6 项 B，默认关）。 */
     var spatialAudioEnabled: Boolean get() = prefs.getBoolean("spatial_audio_enabled", false)
@@ -91,9 +103,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 退出登录不清除——“第一次登录”只记一次）。 */
     var firstLoginMs: Long get() = prefs.getLong("first_login_ms", 0L)
         set(v) { prefs.edit().putLong("first_login_ms", v).apply() }
-    /** 歌词字体预设（第三轮第 16 项）："inter_pingfang"（默认）或 "google_noto"。 */
-    var lyricFontPreset: String get() = prefs.getString("lyric_font_preset", "inter_pingfang") ?: "inter_pingfang"
-        set(v) { prefs.edit().putString("lyric_font_preset", v).apply() }
     /** QQ 音乐登录凭证（第六轮第 1 项）：musicid / musickey，与网易云 cookie
      * 一样明文存 SharedPreferences（P1 同款，见类注释）。空 = 未登录 QQ。 */
     override var qqMusicId: String get() = prefs.getString("qq_music_id", "") ?: ""
@@ -145,20 +154,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     var favoritePlaylistIds: Set<String>
         get() = prefs.getStringSet("favorite_playlist_ids", emptySet()) ?: emptySet()
         set(v) { prefs.edit().putStringSet("favorite_playlist_ids", v).apply() }
-    /** 莫奈色板序号（0.1.13 第 12 / 21 项）：个性化里选中的色板，
-     * 歌单显示背景与图标 tile 底色用它；0 = 睡莲。
-     * 大排查 S13：改成 Compose 状态驱动——之前是 SharedPreferences
-     * 直值，个性化里换色板后，首页 / 资料库 / 歌单页的莫奈底色要等
-     * 重进页面才变；现在换完立即全页生效。 */
-    var monetPaletteIndex: Int
-        get() = monetPaletteIndexState.intValue
-        set(v) {
-            monetPaletteIndexState.intValue = v
-            prefs.edit().putInt("monet_palette_index", v).apply()
-        }
-    private val monetPaletteIndexState = androidx.compose.runtime.mutableIntStateOf(
-        prefs.getInt("monet_palette_index", 0),
-    )
     /** 自定义头像的本地文件路径（0.1.13 第 18 项，Tokinote 方案：
      * 图片选择器挑图后拷进应用私有目录）；空 = 用服务端头像。 */
     var profileAvatarPath: String get() = prefs.getString("profile_avatar_path", "") ?: ""

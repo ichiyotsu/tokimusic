@@ -63,8 +63,6 @@ import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.theme.TokiBlack
-import com.tokimusic.app.ui.theme.monetColorForPlaylist
-import com.tokimusic.app.ui.theme.monetPalette
 
 // Round 3 item 2: lifted to TokiMusicApp (with playlistId) so second-level
 // pages get the floating OverlayTitleHeader; was private + internal state.
@@ -105,6 +103,8 @@ fun LibraryScreen(
     onCloseSection: () -> Unit,
     // Round 3 item 13: "听歌时长" stat opens the listening-stats page.
     onOpenListeningStats: () -> Unit = {},
+    // 0.1.17 第 17 项：网易云听歌时长入口打开收听报告页（周/月/年）。
+    onOpenNeteaseReport: () -> Unit = {},
     // Round 3 item 12: artist rows open the artist page, album rows open
     // the album detail page; song-row artist names are artist entries too.
     onOpenArtist: (Long) -> Unit = {},
@@ -126,15 +126,15 @@ fun LibraryScreen(
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
     val qqLoggedIn by vm.qqLoggedIn.collectAsState()
-    val qqStats by vm.qqStats.collectAsState()
     val localStats by vm.localStats.collectAsState()
-    val paletteIndex = vm.store.monetPaletteIndex
     // 0.1.13 第 23 项：按源开关解析实际显示的统计源；两源都开时
     // 歌单 / 歌曲行显示源徽标。
     val effectiveStats = resolveLibraryStatsSource(neteaseEnabled, qqEnabled, LibraryStatsSource.BOTH)
     val showSourceBadge = effectiveStats == LibraryStatsSource.BOTH
     // 0.1.13 第 23 项：本地模式下刷新本地时长。
-    LaunchedEffect(effectiveStats) { if (effectiveStats == LibraryStatsSource.LOCAL) vm.refreshLocalStats() }
+    // 0.1.17 第 14 项：QQ 那行改成 tokimusic 行后，BOTH / QQ 档位也显示
+    // 本地累计时长，刷新条件放宽到非网易云单源档位。
+    LaunchedEffect(effectiveStats) { if (effectiveStats != LibraryStatsSource.NETEASE) vm.refreshLocalStats() }
     // Loading follows the section; back handling lives in TokiMusicApp (so a
     // playlist opened from a section still closes the playlist first).
     LaunchedEffect(section) {
@@ -167,11 +167,11 @@ fun LibraryScreen(
             // Round 3 item 2: no in-page back row — the floating header
             // (OverlayTitleHeader) carries the back chip + title now.
             when (section) {
-                LibrarySection.Liked -> likedSongsSection(allLikedSongs, { id -> resolveArtistTap(allLikedSongs, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, paletteIndex, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(allLikedSongs, i, "收藏") }
-                LibrarySection.Playlists -> playlistsSection(allPlaylists, profile?.uid ?: 0, showSourceBadge, paletteIndex, onOpenPlaylist)
+                LibrarySection.Liked -> likedSongsSection(allLikedSongs, { id -> resolveArtistTap(allLikedSongs, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(allLikedSongs, i, "收藏") }
+                LibrarySection.Playlists -> playlistsSection(allPlaylists, profile?.uid ?: 0, showSourceBadge, onOpenPlaylist)
                 LibrarySection.Artists -> artistsSection(allArtists, onOpenArtist, onOpenQqArtist)
                 LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
-                LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, paletteIndex, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i, "歌曲") }
+                LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i, "歌曲") }
                 null -> {}
             }
             return@LazyColumn
@@ -183,9 +183,11 @@ fun LibraryScreen(
         val likedCount = (if (loggedIn) mine.likeCount else 0) + (qqLibrary?.favSongs?.size ?: 0)
         val playlistCount = (if (loggedIn) mine.playlistCount else 0) + (qqLibrary?.playlists?.size ?: 0)
         // 0.1.13 第 23 项：等级 / 听歌时长按源显示——网易云用 mine.level /
-        // mine.estimatedListeningMinutes；QQ 用 Lv.1 / “—”（QQ 无等级与
-        // 时长接口）；本地模式用 tokimusic 的本地时长（Lv.1）；两源都开
-        // 时显示两行，每行等级值前面带 28dp 源图标。
+        // mine.estimatedListeningMinutes；本地模式用 tokimusic 的本地时长
+        // （Lv.1）。0.1.17 第 14 项：QQ 那行（QQ icon + 等级 + 听歌时长，
+        // QQ 无时长接口、时长恒为“—”）换成 tokimusic 行——本机累计听歌时长
+        // （PlaybackStatsStore.totalMinutes），点它打开听歌时长页；两源
+        // 都开时第二行是 tokimusic 行，单 QQ 档位也只显示这一行。
         // 显示条件：网易云源需登录网易云，QQ 源需登录 QQ，本地模式总显示。
         val statsVisible = when (effectiveStats) {
             LibraryStatsSource.NETEASE -> loggedIn
@@ -199,15 +201,20 @@ fun LibraryScreen(
                     LibraryStatsSource.NETEASE -> StatsPair(
                         level = if (loggedIn) mine.level?.let { "Lv.$it" } ?: "—" else "—",
                         minutes = if (loggedIn) formatHours(mine.estimatedListeningMinutes) else "—",
-                        onMinutesClick = onOpenListeningStats,
+                        // 0.1.17 第 17 项：网易云行点听歌时长进收听报告页。
+                        onMinutesClick = onOpenNeteaseReport,
                     )
                     LibraryStatsSource.QQ -> StatsPair(
-                        level = "Lv.${qqStats.level}",
-                        minutes = qqStats.minutes?.let { formatHours(it) } ?: "—",
+                        level = "Lv.${localStats.level}",
+                        minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
+                        onMinutesClick = onOpenListeningStats,
+                        leadingIconRes = R.drawable.ic_local_music,
                     )
                     LibraryStatsSource.LOCAL -> StatsPair(
                         level = "Lv.${localStats.level}",
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
+                        // 0.1.17 第 14 项补：本地模式的 tokimusic 行同样点进听歌时长页。
+                        onMinutesClick = onOpenListeningStats,
                     )
                     LibraryStatsSource.BOTH -> Column(
                         Modifier.fillMaxWidth().padding(24.dp),
@@ -216,14 +223,16 @@ fun LibraryScreen(
                         StatsPair(
                             level = if (loggedIn) mine.level?.let { "Lv.$it" } ?: "—" else "—",
                             minutes = if (loggedIn) formatHours(mine.estimatedListeningMinutes) else "—",
-                            onMinutesClick = onOpenListeningStats,
+                            // 0.1.17 第 17 项：网易云行点听歌时长进收听报告页。
+                            onMinutesClick = onOpenNeteaseReport,
                             leadingIconRes = R.drawable.ic_source_netease,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         StatsPair(
-                            level = "Lv.${qqStats.level}",
-                            minutes = qqStats.minutes?.let { formatHours(it) } ?: "—",
-                            leadingIconRes = R.drawable.ic_source_qq,
+                            level = "Lv.${localStats.level}",
+                            minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
+                            onMinutesClick = onOpenListeningStats,
+                            leadingIconRes = R.drawable.ic_local_music,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -232,19 +241,17 @@ fun LibraryScreen(
         }
         item {
             Spacer(Modifier.height(8.dp))
-            // 0.1.15 第 11 项：五个分区卡按色板取色（每卡一色，16% 透明，
-            // 与歌单行同款配方），换色板后五卡一起变色。
+            // 0.1.17 第 8 项：Monet 已删——五个分区卡不再按色板取色，
+            // 用默认 surfaceContainer 底色。
             TokiCardRow(
                 Icons.Rounded.Star, "收藏",
                 if (anyLoggedIn) "$likedCount 首" else "登录后查看",
-                backgroundColor = monetPalette(paletteIndex).colors[0].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.QueueMusic, "歌单",
                 if (anyLoggedIn) "$playlistCount 个歌单" else "登录后查看",
-                backgroundColor = monetPalette(paletteIndex).colors[1].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
@@ -252,21 +259,18 @@ fun LibraryScreen(
                 // 0.1.13 第 24 项：“艺人”改名“歌手”。
                 Icons.Rounded.Mic, "歌手",
                 if (anyLoggedIn) "我关注的歌手" else "登录后查看",
-                backgroundColor = monetPalette(paletteIndex).colors[2].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.Album, "专辑",
                 if (anyLoggedIn) "我收藏的专辑" else "登录后查看",
-                backgroundColor = monetPalette(paletteIndex).colors[3].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.MusicNote, "歌曲",
                 if (anyLoggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
-                backgroundColor = monetPalette(paletteIndex).colors[4].copy(alpha = 0.16f),
             ) { if (anyLoggedIn) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         if (loggedIn) {
@@ -286,7 +290,7 @@ fun LibraryScreen(
                                 )
                                 // 0.1.13 第 23 项：两源都开时封面左上角叠源徽标。
                                 if (showSourceBadge) {
-                                    SourceBadge(playlist.source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+                                    SourceBadge(playlist.source, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -300,7 +304,7 @@ fun LibraryScreen(
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge, paletteIndex = paletteIndex) { vm.play(mine.record.take(10).map { it.song }, i, "听歌排行") }
+                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge) { vm.play(mine.record.take(10).map { it.song }, i, "听歌排行") }
             }
         }
     }
@@ -321,7 +325,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
     likedSongs: List<com.tokimusic.app.data.model.Song>,
     onOpenArtist: (Long) -> Unit,
     showSourceBadge: Boolean = false,
-    paletteIndex: Int = 0,
     onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
@@ -335,7 +338,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
             )
         }
     } else {
-        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, paletteIndex = paletteIndex) { onPlay(i) } }
+        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge) { onPlay(i) } }
     }
 }
 
@@ -343,7 +346,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
     myPlaylists: List<com.tokimusic.app.data.model.Playlist>,
     myUid: Long,
     showSourceBadge: Boolean = false,
-    paletteIndex: Int = 0,
     onOpenPlaylist: (Long) -> Unit,
 ) {
     // 保留原“我的歌单”的分组（我喜欢的音乐 / 我创建的歌单 / 我收藏的歌单）。
@@ -370,12 +372,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
             )
         }
         items(list) { playlist ->
-        // 0.1.13 第 12 项：歌单行底色用莫奈色系（按歌单 id 稳定取色，
-        // 16% 透明度，20dp 圆角，16dp 横向内边距，与歌单详情页同款）。
+        // 0.1.17 第 8 项：Monet 已删——歌单行底色改回默认
+        // surfaceContainer（20dp 圆角，16dp 横向内边距，与歌单详情页同款）。
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(monetColorForPlaylist(playlist.id, paletteIndex).copy(alpha = 0.16f))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
                 .clickable { onOpenPlaylist(playlist.id) }
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -402,7 +404,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
             // 封面左上角；只在双源都开时显示。
             if (showSourceBadge) {
                 Spacer(Modifier.width(12.dp))
-                SourceBadge(playlist.source, size = 20, paletteIndex = paletteIndex)
+                SourceBadge(playlist.source, size = 20)
             }
         }
     }
@@ -464,7 +466,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     recent: List<com.tokimusic.app.data.model.Song>,
     onOpenArtist: (Long) -> Unit,
     showSourceBadge: Boolean = false,
-    paletteIndex: Int = 0,
     onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
     onPlay: (Int) -> Unit,
 ) {
@@ -481,7 +482,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
             )
         }
     } else {
-        itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, paletteIndex = paletteIndex) { onPlay(i) } }
+        itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge) { onPlay(i) } }
     }
 }
 

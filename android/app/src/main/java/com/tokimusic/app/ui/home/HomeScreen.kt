@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,7 +60,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -79,6 +77,7 @@ import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
+import com.tokimusic.app.ui.components.SourceIcon
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiGlassFade
@@ -121,8 +120,6 @@ fun HomeScreen(
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
     val bothEnabled = neteaseEnabled && qqEnabled
-    // 0.1.13 第 12 项：莫奈配色序号（歌单徽标底色用）。
-    val paletteIndex = vm.store.monetPaletteIndex
     val toplist by vm.toplist.collectAsState()
     // Sixth round, batch 2, item 33: the toplist now lives on Home —
     // load it here (force on source toggle so a switch re-fetches).
@@ -254,7 +251,6 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
-                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -268,7 +264,6 @@ fun HomeScreen(
                             hazeState = hazeState,
                             backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
-                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -300,7 +295,6 @@ fun HomeScreen(
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
-                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -315,7 +309,6 @@ fun HomeScreen(
                             backdropBlur = backdropBlur,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
-                            paletteIndex = paletteIndex,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -378,7 +371,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    ToplistGrid(neToplist, paletteIndex, onOpenPlaylist)
+                    ToplistGrid(neToplist, onOpenPlaylist)
                 }
             }
             if (qqToplist.isNotEmpty()) {
@@ -392,7 +385,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    ToplistGrid(qqToplist, paletteIndex, onOpenPlaylist)
+                    ToplistGrid(qqToplist, onOpenPlaylist)
                 }
             }
         }
@@ -411,20 +404,20 @@ fun HomeScreen(
                 Spacer(Modifier.height(8.dp))
                 LazyHorizontalGrid(
                     rows = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxWidth().height(632.dp),
+                    modifier = Modifier.fillMaxWidth().height(644.dp),
                     contentPadding = PaddingValues(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(allPlaylists, key = { it.id }) { playlist ->
-                        PlaylistCard(playlist, showSourceBadge = bothEnabled, paletteIndex = paletteIndex) { onOpenPlaylist(playlist.id) }
+                        PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) }
                     }
                 }
             }
         }
-        // Sixth round, batch 2, items 8 + 21: recommended new songs in a
-        // 2-row horizontally scrolling grid; each row is a SongRow with
-        // duration → round play button → source icon on the right.
+        // Sixth round, batch 2, items 8 + 21: recommended new songs.
+        // 0.1.17 第 9 项：改成 10 行垂直列表；每行是 SongRow，来源 icon
+        // 无背景放标题前、尾部只留圆形播放钮。
         val allNewSongs = home.newSongs + home.qqNewSongs
         if (allNewSongs.isNotEmpty()) {
             item {
@@ -435,7 +428,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Spacer(Modifier.height(8.dp))
-                NewSongsGrid(allNewSongs, bothEnabled, paletteIndex, vm, onOpenArtist, onOpenQqArtist)
+                NewSongsGrid(allNewSongs, vm, onOpenArtist, onOpenQqArtist)
             }
         }
     }
@@ -455,55 +448,39 @@ fun HomeScreen(
 
 /** Toplist 2-row horizontal grid (Discover's layout, moved onto Home). */
 @Composable
-private fun ToplistGrid(playlists: List<Playlist>, paletteIndex: Int = 0, onOpenPlaylist: (Long) -> Unit) {
+private fun ToplistGrid(playlists: List<Playlist>, onOpenPlaylist: (Long) -> Unit) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxWidth().height(416.dp),
+        modifier = Modifier.fillMaxWidth().height(424.dp),
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(playlists, key = { it.id }) { playlist ->
-            PlaylistCard(playlist, paletteIndex = paletteIndex) { onOpenPlaylist(playlist.id) }
+            PlaylistCard(playlist) { onOpenPlaylist(playlist.id) }
         }
     }
 }
 
-/** Recommended new songs: 6-row horizontally scrolling grid of SongRows (0.1.15 第 16 项：2 行 → 6 行）。 */
+/** Recommended new songs: 10-row vertical list (0.1.17 第 9 项：6 行横向网格
+ * → 10 行列表，取前 10 首、顺序不变）。每行：来源 icon 无背景（SourceIcon，
+ * 品牌色 tint）放在标题文字之前（SongRow leading 槽）；尾部只留圆形播放钮，
+ * 旧的 SourceBadge 徽标去掉。 */
 @Composable
-private fun NewSongsGrid(songs: List<Song>, bothEnabled: Boolean, paletteIndex: Int = 0, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
-    // One column is one full-width song row (screen width minus the 24dp
-    // page margins); SongRow's own horizontal padding is 0 here because
-    // the grid's contentPadding already provides the margins.
+private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
     // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（混源列表，
     // 用 resolveArtistTap 分流）。
     val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(songs, id, onOpenArtist, onOpenQqArtist) }
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    LazyHorizontalGrid(
-        rows = GridCells.Fixed(6),
-        modifier = Modifier.fillMaxWidth().height(448.dp),
-        contentPadding = PaddingValues(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
-            Box(Modifier.width(screenWidth - 48.dp)) {
-                SongRow(
-                    song,
-                    onOpenArtist = openArtistForRows,
-                    onLongPress = { vm.openSongActions(it) },
-                    horizontalPadding = 0.dp,
-                    trailingAction = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") }
-                            if (bothEnabled) {
-                                Spacer(Modifier.width(8.dp))
-                                SourceBadge(song.source, paletteIndex = paletteIndex)
-                            }
-                        }
-                    },
-                ) { vm.play(songs, index, "推荐新歌") }
-            }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        songs.take(10).forEachIndexed { index, song ->
+            SongRow(
+                song,
+                onOpenArtist = openArtistForRows,
+                onLongPress = { vm.openSongActions(it) },
+                horizontalPadding = 0.dp,
+                leading = { SourceIcon(song.source, size = 20) },
+                trailingAction = { SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") } },
+            ) { vm.play(songs, index, "推荐新歌") }
         }
     }
 }
@@ -568,7 +545,6 @@ private fun RecommendCard(
     // 大排查 B2：徽标按卡片来源画——QQ 每日/雷达传 QQ，之前这里写死
     // 网易云，QQ 卡片顶着网易云徽标。
     source: MusicSource = MusicSource.NETEASE,
-    paletteIndex: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val hasCover = loggedIn && songs.isNotEmpty()
@@ -638,7 +614,7 @@ private fun RecommendCard(
             // 0.1.16 第 1 项起徽标底色是品牌色（网易云 #ff5757、QQ #879101），
             // 不再是莫奈色系；来源由 source 参数定（B2）。
             if (showSourceBadge) {
-                SourceBadge(source, size = 28, paletteIndex = paletteIndex, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+                SourceBadge(source, size = 28, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
             }
         }
     }

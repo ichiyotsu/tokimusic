@@ -91,6 +91,7 @@ import com.tokimusic.app.ui.home.HomeScreen
 import com.tokimusic.app.ui.library.LibraryScreen
 import com.tokimusic.app.ui.library.LibrarySection
 import com.tokimusic.app.ui.stats.ListeningStatsScreen
+import com.tokimusic.app.ui.stats.NeteaseReportScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
@@ -213,6 +214,8 @@ fun TokiMusicApp(
         var librarySection by remember { mutableStateOf<LibrarySection?>(null) }
         // Round 3 item 13: listening-stats second-level page.
         var statsOpen by remember { mutableStateOf(false) }
+        // 0.1.17 第 17 项：网易云收听报告二级页（资料库网易云听歌时长入口）。
+        var neteaseReportOpen by remember { mutableStateOf(false) }
         // Sixth round, batch 2, item 10: the stats page's 〈!〉 annotation.
         var statsNoteVisible by remember { mutableStateOf(false) }
         LaunchedEffect(statsOpen) { if (!statsOpen) statsNoteVisible = false }
@@ -315,6 +318,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> artistTitle
             playlistId != null -> playlistTitle
             statsOpen -> "听歌时长"
+            neteaseReportOpen -> "收听报告"
             librarySection != null -> librarySection!!.title
             dest == Dest.Home -> homeSectionTitle
             else -> stringResource(navEntries.first { it.dest == dest }.label)
@@ -330,7 +334,7 @@ fun TokiMusicApp(
         // 第五轮第 9 项（用户确认）：底栏隐藏所有二级页都一样做——导航胶囊
         // 只在三个 tab 页显示；MiniPlayer 仍留在底边（见 BottomChrome）。
         val isSecondLevel = albumId != null || qqAlbumMid != null || artistId != null || qqArtistMid != null || playlistId != null ||
-            statsOpen || librarySection != null
+            statsOpen || neteaseReportOpen || librarySection != null
         val bottomNavVisible = !showPlayer && !isSecondLevel
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
@@ -340,6 +344,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> closeQqArtist
             playlistId != null -> ({ playlistId = null })
             statsOpen -> ({ statsOpen = false })
+            neteaseReportOpen -> ({ neteaseReportOpen = false })
             librarySection != null -> ({ librarySection = null })
             else -> null
         }
@@ -350,7 +355,8 @@ fun TokiMusicApp(
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid != null) { closeQqArtist() }
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId != null) { playlistId = null }
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && statsOpen) { statsOpen = false }
-        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && librarySection != null) { librarySection = null }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && neteaseReportOpen) { neteaseReportOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && !neteaseReportOpen && librarySection != null) { librarySection = null }
 
         val contentGap = tokiSpace("lg")
         val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -374,6 +380,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> "qqartist:$qqArtistMid"
             playlistId != null -> "playlist:$playlistId"
             statsOpen -> "stats"
+            neteaseReportOpen -> "netease-report"
             librarySection != null -> "section:$librarySection"
             else -> dest
         }
@@ -409,6 +416,7 @@ fun TokiMusicApp(
                                         qqAlbumMid = null
                                         librarySection = null
                                         statsOpen = false
+                                        neteaseReportOpen = false
                                         searchSheetOpen = false
                                         showPlayer = false
                                     },
@@ -468,9 +476,15 @@ fun TokiMusicApp(
                                     trailing = when {
                                         statsOpen && playlistId == null && artistId == null && albumId == null && librarySection == null -> {
                                             {
-                                                IconButton(onClick = { statsNoteVisible = !statsNoteVisible }) {
-                                                    Icon(Icons.Rounded.PriorityHigh, contentDescription = "查看网易云统计估算")
-                                                }
+                                                // 0.1.17 第 11 项：〈!〉改成返回 chip 同款
+                                                // 磨砂圆钮（TokiGlassIconButton）。
+                                                TokiGlassIconButton(
+                                                    icon = Icons.Rounded.PriorityHigh,
+                                                    label = "查看网易云统计估算",
+                                                    backdropBlur = theme.backdropBlur,
+                                                    hazeState = hazeState,
+                                                    onClick = { statsNoteVisible = !statsNoteVisible },
+                                                )
                                             }
                                         }
                                         // 0.1.13 第 25 项：歌单详情页顶栏右侧收藏星星
@@ -503,7 +517,7 @@ fun TokiMusicApp(
                                                 )
                                             }
                                         }
-                                        playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen -> {
+                                        playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
                                             {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
@@ -654,6 +668,11 @@ fun TokiMusicApp(
                                             noteVisible = statsNoteVisible,
                                             onNoteDismiss = { statsNoteVisible = false },
                                         )
+                                        // 0.1.17 第 17 项：网易云收听报告页。
+                                        key == "netease-report" -> NeteaseReportScreen(
+                                            vm, topPadding, bottomPadding,
+                                            onOpenArtist = { artistId = it },
+                                        )
                                         key == Dest.Home -> HomeScreen(
                                             vm, topPadding, bottomPadding,
                                             hazeState, theme.backdropBlur,
@@ -672,6 +691,7 @@ fun TokiMusicApp(
                                             onOpenSection = { librarySection = it },
                                             onCloseSection = { librarySection = null },
                                             onOpenListeningStats = { statsOpen = true },
+                                            onOpenNeteaseReport = { neteaseReportOpen = true },
                                             onOpenArtist = { artistId = it },
                                             onOpenAlbum = { albumId = it },
                                             // 0.1.15 资料库同步：QQ 关注歌手按 mid 进 QQ 歌手页。
@@ -714,6 +734,7 @@ fun TokiMusicApp(
                                     qqAlbumMid = null
                                     librarySection = null
                                     statsOpen = false
+                                    neteaseReportOpen = false
                                     searchSheetOpen = false
                                     showPlayer = false
                                 },

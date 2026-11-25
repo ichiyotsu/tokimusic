@@ -425,6 +425,47 @@ class PlayerController(context: Context) {
 }
 
 /**
+ * 0.1.17 第 12 项：实时歌词行共享——UI 层（AppViewModel 的 500ms
+ * 循环）算出当前唱到的行写进来；播放服务读它改通知标题。
+ * 只在行文本变化时通知观察者（服务据此重发一次通知），不逐 tick 推。
+ */
+object LiveLyricLine {
+    @Volatile var current: String? = null
+        private set
+    private var onChange: (() -> Unit)? = null
+
+    fun update(line: String?) {
+        if (current == line) return
+        current = line
+        onChange?.invoke()
+    }
+
+    fun observe(onChange: (() -> Unit)?) {
+        this.onChange = onChange
+    }
+}
+
+/**
+ * 0.1.17 第 12 项：实时歌词通知提供方——DefaultMediaNotificationProvider
+ * 的子类，只覆写 getNotificationContentTitle（media3 1.8.0 javap 核实：
+ * createNotification 是 final，改不了；getNotificationContentTitle 是
+ * protected 的扩展点，见 DefaultMediaNotificationProvider）。实时歌词
+ * 开启且有当前行时标题返回歌词行，否则走父类（歌名）；副标题（歌手）
+ * 不动。不用 replaceMediaItem 换元数据——那会重建播放源、断流。
+ */
+private class LiveLyricsNotificationProvider(
+    context: Context,
+    private val store: SettingsStore,
+) : DefaultMediaNotificationProvider(context) {
+    override fun getNotificationContentTitle(metadata: MediaMetadata): CharSequence? {
+        if (store.liveLyricsEnabled) {
+            LiveLyricLine.current?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return super.getNotificationContentTitle(metadata)
+    }
+}
+
+/**
  * 播放服务：持有唯一的 ExoPlayer + MediaSession（D20 的另一半：以前这里
  * 的 player 从不播，是僵尸）。界面经 MediaController 连进来，共用这一个
  * player；Media3 在播放时自动发系统 MediaStyle 媒体通知（前台服务），
@@ -441,7 +482,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var store: SettingsStore
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == SettingsStore.LIVE_UPDATES_KEY) {
+        if (key == SettingsStore.LIVE_UPDATES_KEY || key == SettingsStore.LIVE_LYRICS_KEY) {
             mainHandler.post { session?.let { refreshNotification(it) } }
         }
     }
@@ -461,9 +502,13 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(sessionActivity)
             .build()
         // 媒体通知的小图标用用户指定的 Remix Icon netease-cloud-music-line。
+        // 0.1.17 第 12 项：实时歌词提供方（标题可换成当前歌词行）。
         setMediaNotificationProvider(
-            DefaultMediaNotificationProvider(this).apply { setSmallIcon(R.drawable.ic_notification_small) },
+            LiveLyricsNotificationProvider(this, store).apply { setSmallIcon(R.drawable.ic_notification_small) },
         )
+        // 0.1.17 第 12 项：歌词行一变就重发通知（行变化不是 MediaSession
+        // 事件，不会自动重发）；开关翻动走上面的 prefListener。
+        LiveLyricLine.observe { mainHandler.post { session?.let { refreshNotification(it) } } }
         store.registerLiveUpdatesListener(prefListener)
     }
 
@@ -485,6 +530,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        LiveLyricLine.observe(null)
         store.unregisterLiveUpdatesListener(prefListener)
         session?.run { player.release(); release() }
         session = null
