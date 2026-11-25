@@ -51,9 +51,9 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.CirroBlack
-import com.tokimusic.app.ui.theme.CirroPlayKey
-import com.tokimusic.app.ui.theme.CirroPlayKeyIcon
+import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.TokiPlayKey
+import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 /**
@@ -107,7 +107,7 @@ fun AlbumDetailScreen(
     LaunchedEffect(showFloatingTitle) { onHeaderVisible(showFloatingTitle) }
     val totalMs = tracks.sumOf { it.durationMs }
     val count = if (tracks.isNotEmpty()) tracks.size else album.trackCount
-    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, TokiBlack)))) {
         val coverHeight = maxHeight * 0.25f
         Column(Modifier.fillMaxSize()) {
             // 封面占视口 1/4、完整显示，下缘淡出到封面渐变的上端色。
@@ -185,12 +185,12 @@ fun AlbumDetailScreen(
                                             Modifier
                                                 .height(56.dp)
                                                 .clip(RoundedCornerShape(percent = 50))
-                                                .background(CirroPlayKey)
+                                                .background(TokiPlayKey)
                                                 .clickable { vm.play(tracks, 0, album.name) }
                                                 .padding(horizontal = 20.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = CirroPlayKeyIcon, modifier = Modifier.size(28.dp))
+                                            Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = TokiPlayKeyIcon, modifier = Modifier.size(28.dp))
                                         }
                                         Spacer(Modifier.width(16.dp))
                                     }
@@ -231,7 +231,7 @@ fun AlbumDetailScreen(
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, CirroBlack),
+                                listOf(Color.Transparent, TokiBlack),
                             ),
                         ),
                     )

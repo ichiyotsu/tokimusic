@@ -80,7 +80,7 @@ import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiGlassFade
 
 /**
@@ -239,7 +239,7 @@ fun HomeScreen(
         val showRadar = neteaseEnabled && (!home.loggedIn || home.radar.isNotEmpty())
         if (showDaily || showRadar) {
             item {
-                // Cirro：每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
+                // 每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -441,12 +441,12 @@ fun HomeScreen(
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(CirroBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, CirroBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
             ),
         )
     }

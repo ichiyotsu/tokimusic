@@ -388,15 +388,15 @@ fun Modifier.fadingEdges(
     }
 }
 /**
- * Cirro 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
+ * TokiMusic 深灰卡片行（资料库 5 行、设置 4 行共用）：左侧线条图标 + 白字标题 +
  * 可选说明 + 右侧 chevron，整行可点。圆角 20dp，卡片色 surfaceContainer
- *（Cirro 模式下为 #1C1C1E）。
+ *（为 #1C1C1E）。
  *
  * [horizontalPadding]：弹窗内使用时传 0dp（TokiSheetContainer 容器已有
  * 24dp 内边距）；设置弹窗内的行沿用 4dp 的既有样式。
  */
 @Composable
-fun CirroCardRow(
+fun TokiCardRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String? = null,

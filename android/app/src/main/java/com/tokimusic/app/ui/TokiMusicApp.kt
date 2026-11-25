@@ -96,7 +96,6 @@ import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
 import com.tokimusic.app.ui.search.SearchSheet
 import com.tokimusic.app.ui.settings.SettingsSheet
-import com.tokimusic.app.ui.theme.ThemeMode
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
@@ -105,7 +104,7 @@ import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiGlassFade
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.tokiPageBackground
 import com.tokimusic.app.ui.theme.tokiSpace
 import com.tokimusic.app.BuildConfig
@@ -178,31 +177,19 @@ fun TokiMusicApp(
     var theme by remember {
         mutableStateOf(
             ThemePreferences(
-                mode = runCatching { ThemeMode.valueOf(vm.store.themeMode) }.getOrDefault(ThemeMode.System),
-                useDynamicColor = vm.store.useDynamicColor,
-                seedIndex = vm.store.seedIndex,
                 reduceMotion = vm.store.reduceMotion,
                 backdropBlur = vm.store.backdropBlur,
-                cirroAppearance = vm.store.cirroAppearance,
             ),
         )
     }
     val updateTheme: (ThemePreferences) -> Unit = { next ->
         theme = next
-        vm.store.themeMode = next.mode.name
-        vm.store.useDynamicColor = next.useDynamicColor
-        vm.store.seedIndex = next.seedIndex
         vm.store.reduceMotion = next.reduceMotion
         vm.store.backdropBlur = next.backdropBlur
-        vm.store.cirroAppearance = next.cirroAppearance
     }
 
     TokiMusicTheme(
-        mode = theme.mode,
-        useDynamicColor = theme.useDynamicColor,
-        seedIndex = theme.seedIndex,
         reduceMotion = theme.reduceMotion,
-        cirroAppearance = theme.cirroAppearance,
     ) {
         var dest by remember { mutableStateOf(Dest.Home) }
         var playlistId by remember { mutableStateOf<Long?>(null) }
@@ -464,11 +451,11 @@ fun TokiMusicApp(
                                     titleAlpha = headerAlpha,
                                     titleOffsetY = headerOffsetY,
                                     // 第五轮第 25 项：详情页（歌单/歌手/专辑）滚动后，悬浮标题
-                                    // chip 加不透明底（页面底色 CirroBlack）——封面渐变
+                                    // chip 加不透明底（页面底色 TokiBlack）——封面渐变
                                     // 的上端色会透过半透明磨砂让顶栏看起来还留着封面；
                                     // tab 页不传（标题常显，磨砂是设计的一部分）。
                                     // chip 本身随 titleAlpha 淡入，进页时看不到这层底。
-                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) CirroBlack else null,
+                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) TokiBlack else null,
                                     // 0.1.15 第 3 项：主页 / 资料库左上角的源切换
                                     // 入口已删——源开关只在设置里调。
                                     leading = null,

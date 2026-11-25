@@ -59,7 +59,7 @@ import com.tokimusic.app.ui.components.isTitleScrolledOut
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.components.segmentedCorners
-import com.tokimusic.app.ui.theme.CirroBlack
+import com.tokimusic.app.ui.theme.TokiBlack
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 private enum class ArtistSection { Songs, Albums }
@@ -167,7 +167,7 @@ fun ArtistScreen(
     val totalCount = if ((a?.musicSize ?: 0) > 0) a!!.musicSize else allSongs.size
     val totalMs = allSongs.sumOf { it.durationMs }
     var section by remember { mutableStateOf(ArtistSection.Songs) }
-    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, CirroBlack)))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, TokiBlack)))) {
         // 歌手照片进页占视口 1/3（第五轮第 9 项），完整显示。
         val coverHeight = maxHeight * COLLAPSING_COVER_FRACTION
         if (loadError && a == null) {
@@ -356,7 +356,7 @@ fun ArtistScreen(
                 Box(
                     Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, CirroBlack),
+                            listOf(Color.Transparent, TokiBlack),
                         ),
                     ),
                 )

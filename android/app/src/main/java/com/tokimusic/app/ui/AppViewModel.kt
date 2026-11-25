@@ -151,7 +151,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun closeSongActions() { _songActions.value = null }
     private val _playlistVersion = MutableStateFlow(0); val playlistVersion: StateFlow<Int> = _playlistVersion
-    // 资料库（Cirro Library）：懒加载，首次打开对应行时才拉取。
+    // 资料库：懒加载，首次打开对应行时才拉取。
     private val _likedSongs = MutableStateFlow<List<Song>>(emptyList()); val likedSongs: StateFlow<List<Song>> = _likedSongs
     private var likedSongsLoaded = false
     private val _artists = MutableStateFlow<List<Artist>>(emptyList()); val artists: StateFlow<List<Artist>> = _artists

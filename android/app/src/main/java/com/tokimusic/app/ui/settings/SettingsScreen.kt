@@ -113,7 +113,7 @@ import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.daysSince
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.segmentedCorners
-import com.tokimusic.app.ui.theme.CirroLogoutRed
+import com.tokimusic.app.ui.theme.TokiLogoutRed
 import com.tokimusic.app.ui.theme.NeteaseBadgeBackground
 import com.tokimusic.app.ui.theme.QqBadgeBackground
 import com.tokimusic.app.ui.theme.LyricFontGoogleSansNotoBold
@@ -226,9 +226,9 @@ private fun settingsGroupEnterModifier(
  * 改为纯文字标题 + 纯色圆形关闭钮（模糊只属于整个弹窗容器）；通用 /
  * 个性化 / 音频 / 歌词 / 退出登录五个区域各进 28dp surface 底卡。
  *
- * 个性化里已删掉「Cirro 外观」开关（用户确认），应用永久固定 Cirro 深色；
- * 因此永久禁用的主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
- * 玻璃模糊两个开关）。cirroAppearance 字段本身保留，恒为 true。
+ * 个性化里已删掉「外观」开关，应用永久固定深色；
+ * 因此主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
+ * 玻璃模糊两个开关）。
  *
  * 第五轮第 19-4 项（用户确认“把设置改成这种”）：外壳改成 MoreSheet 同款
  * 原生 ModalBottomSheet（不用 TokiSheetContainer）——默认 28dp 顶圆角、
@@ -950,7 +950,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     theme: ThemePreferences,
     onTheme: (ThemePreferences) -> Unit,
 ) {
-    // Cirro 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
+    // 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
     // 种子色控件随之删除；个性化只剩减少动效与玻璃模糊。
     // 0.1.16 第 2 条：三张卡是一组，组内 4dp 细缝。
     item {
@@ -1268,7 +1268,7 @@ private fun SourceRow(
             }
             Switch(checked = enabled, onCheckedChange = onToggle, enabled = loggedIn)
             if (loggedIn) {
-                TextButton(onClick = onLogout) { Text("退出", color = CirroLogoutRed) }
+                TextButton(onClick = onLogout) { Text("退出", color = TokiLogoutRed) }
             } else {
                 TextButton(onClick = onLogin) { Text("登录") }
             }
@@ -1303,7 +1303,7 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
         text = { Text(text) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("确认", color = if (isLogout) CirroLogoutRed else MaterialTheme.colorScheme.primary)
+                Text("确认", color = if (isLogout) TokiLogoutRed else MaterialTheme.colorScheme.primary)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
