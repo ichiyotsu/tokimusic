@@ -40,4 +40,25 @@ class FloatingLyricsTest {
         assertEquals(0, floatingLyricsTopPx(-1f, 2000))
         assertEquals(0, floatingLyricsTopPx(0.5f, 0))
     }
+
+    @Test
+    fun horizontalFractionClampsIntoRange() {
+        assertEquals(-1f, clampFloatingHorizontalFraction(-2f), 0.001f)
+        assertEquals(1f, clampFloatingHorizontalFraction(2f), 0.001f)
+        assertEquals(0f, clampFloatingHorizontalFraction(0f), 0.001f)
+        assertEquals(-0.25f, clampFloatingHorizontalFraction(-0.25f), 0.001f)
+    }
+
+    @Test
+    fun xOffsetScalesWithScreenWidthAndClamps() {
+        // 居中为原点：偏移 = 比例 × 屏宽 / 2
+        assertEquals(0, floatingLyricsXOffsetPx(0f, 1000))
+        assertEquals(250, floatingLyricsXOffsetPx(0.5f, 1000))
+        assertEquals(-250, floatingLyricsXOffsetPx(-0.5f, 1000))
+        assertEquals(500, floatingLyricsXOffsetPx(1f, 1000))
+        // 越界先钳到 ±1 再换算；屏宽 0 时恒 0
+        assertEquals(500, floatingLyricsXOffsetPx(3f, 1000))
+        assertEquals(-500, floatingLyricsXOffsetPx(-3f, 1000))
+        assertEquals(0, floatingLyricsXOffsetPx(0.5f, 0))
+    }
 }

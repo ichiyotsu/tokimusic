@@ -253,7 +253,13 @@ import kotlin.math.roundToInt
         ) {
             itemsIndexed(lines) { i, line ->
                 val isActive = i == active
-                val distance = if (active < 0) i + 1 else abs(i - active)
+                // 本轮修复：距离以焦点行为准（active<0 时焦点是第 0 行，
+                // 见 lyricFocusIndex），首行不再被算成距离 1 糊掉。
+                val distance = lyricLineDistance(i, active, lines.size)
+                // 本轮：用户手动翻看（userBrowsing）期间距离模糊关掉——
+                // 滑动就是为了看词；位置淡化带的模糊分量在列表实际滚动
+                // 中（含惯性）也暂停，只保留 alpha 淡化，停稳恢复。
+                val rawFade = rowFade[i] ?: (0f to 1f)
                 LyricLineRow(
                     line, isActive, distance, effPosState, showTranslation, showRomaji, textColor, dimColor,
                     // 0.1.21：原词行逐行按语言选字体——含假名的行整行走内置 Noto Sans JP Bold。
@@ -265,8 +271,11 @@ import kotlin.math.roundToInt
                     entranceWindow = entranceWindow,
                     // 以当前行为中心向外辐射，每行间隔 40ms（最多 6 行）。
                     entranceDelayMs = minOf(distance, 6) * 40L,
-                    // 第六轮第 26 项：位置淡化（行中心在渐隐带内才淡）。
-                    fade = rowFade[i] ?: (0f to 1f),
+                    // 第六轮第 26 项：位置淡化（行中心在渐隐带内才淡）；
+                    // 滚动中模糊分量归 0（见上）。
+                    fade = if (listState.isScrollInProgress) 0f to rawFade.second else rawFade,
+                    // 手动翻看期间距离模糊整体关（恢复跟随后才回来）。
+                    suppressDistanceBlur = userBrowsing,
                     // 第六轮第 16 项：弹簧期间当前行进度保持 0。
                     freezeProgress = springRunning,
                     // 首行才接弹簧入场（其余行只走 stagger 入场）。
@@ -386,6 +395,20 @@ data class VisualLineSegment(val startChar: Int, val endChar: Int)
 internal fun lyricDistanceBlurPx(distance: Int): Float =
     if (distance <= 0) 0f else minOf(distance * 3.5f, 14f)
 
+/**
+ * 歌词焦点行（纯函数，单测覆盖）：active 是 YrcParser.activeLineIndex
+ * 的结果，-1 表示还没唱到第一行（或空列表）。旧调用点在 active<0 时
+ * 把每行距离算成 i+1——第 0 行被算成距离 1、糊上 3.5px，用户报
+ * 「第一句歌词会被模糊看不清」。焦点在 active<0 时落到第 0 行：
+ * 首行距离 0、恒清晰，当前行恒清晰的老规矩不变。
+ */
+internal fun lyricFocusIndex(activeIndex: Int, lineCount: Int): Int =
+    if (lineCount <= 0) 0 else activeIndex.coerceIn(0, lineCount - 1)
+
+/** 第 [index] 行与焦点行的距离（纯函数，单测覆盖）。 */
+internal fun lyricLineDistance(index: Int, activeIndex: Int, lineCount: Int): Int =
+    abs(index - lyricFocusIndex(activeIndex, lineCount))
+
 fun visualLineProgresses(sungChars: Float, segments: List<VisualLineSegment>): List<Float> =
     segments.map { seg ->
         val len = (seg.endChar - seg.startChar).coerceAtLeast(1)
@@ -445,6 +468,9 @@ private fun LyricLineRow(
     fade: Pair<Float, Float> = 0f to 1f,
     // 第六轮第 16 项：弹簧入场期间，当前行进度保持 0。
     freezeProgress: Boolean = false,
+    // 本轮：用户手动翻看歌词时为 true——距离模糊目标恒 0（滑动是为了
+    // 看词，糊住就没有意义）；恢复跟随（点「回到当前行」）后才恢复。
+    suppressDistanceBlur: Boolean = false,
     // 第六轮第 16 项：首行弹簧入场的位移 / 透明度（只传首行）。
     springOffset: Animatable<Float, AnimationVector1D>? = null,
     springAlpha: Animatable<Float, AnimationVector1D>? = null,
@@ -464,7 +490,7 @@ private fun LyricLineRow(
     // 变），且只在组合层算（视口附近的行才进组合）；施加时用
     // TileMode.Clamp 避免 Decal 在行边缘切字。
     val distanceBlur by animateFloatAsState(
-        targetValue = lyricDistanceBlurPx(distance),
+        targetValue = if (suppressDistanceBlur) 0f else lyricDistanceBlurPx(distance),
         animationSpec = tween(300),
         label = "lyricDistanceBlur",
     )

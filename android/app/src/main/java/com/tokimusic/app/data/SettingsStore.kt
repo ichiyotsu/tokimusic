@@ -88,6 +88,9 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 悬浮歌词顶部位置（占屏幕高度的比例，0 = 贴顶；钳制见 FloatingLyrics.kt）。 */
     var floatingLyricsTopFraction: Float get() = prefs.getFloat("floating_lyrics_top_fraction", 0f)
         set(v) { prefs.edit().putFloat("floating_lyrics_top_fraction", v).apply() }
+    /** 悬浮歌词水平偏移（本轮追加，-1 = 最左 / 0 = 居中 / 1 = 最右；钳制见 FloatingLyrics.kt）。 */
+    var floatingLyricsHorizontalFraction: Float get() = prefs.getFloat("floating_lyrics_horizontal_fraction", 0f)
+        set(v) { prefs.edit().putFloat("floating_lyrics_horizontal_fraction", v).apply() }
     /** 算法推荐开关（0.1.18 引入，默认关；0.1.21 热修一度撤除，本轮按
      * 用户口径恢复）：关 = 推荐歌单/新歌按所选音乐源的默认内容与顺序；
      * 开 = 口味画像重排/加权介入推荐。播放事件记录与此开关无关

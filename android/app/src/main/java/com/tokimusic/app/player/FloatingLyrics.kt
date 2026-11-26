@@ -24,6 +24,9 @@ const val FLOATING_LYRICS_DEFAULT_TEXT_SP = 16f
 /** 悬浮歌词顶部位置上限（占屏幕高度的比例）：0 = 贴顶，上限保证整行留在屏内。 */
 const val FLOATING_LYRICS_MAX_TOP_FRACTION = 0.85f
 
+/** 悬浮歌词水平偏移范围（本轮追加）：-1 = 最左、0 = 居中、1 = 最右（偏移量 = 比例 × 屏宽 / 2）。 */
+const val FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION = 1f
+
 /** 字号钳制（纯函数，JVM 单测覆盖）：越界值收进 [FLOATING_LYRICS_MIN_TEXT_SP, FLOATING_LYRICS_MAX_TEXT_SP]。 */
 fun clampFloatingTextSizeSp(v: Float): Float =
     v.coerceIn(FLOATING_LYRICS_MIN_TEXT_SP, FLOATING_LYRICS_MAX_TEXT_SP)
@@ -37,6 +40,14 @@ fun floatingLyricsTextArgb(black: Boolean): Int = if (black) 0xFF000000.toInt() 
 /** 位置比例 → 窗口 y 偏移像素（纯函数，JVM 单测覆盖）：先钳制再按屏高换算。 */
 fun floatingLyricsTopPx(fraction: Float, screenHeightPx: Int): Int =
     (clampFloatingTopFraction(fraction) * screenHeightPx.coerceAtLeast(0)).toInt()
+
+/** 水平偏移钳制（纯函数，JVM 单测覆盖）：-[FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION]..上限。 */
+fun clampFloatingHorizontalFraction(v: Float): Float =
+    v.coerceIn(-FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION, FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION)
+
+/** 水平比例 → 窗口 x 偏移像素（纯函数，JVM 单测覆盖）：窗口以居中为原点，偏移 = 钳制后的比例 × 屏宽 / 2。 */
+fun floatingLyricsXOffsetPx(fraction: Float, screenWidthPx: Int): Int =
+    (clampFloatingHorizontalFraction(fraction) * screenWidthPx.coerceAtLeast(0) / 2f).toInt()
 
 /**
  * 悬浮歌词控制器（0.1.21 追加，用户拍板形态）：一个无背景、无边框的
@@ -70,6 +81,7 @@ class FloatingLyricsController(
     private var appliedBlack: Boolean? = null
     private var appliedSizeSp: Float? = null
     private var appliedTopPx: Int? = null
+    private var appliedXPx: Int? = null
 
     fun start() {
         scope.launch {
@@ -99,6 +111,10 @@ class FloatingLyricsController(
             store.floatingLyricsTopFraction,
             appContext.resources.displayMetrics.heightPixels,
         )
+        val xPx = floatingLyricsXOffsetPx(
+            store.floatingLyricsHorizontalFraction,
+            appContext.resources.displayMetrics.widthPixels,
+        )
         val tv = textView ?: createView().also { textView = it }
         if (shownText != line) {
             tv.text = line
@@ -119,6 +135,11 @@ class FloatingLyricsController(
             appliedTopPx = topPx
             layoutDirty = true
         }
+        if (appliedXPx != xPx) {
+            p.x = xPx
+            appliedXPx = xPx
+            layoutDirty = true
+        }
         if (tv.parent == null) {
             // 权限在 canDrawOverlays 检查后被撤等竞态下 addView 会抛异常：
             // 吞掉并丢弃视图引用，下一 tick 重建重试，不崩溃。
@@ -129,6 +150,7 @@ class FloatingLyricsController(
                 appliedBlack = null
                 appliedSizeSp = null
                 appliedTopPx = null
+                appliedXPx = null
             }
         } else if (layoutDirty) {
             runCatching { windowManager.updateViewLayout(tv, p) }
@@ -144,6 +166,7 @@ class FloatingLyricsController(
         appliedBlack = null
         appliedSizeSp = null
         appliedTopPx = null
+        appliedXPx = null
     }
 
     private fun createView(): TextView {

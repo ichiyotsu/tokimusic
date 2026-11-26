@@ -10,9 +10,9 @@ import org.junit.Before
 import org.junit.Test
 
 /** 第五轮第 15 项：升级判断、目录大小、字节格式、清理量计算的回归测试。
- * measure/clean 本身依赖 Context + Coil 磁盘缓存，不进 JVM 单测；
- * 清理白名单由 AppOptimizer.clean 的实现保证（只删 update/ 与 Coil
- * 磁盘缓存，见代码注释）。 */
+ * measure/clean 本身依赖 Context，不进 JVM 单测；清理白名单由
+ * AppOptimizer.clean 的实现保证（只删 update/ 旧安装包——本轮起
+ * 图片/播放缓存不碰，见代码注释）。 */
 class AppOptimizerTest {
     private lateinit var tmp: File
 
@@ -53,13 +53,14 @@ class AppOptimizerTest {
         }
     }
 
-    @Test fun estimatedCleanIsApkPlusCoilCache() {
-        val snapshot = OptimizeSnapshot(cacheTotalBytes = 100, updateApkBytes = 30, coilDiskBytes = 20)
-        assertEquals(50, snapshot.estimatedCleanBytes)
+    @Test fun estimatedCleanIsOldApkOnly() {
+        // 本轮口径：预计可清理只有旧安装包一项（图片缓存不再计入）。
+        val snapshot = OptimizeSnapshot(cacheTotalBytes = 100, updateApkBytes = 30)
+        assertEquals(30, snapshot.estimatedCleanBytes)
     }
 
     @Test fun cleanedBytesNeverNegative() {
-        val before = OptimizeSnapshot(cacheTotalBytes = 100, updateApkBytes = 30, coilDiskBytes = 20)
+        val before = OptimizeSnapshot(cacheTotalBytes = 100, updateApkBytes = 30)
         assertEquals(50, OptimizeResult(before, cacheTotalAfterBytes = 50).cleanedBytes)
         assertEquals(0, OptimizeResult(before, cacheTotalAfterBytes = 120).cleanedBytes)
     }

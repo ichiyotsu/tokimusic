@@ -30,6 +30,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -122,6 +123,7 @@ import com.tokimusic.app.data.local.displayName
 import com.tokimusic.app.data.local.formatFileSize
 import com.tokimusic.app.player.FLOATING_LYRICS_MAX_TEXT_SP
 import com.tokimusic.app.player.FLOATING_LYRICS_MIN_TEXT_SP
+import com.tokimusic.app.player.clampFloatingHorizontalFraction
 import com.tokimusic.app.player.clampFloatingTextSizeSp
 import com.tokimusic.app.player.clampFloatingTopFraction
 import com.tokimusic.app.data.api.ApiHealth
@@ -402,7 +404,9 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             // 就新建一个记进去），进出二级页不再丢位置。
             val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
             // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-            val settingsBounce = rememberBounceOverscrollEffect()
+            // 本轮：账户与设置页回弹单独大幅调小（96dp → 32dp）——
+            // 用户真机反馈这页弹得过头；其他页保持 96dp 不动。
+            val settingsBounce = rememberBounceOverscrollEffect(maxDistanceDp = 32f)
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().bounceTranslation(settingsBounce),
@@ -431,9 +435,20 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     SettingsSub.Achievements -> achievementsSection(vm, profile)
                 }
             }
+            // 本轮：顶部 24dp 淡出按滚动状态恢复——0.1.21 为修「第一个
+            // 栏自带渐变」把整层删掉后，滚动态下内容顶边是硬切、顶栏
+            // 边缘没有任何模糊/淡出。现在只在列表已离开顶部（能往回
+            // 滚）时画顶部淡出，停在顶部时不画（0.1.21 的修复不回退）；
+            // 一级页与各二级页都适用。
+            val showTopFade by remember { androidx.compose.runtime.derivedStateOf { listState.canScrollBackward } }
+            if (showTopFade) {
+                Box(
+                    Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
+                        Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
+                    ),
+                )
+            }
             if (targetSub == null) {
-                // 0.1.21：顶部 24dp 渐变淡出已按用户口径去掉——它压在
-                // 账户卡上方，看起来像第一个栏自带渐变。底部淡出保留。
                 Box(
                     Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
                         Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
@@ -1356,8 +1371,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
  * 悬浮歌词设置（0.1.21 追加）：开关在设置 > 歌词。打开时若没有悬浮窗
  * 权限，先跳系统设置授权，回来授权成功才真正落开；未授权则开关保持
  * 关闭并给一行提示，不反复弹。颜色只有白/黑两档；大小用滑杆；位置
- * 只能在这里调——在预览框里上下拖动歌词行定位置，悬浮窗本体不可
+ * 只能在这里调——在预览框里拖动歌词行定上下与左右，悬浮窗本体不可
  * 触摸、不可拖动（见 player/FloatingLyrics.kt 的窗口 flag）。
+ * 本轮视觉：开启时开关栏与控制栏连成一个分组板块（开关卡 First、
+ * 控制卡 Last，接缝 4dp 小圆角，与设置页其他分组同款 segmentedCorners
+ * 规格）；关闭时只剩开关栏、Single 独立圆角。
  */
 @Composable
 private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
@@ -1367,6 +1385,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
     var black by remember { mutableStateOf(vm.store.floatingLyricsBlack) }
     var sizeSp by remember { mutableStateOf(clampFloatingTextSizeSp(vm.store.floatingLyricsTextSizeSp)) }
     var topFraction by remember { mutableStateOf(clampFloatingTopFraction(vm.store.floatingLyricsTopFraction)) }
+    var horizontalFraction by remember { mutableStateOf(clampFloatingHorizontalFraction(vm.store.floatingLyricsHorizontalFraction)) }
     var permHint by remember { mutableStateOf(false) }
     var pendingEnable by remember { mutableStateOf(false) }
 
@@ -1398,7 +1417,8 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SettingsSubCard {
+        // 开启时与下面的控制卡连成一个分组板块（First + Last）。
+        SettingsSubCard(if (enabled) SegmentPosition.First else SegmentPosition.Single) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("悬浮歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
@@ -1436,7 +1456,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
             )
         }
         if (enabled) {
-            SettingsSubCard {
+            SettingsSubCard(SegmentPosition.Last) {
                 // 颜色：白 / 黑两档。
                 Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("颜色", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -1469,14 +1489,16 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
                     )
                 }
                 Text(
-                    "位置：在下面预览里上下拖动，歌词停在松手处（悬浮窗本身不能拖动）",
+                    "位置：在下面预览里拖动，歌词停在松手处（悬浮窗本身不能拖动）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 // 预览画布：灰阶渐变（白/黑字都看得清），歌词行按位置
-                // 比例摆放；在画布上竖直拖动即改位置并落盘。
-                Box(
+                // 比例摆放；在画布上拖动即改上下/左右位置并落盘——
+                // 横向与真实窗口同几何：文字以画布中心为原点，按
+                // 比例 × 画布宽 / 2 偏移。
+                BoxWithConstraints(
                     Modifier
                         .fillMaxWidth()
                         .height(180.dp)
@@ -1488,13 +1510,16 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
                                 val f = clampFloatingTopFraction(change.position.y / size.height)
                                 topFraction = f
                                 vm.store.floatingLyricsTopFraction = f
+                                val hf = clampFloatingHorizontalFraction((change.position.x / size.width) * 2f - 1f)
+                                horizontalFraction = hf
+                                vm.store.floatingLyricsHorizontalFraction = hf
                             }
                         },
                     contentAlignment = Alignment.TopCenter,
                 ) {
                     Text(
                         "悬浮歌词预览",
-                        Modifier.offset(y = 140.dp * topFraction),
+                        Modifier.offset(x = maxWidth / 2 * horizontalFraction, y = 140.dp * topFraction),
                         color = if (black) Color.Black else Color.White,
                         fontSize = sizeSp.sp,
                         maxLines = 1,

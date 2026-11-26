@@ -2,10 +2,14 @@ package com.tokimusic.app.update
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,7 +27,9 @@ import com.tokimusic.app.ui.components.TokiSheetContainer
 import kotlinx.coroutines.launch
 
 /** 第三轮第 15 项：新版本提醒（用户决定：提醒 + 弹窗，不自动下载）。
- * 正文是 Release 说明，截断到 400 字（与应用内更新页的截断一致）。
+ * 正文是 Release 说明。0.1.21 之前截断到 400 字——0.1.21 的说明有
+ * 40 条、截断后看不全（用户真机反馈）；本轮起正文全文呈现，放在
+ * 限高可滚动区域里，一条不少。
  * 第五轮第 15 项：提醒从 AlertDialog 改成底部弹窗（TokiSheetContainer），
  * 内容：当前版本 → 新版本、更新说明、安装包大小、下载按钮；另加“稍后提醒”。 */
 
@@ -44,7 +50,10 @@ fun UpdateDialog(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(release.notes.take(400), style = MaterialTheme.typography.bodyMedium)
+        // 更新说明全文：限高 280dp，超出滚动看全（不再截断）。
+        Box(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+            Text(release.notes, style = MaterialTheme.typography.bodyMedium)
+        }
         release.apkSizeBytes?.let {
             Text(
                 "安装包大小：约 ${AppOptimizer.formatBytes(it)}",

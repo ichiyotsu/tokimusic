@@ -1,7 +1,6 @@
 package com.tokimusic.app.update
 
 import android.content.Context
-import coil.Coil
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,7 +9,9 @@ import kotlinx.coroutines.withContext
  * 第五轮第 15 项：更新后的后台优化。更新完首次启动（versionCode 变大）
  * 时先算优化前数值、弹二次确认，用户确认后清理，再展示优化后数值。
  *
- * 清理范围（用户定）：update/ 里的旧安装包 + Coil 磁盘图片缓存。
+ * 清理范围（用户定，本轮收窄）：只删 update/ 里的旧安装包。
+ * 0.1.21 之前还连带清 Coil 磁盘图片缓存——用户真机反馈：更新后封面
+ * 要二次加载。本轮起图片缓存与播放/媒体缓存一律不碰。
  * 绝不能碰：登录 cookie、听歌时长、设置、歌词预设（都在 SharedPreferences
  * 里，不在 cacheDir；filesDir 也完全不动）。
  */
@@ -21,11 +22,9 @@ data class OptimizeSnapshot(
     val cacheTotalBytes: Long,
     /** cacheDir/update/ 里旧安装包的大小。 */
     val updateApkBytes: Long,
-    /** Coil 磁盘图片缓存的大小。 */
-    val coilDiskBytes: Long,
 ) {
-    /** 预计可清理量 = 旧安装包 + 图片缓存。 */
-    val estimatedCleanBytes: Long get() = updateApkBytes + coilDiskBytes
+    /** 预计可清理量 = 旧安装包（只有这一项，见类注释）。 */
+    val estimatedCleanBytes: Long get() = updateApkBytes
 }
 
 /** 清理后的结果（before 为清理前测到的快照）。 */
@@ -64,19 +63,16 @@ object AppOptimizer {
     /** 测一次优化前数值（IO 线程）。 */
     suspend fun measure(context: Context): OptimizeSnapshot = withContext(Dispatchers.IO) {
         val cacheDir = context.cacheDir
-        val coilBytes = runCatching { Coil.imageLoader(context).diskCache?.size ?: 0L }.getOrDefault(0L)
         OptimizeSnapshot(
             cacheTotalBytes = dirSize(cacheDir),
             updateApkBytes = dirSize(File(cacheDir, "update")),
-            coilDiskBytes = coilBytes,
         )
     }
 
-    /** 执行清理并返回结果（IO 线程）：删 update/ 旧安装包 + 清 Coil 磁盘缓存。 */
+    /** 执行清理并返回结果（IO 线程）：只删 update/ 旧安装包，图片/播放缓存不碰。 */
     suspend fun clean(context: Context): OptimizeResult = withContext(Dispatchers.IO) {
         val before = measure(context)
         File(context.cacheDir, "update").deleteRecursively()
-        runCatching { Coil.imageLoader(context).diskCache?.clear() }
         OptimizeResult(before, cacheTotalAfterBytes = dirSize(context.cacheDir))
     }
 }
