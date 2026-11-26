@@ -25,8 +25,8 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putString("device_id", v).apply() }
     var reduceMotion: Boolean get() = prefs.getBoolean("reduce_motion", false)
         set(v) { prefs.edit().putBoolean("reduce_motion", v).apply() }
-    var backdropBlur: Boolean get() = prefs.getBoolean("backdrop_blur", true)
-        set(v) { prefs.edit().putBoolean("backdrop_blur", v).apply() }
+    // 0.1.21 第 4 项：backdropBlur 已删（玻璃固定开启，见
+    // TokiMusicApp 的固定值）；旧偏好键 backdrop_blur 无人再读。
     /** 播放音质偏好：standard / higher / exhigh / lossless。 */
     override var audioQuality: String get() = prefs.getString("audio_quality", "standard") ?: "standard"
         set(v) { prefs.edit().putString("audio_quality", v).apply() }

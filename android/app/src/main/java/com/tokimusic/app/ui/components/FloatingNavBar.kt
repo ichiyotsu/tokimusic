@@ -15,10 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,19 +40,20 @@ import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.TokiNavIcon
 import com.tokimusic.app.ui.theme.TokiPill
-import com.tokimusic.app.ui.theme.TokiChromeStroke
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
 /**
- * 底部悬浮胶囊 tab（纯图标无文字）。0.1.20 第 11 项：搜索成为第三个
- * 一级页进胶囊（主页 / 资料库 / 搜索），原胶囊旁的独立搜索圆钮删除；
- * 同一列表也驱动 rail，两处不会漂移。
+ * 底部悬浮胶囊 tab（纯图标无文字）。0.1.21 第 1 项：恢复独立搜索
+ * 圆钮——搜索不在 tab 里，走胶囊旁的 TokiSideActionButton（打开
+ * 0.1.20 的独立搜索页 Dest.Search）；0.1.20 第 11 项曾把搜索并进
+ * 胶囊第三 tab 并删掉圆钮，本轮按用户要求恢复 0.1.19 形态。胶囊
+ * 回到主页 / 资料库 2 tab；同一列表也驱动 rail，rail 的搜索同样
+ * 是条目之后的独立项，两处不会漂移。
  */
 val navEntries = listOf(
     NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Rounded.Home, R.string.nav_home),
     NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, R.string.nav_library),
-    NavBarEntry(Dest.Search, Icons.Outlined.Search, Icons.Rounded.Search, R.string.nav_search),
 )
 
 /**
@@ -68,8 +67,8 @@ val navEntries = listOf(
  * width plus an 8dp slack into the gap before the side button, never on the
  * outer box (clipping the glass box would blacken its edge mid-animation).
  *
- * Glass on: frost only, no thick stroke. Glass off: opaque surface passed in
- * as [glass], plus a 3dp primary stroke and a 6dp gap before the selected pill.
+ * Glass: frost only, no thick stroke. 0.1.21 第 4 项：玻璃关的实色
+ * 适配（3dp primary 描边 + 加宽内边距）已随实色预设整套删除。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -78,10 +77,9 @@ fun FloatingNavBar(
     onSelect: (Dest) -> Unit,
     modifier: Modifier = Modifier,
     glass: Modifier = Modifier,
-    solidStroke: Boolean = false,
 ) {
     val shape = RoundedCornerShape(percent = 50)
-    val inset = if (solidStroke) TokiChromeStroke.width + TokiChromeStroke.barGap else 8.dp
+    val inset = 8.dp
     Box(
         modifier = modifier
             .animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()),
@@ -91,14 +89,7 @@ fun FloatingNavBar(
             Modifier
                 .matchParentSize()
                 .clip(shape)
-                .then(glass)
-                .then(
-                    if (solidStroke) {
-                        Modifier.border(TokiChromeStroke.width, MaterialTheme.colorScheme.primary, shape)
-                    } else {
-                        Modifier
-                    },
-                ),
+                .then(glass),
         )
         Row(
             modifier = Modifier
@@ -119,10 +110,8 @@ fun FloatingNavBar(
 /**
  * Independent round glass button beside the capsule (TokiStudio 0.1.10,
  * after TokiNote's standalone button): 56dp circle, 8dp from the capsule,
- * same glass layer as the capsule. Glass off （莫奈悬浮底栏）: no glass, no
- * stroke — the whole circle fills with the bar's border colour (primary)
- * and the icon turns onPrimary. Callers pass [solidFill] with the same
- * state as the bar's [FloatingNavBar.solidStroke].
+ * same glass layer as the capsule. 0.1.21 第 4 项：玻璃关时整圆填
+ * primary 的实色形态已随实色预设删除，只剩玻璃形态。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -132,7 +121,6 @@ fun TokiSideActionButton(
     onClick: () -> Unit,
     glass: Modifier,
     modifier: Modifier = Modifier,
-    solidFill: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val haptic = LocalHapticFeedback.current
@@ -145,7 +133,7 @@ fun TokiSideActionButton(
                 Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .then(if (solidFill) Modifier.background(MaterialTheme.colorScheme.primary) else glass)
+                    .then(glass)
                     .clickable(
                         interactionSource = interaction,
                         indication = ripple(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
@@ -159,7 +147,7 @@ fun TokiSideActionButton(
                 Icon(
                     icon,
                     contentDescription = contentDescription,
-                    tint = if (solidFill) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(24.dp),
                 )
             }

@@ -73,7 +73,6 @@ fun OverlayTitleHeader(
     title: String,
     onBack: (() -> Unit)?,
     onHeightMeasured: (Dp) -> Unit,
-    backdropBlur: Boolean,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     strong: Boolean = false,
@@ -124,7 +123,7 @@ fun OverlayTitleHeader(
                 Spacer(Modifier.width(tokiSpace("md")))
             }
             if (onBack != null) {
-                TokiScrollBackChip(backdropBlur, hazeState, onBack, strong = strong)
+                TokiScrollBackChip(hazeState, onBack, strong = strong)
                 Spacer(Modifier.width(tokiSpace("md")))
             }
             Box(
@@ -140,7 +139,6 @@ fun OverlayTitleHeader(
             ) {
                 TokiScrollChipBackdrop(
                     shape = titleShape,
-                    backdropBlur = backdropBlur,
                     hazeState = hazeState,
                     strong = strong,
                     modifier = Modifier.matchParentSize(),
@@ -182,7 +180,6 @@ fun OverlayTitleHeader(
 /** Back key: its own 56dp round chip, same frost as the title, always on. */
 @Composable
 fun TokiScrollBackChip(
-    backdropBlur: Boolean,
     hazeState: HazeState,
     onClick: () -> Unit,
     strong: Boolean = false,
@@ -200,7 +197,6 @@ fun TokiScrollBackChip(
         ) {
             TokiScrollChipBackdrop(
                 shape = CircleShape,
-                backdropBlur = backdropBlur,
                 hazeState = hazeState,
                 strong = strong,
                 modifier = Modifier.matchParentSize(),
@@ -224,7 +220,6 @@ fun TokiScrollBackChip(
 fun TokiGlassIconButton(
     icon: ImageVector,
     label: String,
-    backdropBlur: Boolean,
     hazeState: HazeState,
     onClick: () -> Unit,
 ) {
@@ -240,7 +235,6 @@ fun TokiGlassIconButton(
         ) {
             TokiScrollChipBackdrop(
                 shape = CircleShape,
-                backdropBlur = backdropBlur,
                 hazeState = hazeState,
                 modifier = Modifier.matchParentSize(),
             )

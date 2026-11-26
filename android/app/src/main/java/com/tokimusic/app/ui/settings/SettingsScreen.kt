@@ -247,7 +247,8 @@ private fun settingsGroupEnterModifier(
  *
  * 个性化里已删掉「外观」开关，应用永久固定深色；
  * 因此主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
- * 玻璃模糊两个开关）。
+ * 玻璃模糊两个开关）。0.1.21 第 4 项：玻璃模糊开关也删了（外观
+ * 固定玻璃），个性化只剩减少动效。
  *
  * 第五轮第 19-4 项（用户确认“把设置改成这种”）：外壳改成 MoreSheet 同款
  * 原生 ModalBottomSheet（不用 TokiSheetContainer）——默认 28dp 顶圆角、
@@ -1091,23 +1092,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     // 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
     // 种子色控件随之删除；个性化只剩减少动效与玻璃模糊。
     // 0.1.17 第 8 项：莫奈配色已删（见下），个性化只剩两张卡。
-    // 0.1.16 第 2 条：两张卡是一组，组内 4dp 细缝。
+    // 0.1.21 第 4 项：玻璃模糊开关删除，玻璃关的实色预设一并删除——
+    // 外观固定玻璃，个性化只剩「减少动效」一张卡。
     item {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-            // 0.1.15 第 21 项：与玻璃模糊同组（首项）。
-            SettingsSubCard(SegmentPosition.First) {
-                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
-                }
-            }
-            // 0.1.15 第 21 项：个性化组末项。
-            SettingsSubCard(SegmentPosition.Last) {
-                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("玻璃模糊", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Switch(checked = theme.backdropBlur, onCheckedChange = { onTheme(theme.copy(backdropBlur = it)) })
-                }
+        // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
+        SettingsSubCard(SegmentPosition.Single) {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
             }
         }
     }

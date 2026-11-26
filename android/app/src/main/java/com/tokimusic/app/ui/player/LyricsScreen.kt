@@ -61,7 +61,7 @@ import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.InterFamily
-import com.tokimusic.app.ui.theme.chromeBlurActive
+import com.tokimusic.app.ui.theme.TokiBlurCapability
 import com.tokimusic.app.ui.theme.tokiGlassFade
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
@@ -102,7 +102,6 @@ import kotlin.math.roundToInt
     karaokeHighlight: Boolean = true,
     coverColors: CoverColors? = null,
     hazeState: HazeState? = null,
-    backdropBlur: Boolean = true,
     // 第三轮第 8 项：切页时首屏行 stagger 入场（只触发一次）。
     animateEntrance: Boolean = false,
     // 第三轮第 16 项：歌词字体预设（默认 InterFamily，与主题一致）。
@@ -270,7 +269,7 @@ import kotlin.math.roundToInt
             )
             // Apple 歌词式模糊：上下各一段渐进磨砂（与底栏同配方），行滚过
             // 顶底部时带磨砂感；玻璃关闭时不画。
-            if (hazeState != null && chromeBlurActive(backdropBlur)) {
+            if (hazeState != null && TokiBlurCapability.canSampleInWindow) {
                 Box(
                     Modifier.fillMaxWidth().height(64.dp).align(Alignment.TopCenter)
                         .tokiGlassFade(hazeState, fadeFromTop = true),

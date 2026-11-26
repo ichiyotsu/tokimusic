@@ -29,7 +29,8 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 
 data class ThemePreferences(
     val reduceMotion: Boolean = false,
-    val backdropBlur: Boolean = true,
+    // 0.1.21 第 4 项：backdropBlur 字段已删——玻璃模糊开关与实色
+    // 预设一并删除，外观固定玻璃，TokiMusicApp 统一传固定值 true。
 )
 
 private fun Typography.withTokiType(family: FontFamily): Typography {

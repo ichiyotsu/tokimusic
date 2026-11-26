@@ -99,7 +99,7 @@ import com.tokimusic.app.ui.settings.SettingsSheet
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
-import com.tokimusic.app.ui.theme.chromeBlurActive
+import com.tokimusic.app.ui.theme.TokiBlurCapability
 import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
@@ -180,15 +180,16 @@ fun TokiMusicApp(
         mutableStateOf(
             ThemePreferences(
                 reduceMotion = vm.store.reduceMotion,
-                backdropBlur = vm.store.backdropBlur,
             ),
         )
     }
     val updateTheme: (ThemePreferences) -> Unit = { next ->
         theme = next
         vm.store.reduceMotion = next.reduceMotion
-        vm.store.backdropBlur = next.backdropBlur
     }
+    // 0.1.21 第 4 项：玻璃模糊开关与玻璃关的实色预设（原 TokiUI 莫奈
+    // 悬浮底栏那套）一并删除——外观只剩玻璃一条路径，组件不再收
+    // backdropBlur 参数，需要判断时直接看 TokiBlurCapability。
 
     TokiMusicTheme(
         reduceMotion = theme.reduceMotion,
@@ -299,7 +300,7 @@ fun TokiMusicApp(
         val qqEnabled by vm.qqEnabled.collectAsState()
         val hazeState = rememberHazeState()
         // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 悬浮标题共用。
-        val barGlass = tokiContentChromeStrong(hazeState, theme.backdropBlur)
+        val barGlass = tokiContentChromeStrong(hazeState)
 
         val playerState by vm.player.state.collectAsState()
         // 第三轮第 21 项：播放器封面取色提升到这里——外层满屏 Box 用它画
@@ -307,10 +308,10 @@ fun TokiMusicApp(
         // 它；PlayerScreen 复用同一份取色，不再各自取色。
         val playerSong = playerState.current
         val playerCoverColors = rememberCoverColors(playerSong?.id ?: 0L, playerSong?.picUrl ?: "")
-        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊；
-        // 玻璃关时 MiniPlayer 不用它、走实色。0.1.19 第 5 项：模糊之上
-        // 叠一层动态底（miniPlayerGlassVeil，按封面亮度调，纯黑背景
-        // 提亮、纯白背景加深），免得纯模糊在纯黑背景上看不见。
+        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊。
+        // 0.1.19 第 5 项：模糊之上叠一层动态底（miniPlayerGlassVeil，
+        // 按封面亮度调，纯黑背景提亮、纯白背景加深），免得纯模糊在
+        // 纯黑背景上看不见。0.1.21 第 4 项：玻璃关的实色回退已删。
         val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(
             hazeState,
             miniPlayerGlassVeil(playerCoverColors.top, playerCoverColors.bottom),
@@ -336,6 +337,9 @@ fun TokiMusicApp(
             dest == Dest.Home -> homeSectionTitle
             // 0.1.20 第 4 项：资料库一级页的悬浮标题跟随页内分区滚动。
             dest == Dest.Library -> libraryTitle
+            // 0.1.21 第 1 项：搜索已不在 navEntries 里（恢复独立圆钮），
+            // 标题显式给，否则 else 的 first{dest} 找不到会抛异常。
+            dest == Dest.Search -> stringResource(R.string.nav_search)
             else -> stringResource(navEntries.first { it.dest == dest }.label)
         }
         // The player is a second-level page: no top bar, no bottom bar, no
@@ -443,8 +447,30 @@ fun TokiMusicApp(
                                 )
                             }
                         }
-                        // 0.1.20 第 11 项：搜索已进 navEntries（一级页），
-                        // rail 不再有独立搜索按钮。
+                        // 0.1.21 第 1 项：恢复 rail 的独立搜索项（0.1.19
+                        // 形态，0.1.20 第 11 项曾随搜索进 navEntries 删
+                        // 除）。动作与 rail 条目同款：切到 Dest.Search
+                        // 并清二级页状态；selected 反映当前页。
+                        TokiLongPressLabel(stringResource(R.string.nav_search)) {
+                            NavigationRailItem(
+                                selected = dest == Dest.Search,
+                                onClick = {
+                                    dest = Dest.Search
+                                    playlistId = null
+                                    artistId = null
+                                    artistFromPlayer = false
+                                    albumId = null
+                                    qqArtistMid = null
+                                    qqAlbumMid = null
+                                    librarySection = null
+                                    statsOpen = false
+                                    neteaseReportOpen = false
+                                    showPlayer = false
+                                },
+                                icon = { Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.nav_search)) },
+                                label = { Text(stringResource(R.string.nav_search)) },
+                            )
+                        }
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -457,7 +483,6 @@ fun TokiMusicApp(
                                     title = pageTitle,
                                     onBack = onBack,
                                     onHeightMeasured = { topBarHeight = it },
-                                    backdropBlur = theme.backdropBlur,
                                     hazeState = hazeState,
                                     strong = true,
                                     // 0.1.19 第 1 项：顶栏只在设置打开时才注册
@@ -491,8 +516,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = Icons.Rounded.PriorityHigh,
                                                     label = "查看网易云统计估算",
-                                                    backdropBlur = theme.backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = { statsNoteVisible = !statsNoteVisible },
                                                 )
                                             }
@@ -506,8 +530,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                                                     label = if (isFav) "取消收藏" else "收藏歌单",
-                                                    backdropBlur = theme.backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = toggleFav,
                                                 )
                                             }
@@ -521,8 +544,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
                                                     label = if (isFollowed) "取消关注" else "关注",
-                                                    backdropBlur = theme.backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = toggleFollow,
                                                 )
                                             }
@@ -658,8 +680,7 @@ fun TokiMusicApp(
                                                     vm,
                                                     onBack = { showPlayer = false },
                                                     hazeState = hazeState,
-                                                    backdropBlur = theme.backdropBlur,
-                                                    coverColors = playerCoverColors,
+                                                                    coverColors = playerCoverColors,
                                                     // 第六轮第 36 项：播放器页歌手名可点进歌手页，
                                                     // 返回时回到播放器页。
                                                     onOpenArtist = { artistId = it; showPlayer = false; artistFromPlayer = true },
@@ -729,7 +750,7 @@ fun TokiMusicApp(
                                         )
                                         key == Dest.Home -> HomeScreen(
                                             vm, topPadding, bottomPadding,
-                                            hazeState, theme.backdropBlur,
+                                            hazeState,
                                             onOpenLogin = { showSettings = true },
                                             onOpenPlaylist = { playlistId = it },
                                             onOpenArtist = { artistId = it },
@@ -763,7 +784,7 @@ fun TokiMusicApp(
                                     }
                                 }
                             }
-                            if (headerVisible && chromeBlurActive(theme.backdropBlur)) {
+                            if (headerVisible && TokiBlurCapability.canSampleInWindow) {
                                 Box(
                                     Modifier
                                         .align(Alignment.TopCenter)
@@ -784,8 +805,6 @@ fun TokiMusicApp(
                                 dest = dest,
                                 glass = barGlass,
                                 miniPlayerGlass = miniPlayerGlass,
-                                solidStroke = !chromeBlurActive(theme.backdropBlur),
-                                glassOn = chromeBlurActive(theme.backdropBlur),
                                 onOpenPlayer = { showPlayer = true },
                                 onSelect = {
                                     dest = it
@@ -823,7 +842,6 @@ fun TokiMusicApp(
                     // 只扩大范围。
                     SettingsBackdrop(
                         visible = showSettings,
-                        backdropBlur = theme.backdropBlur,
                         hazeState = hazeState,
                     )
                 }
@@ -885,7 +903,6 @@ fun TokiMusicApp(
 @Composable
 private fun SettingsBackdrop(
     visible: Boolean,
-    backdropBlur: Boolean,
     hazeState: HazeState,
 ) {
     // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 走 effects
@@ -900,9 +917,9 @@ private fun SettingsBackdrop(
         label = "settings-backdrop",
     ) {
         // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
-        // tokiGlass 配方；玻璃关闭时 chromeBlurActive 关掉不画），让设置
-        // 页更突出。模糊层在遮罩之下（先模糊、再压暗）。
-        if (chromeBlurActive(backdropBlur)) {
+        // tokiGlass 配方），让设置页更突出。模糊层在遮罩之下（先模糊、
+        // 再压暗）。0.1.21 第 4 项：玻璃固定开启，此处只看采样能力。
+        if (TokiBlurCapability.canSampleInWindow) {
             Box(Modifier.fillMaxSize().tokiGlass(hazeState))
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
@@ -923,8 +940,6 @@ private fun BottomChrome(
     dest: Dest,
     glass: Modifier,
     miniPlayerGlass: Modifier,
-    solidStroke: Boolean,
-    glassOn: Boolean,
     onOpenPlayer: () -> Unit,
     onSelect: (Dest) -> Unit,
     onHeight: (Dp) -> Unit,
@@ -980,29 +995,31 @@ private fun BottomChrome(
                 exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
                 label = "miniPlayer",
             ) {
-                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, glassOn = glassOn, coverColors = coverColors)
+                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, coverColors = coverColors)
             }
             NavBarSlot(
                 navVisible = navVisible,
                 wide = wide,
                 dest = dest,
                 glass = glass,
-                solidStroke = solidStroke,
                 onSelect = onSelect,
+                // 0.1.21 第 1 项：独立搜索圆钮走同一套切页逻辑
+                // （onSelect 自带二级页状态清理）。
+                onSearch = { onSelect(Dest.Search) },
             )
         }
     }
 }
 
 /**
- * 底部导航栏（3 tab 胶囊）——单独抽成顶层 composable，
+ * 底部导航栏（2 tab 胶囊 + 搜索圆钮）——单独抽成顶层 composable，
  * 否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞 ColumnScope
  * 的 DSL 作用域限制（编译失败）。0.1.14 第 12 项：显隐动画加纵向
  * 展开 / 收缩（布局高度跟着动画走），退出时导航栏滑出 + 淡出 +
  * 收缩，底锚定的 Column 收短，MiniPlayer 平滑滑下去贴底；进入时
  * 反向滑回来。0.1.13 第 26 项的固定槽已拆，不再需要 onNavHeightPx。
- * 0.1.20 第 11 项：搜索成为胶囊里的第三个 tab，原旁边的独立搜索
- * 圆钮（TokiSideActionButton）删除。
+ * 0.1.21 第 1 项：恢复独立搜索圆钮（0.1.20 第 11 项曾把搜索并进
+ * 胶囊第三 tab 并删掉圆钮）；圆钮打开 Dest.Search 独立页。
  */
 @Composable
 private fun NavBarSlot(
@@ -1010,8 +1027,8 @@ private fun NavBarSlot(
     wide: Boolean,
     dest: Dest,
     glass: Modifier,
-    solidStroke: Boolean,
     onSelect: (Dest) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val scheme = MaterialTheme.motionScheme
     AnimatedVisibility(
@@ -1020,7 +1037,20 @@ private fun NavBarSlot(
         exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()) + shrinkVertically(scheme.defaultSpatialSpec()),
     ) {
         if (!wide) {
-            FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+            // 第二轮第 23 项：2 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
+            // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FloatingNavBar(dest, onSelect, glass = glass)
+                TokiSideActionButton(
+                    Icons.Rounded.Search,
+                    stringResource(R.string.nav_search),
+                    onClick = onSearch,
+                    glass = glass,
+                )
+            }
         }
     }
 }

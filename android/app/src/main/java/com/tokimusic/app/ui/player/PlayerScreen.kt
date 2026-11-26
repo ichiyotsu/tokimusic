@@ -130,7 +130,6 @@ import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
 import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.pressScale
-import com.tokimusic.app.ui.theme.TokiMiniPlayer
 import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
@@ -151,9 +150,10 @@ import kotlin.math.roundToInt
  * 0.1.19 第 5 项：纯模糊在纯黑背景上看不见——调用方在模糊之上叠一层
  * 动态底（25% 深灰基准、按封面亮度提亮/加深，见 miniPlayerGlassVeil），
  * 本组件的形状/布局不变。
+ * 0.1.21 第 4 项：玻璃关的实色回退已删，glass 恒套用，glassOn 参数删除。
  */
 @Composable
-fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {
+fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, coverColors: CoverColors? = null) {
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     // 0.1.13 第 3 项（发热）：暂停时把 500ms 轮询降到 2000ms（暂停态
@@ -172,7 +172,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             .clip(shape)
-            .then(if (glassOn) glass else Modifier.background(TokiMiniPlayer))
+            .then(glass)
             .clickable(onClick = onOpen),
     ) {
         Column {
@@ -186,7 +186,10 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                 // Row 纵向 padding 9dp → 6dp（横向仍 9dp），总高仍 70dp
                 //（6+56+6+2）；下一首钮 offset x -6dp 左移（与播放钮间距
                 // 10dp → 4dp 视觉），封面/歌名区不动。
-                AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                // 0.1.21 第 3 项：封面再往右挪一点——offset x +4dp（仅
+                // 视觉位移，不动 Row 布局与歌名/按钮位置）；封面竖直中
+                // 线随之从 34dp 移到 38dp，进度条两端跟着改（见下）。
+                AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).offset(x = 4.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     // 0.1.17 第 5 项：歌手名颜色 #d9d9d9。
@@ -236,9 +239,12 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
             // 中线（也正好是胶囊左半圆的弧心 x≈35dp 处，条从胶囊全高
             // 位置起步）；end 9dp 与 Row 右侧 padding 一致，100% 停在
             // 内容内侧右缘。条高 2dp 与颜色不动，外层 Box 的 clip 兜底。
+            // 0.1.21 第 2+3 项：封面 offset +4dp 后中线移到 38dp，start
+            // 跟到 38dp；end 按用户要求与 0% 等距缩进，同为 38dp（不再
+            // 用 Row 右侧 padding 的 9dp）。
             LinearProgressIndicator(
                 progress = { if (song.durationMs > 0) (pos.toFloat() / song.durationMs).coerceIn(0f, 1f) else 0f },
-                Modifier.fillMaxWidth().padding(start = 34.dp, end = 9.dp).height(2.dp),
+                Modifier.fillMaxWidth().padding(start = 38.dp, end = 38.dp).height(2.dp),
                 color = coverColors?.onCoverText() ?: ProgressIndicatorDefaults.linearColor,
                 trackColor = coverColors?.onCoverText()?.copy(alpha = 0.3f) ?: ProgressIndicatorDefaults.linearTrackColor,
             )
@@ -268,7 +274,7 @@ private enum class PlayerView { Cover, Lyrics, Queue }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}, onOpenQqArtist: (String) -> Unit = {}) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}, onOpenQqArtist: (String) -> Unit = {}) {
     val state by vm.player.state.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
@@ -453,7 +459,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 isPlaying = state.isPlaying,
                                 coverColors = coverColors,
                                 hazeState = hazeState,
-                                backdropBlur = backdropBlur,
                                 // 第五轮第 17 项：沉浸式下歌词区撑满，“回到当前行”
                                 // 按钮一并弹到最底（LyricsView 内按 immersive 调整）。
                                 immersive = immersiveLyrics,
