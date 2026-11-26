@@ -99,7 +99,7 @@ import com.tokimusic.app.ui.settings.SettingsSheet
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
-import com.tokimusic.app.ui.theme.chromeBlurActive
+import com.tokimusic.app.ui.theme.TokiBlurCapability
 import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
@@ -187,11 +187,9 @@ fun TokiMusicApp(
         theme = next
         vm.store.reduceMotion = next.reduceMotion
     }
-    // 0.1.21 第 4 项：玻璃模糊开关与玻璃关的实色预设一并删除，外观
-    // 固定玻璃（= 原开关默认值 true）；下游组件仍收 backdropBlur
-    // 参数，统一传这个固定值，chromeBlurActive 里的设备能力判断
-    // （canSampleInWindow）保留作采样兜底。
-    val backdropBlur = true
+    // 0.1.21 第 4 项：玻璃模糊开关与玻璃关的实色预设（原 TokiUI 莫奈
+    // 悬浮底栏那套）一并删除——外观只剩玻璃一条路径，组件不再收
+    // backdropBlur 参数，需要判断时直接看 TokiBlurCapability。
 
     TokiMusicTheme(
         reduceMotion = theme.reduceMotion,
@@ -302,7 +300,7 @@ fun TokiMusicApp(
         val qqEnabled by vm.qqEnabled.collectAsState()
         val hazeState = rememberHazeState()
         // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 悬浮标题共用。
-        val barGlass = tokiContentChromeStrong(hazeState, backdropBlur)
+        val barGlass = tokiContentChromeStrong(hazeState)
 
         val playerState by vm.player.state.collectAsState()
         // 第三轮第 21 项：播放器封面取色提升到这里——外层满屏 Box 用它画
@@ -310,10 +308,10 @@ fun TokiMusicApp(
         // 它；PlayerScreen 复用同一份取色，不再各自取色。
         val playerSong = playerState.current
         val playerCoverColors = rememberCoverColors(playerSong?.id ?: 0L, playerSong?.picUrl ?: "")
-        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊；
-        // 玻璃关时 MiniPlayer 不用它、走实色。0.1.19 第 5 项：模糊之上
-        // 叠一层动态底（miniPlayerGlassVeil，按封面亮度调，纯黑背景
-        // 提亮、纯白背景加深），免得纯模糊在纯黑背景上看不见。
+        // 0.1.18 第 25 项：MiniPlayer 拆出自己的玻璃——85dp 强模糊。
+        // 0.1.19 第 5 项：模糊之上叠一层动态底（miniPlayerGlassVeil，
+        // 按封面亮度调，纯黑背景提亮、纯白背景加深），免得纯模糊在
+        // 纯黑背景上看不见。0.1.21 第 4 项：玻璃关的实色回退已删。
         val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(
             hazeState,
             miniPlayerGlassVeil(playerCoverColors.top, playerCoverColors.bottom),
@@ -485,7 +483,6 @@ fun TokiMusicApp(
                                     title = pageTitle,
                                     onBack = onBack,
                                     onHeightMeasured = { topBarHeight = it },
-                                    backdropBlur = backdropBlur,
                                     hazeState = hazeState,
                                     strong = true,
                                     // 0.1.19 第 1 项：顶栏只在设置打开时才注册
@@ -519,8 +516,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = Icons.Rounded.PriorityHigh,
                                                     label = "查看网易云统计估算",
-                                                    backdropBlur = backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = { statsNoteVisible = !statsNoteVisible },
                                                 )
                                             }
@@ -534,8 +530,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                                                     label = if (isFav) "取消收藏" else "收藏歌单",
-                                                    backdropBlur = backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = toggleFav,
                                                 )
                                             }
@@ -549,8 +544,7 @@ fun TokiMusicApp(
                                                 TokiGlassIconButton(
                                                     icon = if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
                                                     label = if (isFollowed) "取消关注" else "关注",
-                                                    backdropBlur = backdropBlur,
-                                                    hazeState = hazeState,
+                                                                    hazeState = hazeState,
                                                     onClick = toggleFollow,
                                                 )
                                             }
@@ -686,8 +680,7 @@ fun TokiMusicApp(
                                                     vm,
                                                     onBack = { showPlayer = false },
                                                     hazeState = hazeState,
-                                                    backdropBlur = backdropBlur,
-                                                    coverColors = playerCoverColors,
+                                                                    coverColors = playerCoverColors,
                                                     // 第六轮第 36 项：播放器页歌手名可点进歌手页，
                                                     // 返回时回到播放器页。
                                                     onOpenArtist = { artistId = it; showPlayer = false; artistFromPlayer = true },
@@ -757,7 +750,7 @@ fun TokiMusicApp(
                                         )
                                         key == Dest.Home -> HomeScreen(
                                             vm, topPadding, bottomPadding,
-                                            hazeState, backdropBlur,
+                                            hazeState,
                                             onOpenLogin = { showSettings = true },
                                             onOpenPlaylist = { playlistId = it },
                                             onOpenArtist = { artistId = it },
@@ -791,7 +784,7 @@ fun TokiMusicApp(
                                     }
                                 }
                             }
-                            if (headerVisible && chromeBlurActive(backdropBlur)) {
+                            if (headerVisible && TokiBlurCapability.canSampleInWindow) {
                                 Box(
                                     Modifier
                                         .align(Alignment.TopCenter)
@@ -812,8 +805,6 @@ fun TokiMusicApp(
                                 dest = dest,
                                 glass = barGlass,
                                 miniPlayerGlass = miniPlayerGlass,
-                                solidStroke = !chromeBlurActive(backdropBlur),
-                                glassOn = chromeBlurActive(backdropBlur),
                                 onOpenPlayer = { showPlayer = true },
                                 onSelect = {
                                     dest = it
@@ -851,7 +842,6 @@ fun TokiMusicApp(
                     // 只扩大范围。
                     SettingsBackdrop(
                         visible = showSettings,
-                        backdropBlur = backdropBlur,
                         hazeState = hazeState,
                     )
                 }
@@ -913,7 +903,6 @@ fun TokiMusicApp(
 @Composable
 private fun SettingsBackdrop(
     visible: Boolean,
-    backdropBlur: Boolean,
     hazeState: HazeState,
 ) {
     // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 走 effects
@@ -928,9 +917,9 @@ private fun SettingsBackdrop(
         label = "settings-backdrop",
     ) {
         // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
-        // tokiGlass 配方；玻璃关闭时 chromeBlurActive 关掉不画），让设置
-        // 页更突出。模糊层在遮罩之下（先模糊、再压暗）。
-        if (chromeBlurActive(backdropBlur)) {
+        // tokiGlass 配方），让设置页更突出。模糊层在遮罩之下（先模糊、
+        // 再压暗）。0.1.21 第 4 项：玻璃固定开启，此处只看采样能力。
+        if (TokiBlurCapability.canSampleInWindow) {
             Box(Modifier.fillMaxSize().tokiGlass(hazeState))
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
@@ -951,8 +940,6 @@ private fun BottomChrome(
     dest: Dest,
     glass: Modifier,
     miniPlayerGlass: Modifier,
-    solidStroke: Boolean,
-    glassOn: Boolean,
     onOpenPlayer: () -> Unit,
     onSelect: (Dest) -> Unit,
     onHeight: (Dp) -> Unit,
@@ -1008,14 +995,13 @@ private fun BottomChrome(
                 exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
                 label = "miniPlayer",
             ) {
-                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, glassOn = glassOn, coverColors = coverColors)
+                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, coverColors = coverColors)
             }
             NavBarSlot(
                 navVisible = navVisible,
                 wide = wide,
                 dest = dest,
                 glass = glass,
-                solidStroke = solidStroke,
                 onSelect = onSelect,
                 // 0.1.21 第 1 项：独立搜索圆钮走同一套切页逻辑
                 // （onSelect 自带二级页状态清理）。
@@ -1041,7 +1027,6 @@ private fun NavBarSlot(
     wide: Boolean,
     dest: Dest,
     glass: Modifier,
-    solidStroke: Boolean,
     onSelect: (Dest) -> Unit,
     onSearch: () -> Unit,
 ) {
@@ -1058,13 +1043,12 @@ private fun NavBarSlot(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
+                FloatingNavBar(dest, onSelect, glass = glass)
                 TokiSideActionButton(
                     Icons.Rounded.Search,
                     stringResource(R.string.nav_search),
                     onClick = onSearch,
                     glass = glass,
-                    solidFill = solidStroke,
                 )
             }
         }

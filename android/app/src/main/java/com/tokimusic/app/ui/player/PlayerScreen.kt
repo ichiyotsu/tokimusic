@@ -130,7 +130,6 @@ import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.components.formatDuration
 import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.pressScale
-import com.tokimusic.app.ui.theme.TokiMiniPlayer
 import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
@@ -151,9 +150,10 @@ import kotlin.math.roundToInt
  * 0.1.19 第 5 项：纯模糊在纯黑背景上看不见——调用方在模糊之上叠一层
  * 动态底（25% 深灰基准、按封面亮度提亮/加深，见 miniPlayerGlassVeil），
  * 本组件的形状/布局不变。
+ * 0.1.21 第 4 项：玻璃关的实色回退已删，glass 恒套用，glassOn 参数删除。
  */
 @Composable
-fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, glassOn: Boolean = false, coverColors: CoverColors? = null) {
+fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, coverColors: CoverColors? = null) {
     val song = state.current ?: return
     var pos by remember { mutableLongStateOf(0L) }
     // 0.1.13 第 3 项（发热）：暂停时把 500ms 轮询降到 2000ms（暂停态
@@ -172,7 +172,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             .clip(shape)
-            .then(if (glassOn) glass else Modifier.background(TokiMiniPlayer))
+            .then(glass)
             .clickable(onClick = onOpen),
     ) {
         Column {
@@ -274,7 +274,7 @@ private enum class PlayerView { Cover, Lyrics, Queue }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, backdropBlur: Boolean, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}, onOpenQqArtist: (String) -> Unit = {}) {
+fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, coverColors: CoverColors, onOpenArtist: (Long) -> Unit = {}, onOpenQqArtist: (String) -> Unit = {}) {
     val state by vm.player.state.collectAsState()
     val playMode by vm.player.playMode.collectAsState()
     val lyrics by vm.lyrics.collectAsState()
@@ -459,7 +459,6 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, bac
                                 isPlaying = state.isPlaying,
                                 coverColors = coverColors,
                                 hazeState = hazeState,
-                                backdropBlur = backdropBlur,
                                 // 第五轮第 17 项：沉浸式下歌词区撑满，“回到当前行”
                                 // 按钮一并弹到最底（LyricsView 内按 immersive 调整）。
                                 immersive = immersiveLyrics,

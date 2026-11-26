@@ -60,13 +60,18 @@ class TokiUiThemeTest {
         assertTrue(glass.contains("surfaceContainer"))
         assertTrue(glass.contains("0xFF2A2622"))
         assertTrue(glass.contains("0.46f"))
-        assertTrue(glass.contains("TokiChromeStroke"))
+        // 0.1.21 第 4 项：实色预设（莫奈悬浮底栏）整套删除，描边常量
+        // 不得回潮——原 assertTrue(TokiChromeStroke) 随之反转。
+        assertFalse(glass.contains("TokiChromeStroke"))
         assertTrue(glass.contains("TokiScrollChipBackdrop"))
         val header = File("src/main/java/com/tokimusic/app/ui/components/OverlayHeader.kt").readText()
         assertTrue(header.contains("TokiScrollChipBackdrop"))
         assertFalse(header.contains("onPrimary"))
         val nav = File("src/main/java/com/tokimusic/app/ui/components/FloatingNavBar.kt").readText()
-        assertTrue(nav.contains("solidStroke"))
+        // 0.1.21 第 4 项：实色预设删除，底栏不再有 solidStroke/solidFill
+        // 分流——原 assertTrue(solidStroke) 随之反转。
+        assertFalse(nav.contains("solidStroke"))
+        assertFalse(nav.contains("solidFill"))
         assertTrue(nav.contains("PlainTooltip") || nav.contains("TokiLongPressLabel"))
         assertTrue(File("src/main/java/com/tokimusic/app/ui/theme/AppTypeface.kt").readText().contains("R.font.inter"))
         assertFalse(File("src/main/java/com/tokimusic/app/ui/theme/Shape.kt").exists())

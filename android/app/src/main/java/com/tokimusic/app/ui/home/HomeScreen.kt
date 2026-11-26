@@ -105,7 +105,6 @@ fun HomeScreen(
     topPadding: Dp,
     bottomPadding: Dp,
     hazeState: dev.chrisbanes.haze.HazeState,
-    backdropBlur: Boolean,
     onOpenLogin: () -> Unit,
     onOpenPlaylist: (Long) -> Unit,
     // Round 3 item 12: song-row artist names open the artist page.
@@ -280,7 +279,6 @@ fun HomeScreen(
                             onLogin = onOpenLogin,
                             onOpen = { onOpenPlaylist(-1L) },
                             hazeState = hazeState,
-                            backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
                             modifier = Modifier.weight(1f),
                         )
@@ -293,7 +291,6 @@ fun HomeScreen(
                             onLogin = onOpenLogin,
                             onOpen = { onOpenPlaylist(-2L) },
                             hazeState = hazeState,
-                            backdropBlur = backdropBlur,
                             showSourceBadge = bothEnabled,
                             modifier = Modifier.weight(1f),
                         )
@@ -324,7 +321,6 @@ fun HomeScreen(
                             onLogin = onOpenLogin,
                             onOpen = { onOpenPlaylist(-3L) },
                             hazeState = hazeState,
-                            backdropBlur = backdropBlur,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
                             modifier = Modifier.weight(1f),
@@ -338,7 +334,6 @@ fun HomeScreen(
                             onLogin = onOpenLogin,
                             onOpen = { onOpenPlaylist(-4L) },
                             hazeState = hazeState,
-                            backdropBlur = backdropBlur,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
                             modifier = Modifier.weight(1f),
@@ -602,7 +597,6 @@ private fun RecommendCard(
     onLogin: () -> Unit,
     onOpen: () -> Unit,
     hazeState: dev.chrisbanes.haze.HazeState,
-    backdropBlur: Boolean,
     showSourceBadge: Boolean = false,
     // 大排查 B2：徽标按卡片来源画——QQ 每日/雷达传 QQ，之前这里写死
     // 网易云，QQ 卡片顶着网易云徽标。
@@ -614,7 +608,8 @@ private fun RecommendCard(
         else null
     val textColor = coverColors?.onCoverText() ?: Color.White
     val dimColor = coverColors?.onCoverTextDim() ?: Color.White.copy(alpha = 0.8f)
-    val blurOn = com.tokimusic.app.ui.theme.chromeBlurActive(backdropBlur)
+    // 0.1.21 第 4 项：玻璃固定开启，模糊只看设备采样能力。
+    val blurOn = com.tokimusic.app.ui.theme.TokiBlurCapability.canSampleInWindow
     Card(
         onClick = if (loggedIn) onOpen else onLogin,
         modifier = modifier.fillMaxWidth().aspectRatio(200f / 260f),

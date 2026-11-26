@@ -27,8 +27,10 @@ import dev.chrisbanes.haze.blur.hazeBlur
  * Capsule and title chrome follow TokiStudio 0.1.10.
  * [HazeInput.Backdrop] samples pixels already drawn in the window.
  * Light frost is a 16% warm dark wash then 46% white. Dark frost is 20% white.
- * Glass off or sampling unavailable: opaque surfaceContainer, and callers add
- * the shared 3dp primary stroke. No second opaque fill on a frosted title.
+ * Sampling unavailable: opaque surfaceContainer. No second opaque fill on
+ * a frosted title. (0.1.21 第 4 项：玻璃关的实色预设——原 TokiUI 的
+ * 莫奈悬浮底栏那套，含 3dp primary 描边——已整套删除，全应用只剩
+ * 玻璃一条外观路径；这里的 opaque 分支只是采样不可用时的兜底。)
  *
  * 0.1.10 rewrote the scroll-title chip: the frost is ALWAYS on (the old
  * scroll-overlap reporting, which kept losing the blur on 0.1.7/0.1.8/0.1.9,
@@ -46,25 +48,18 @@ object TokiBlurCapability {
         get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 }
 
-fun chromeBlurActive(backdropBlur: Boolean): Boolean =
-    backdropBlur && TokiBlurCapability.canSampleInWindow
-
 // 大排查 D2/D3：tokiChrome / tokiContentChrome / tokiChromeStrong /
 // tokiGlassStrong 无任何调用者，已删（导航胶囊在用下面的
 // tokiContentChromeStrong；固定尺寸面走 tokiGlass）。
+// 0.1.21 第 4 项：chromeBlurActive 已删——玻璃模糊开关删除后不再有
+// 「设置 && 能力」的组合判断，各处直接看 TokiBlurCapability。
 /** 加强档 chrome（第二轮第 1 项）：32dp 模糊 + 45% veil，与底栏同配方。
  * 0.1.18 第 22 项：回 0.1.15 的样子——0.1.17 第 4 项换的主题紫
- * TokiNavBar（#5C4861）撤掉，两分支都回 surfaceContainer（玻璃开 =
- * 强模糊 + 45% surfaceContainer veil；玻璃关 = 实色 surfaceContainer，
- * 底栏另有 3dp 描边/6dp 间距的实色适配）。玻璃关时整页发紫的根因就是
- * 这一处：全仓只有这里用 TokiNavBar，没有别的紫色来源，常量已删。 */
+ * TokiNavBar（#5C4861）撤掉。0.1.21 第 4 项：玻璃关的实色分支删除，
+ * 本函数只剩玻璃配方；采样不可用时 Haze 样式自带 fallback 上色兜底。 */
 @Composable
-fun tokiContentChromeStrong(state: HazeState, backdropBlur: Boolean): Modifier {
-    return if (chromeBlurActive(backdropBlur)) {
-        Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
-    } else {
-        Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
-    }
+fun tokiContentChromeStrong(state: HazeState): Modifier {
+    return Modifier.tokiContentGlassStrong(state).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = TokiGlassParams.strongVeilAlpha))
 }
 
 object TokiGlassParams {
@@ -167,8 +162,8 @@ fun Modifier.tokiContentGlassStrong(state: HazeState): Modifier {
  * 模糊之上叠一层动态底 [veil]（background 形式，与
  * tokiContentChromeStrong 的 veil 同款叠法）：基准 25% 深灰，按
  * 当前歌曲封面亮度动态提亮/加深（见 miniPlayerGlassVeil）。噪点与
- * 全应用玻璃同值 0.02（磨砂质感，不是上色）。玻璃关时调用方不套
- * 这个 modifier、走实色 TokiMiniPlayer 回退（见 PlayerScreen.MiniPlayer）。
+ * 全应用玻璃同值 0.02（磨砂质感，不是上色）。0.1.21 第 4 项：玻璃
+ * 关的实色回退已删，MiniPlayer 恒套这个 modifier。
  */
 @Composable
 fun Modifier.tokiContentGlassMiniPlayer(state: HazeState, veil: Color): Modifier {
@@ -211,31 +206,25 @@ fun Modifier.tokiGlassFade(state: HazeState, fadeFromTop: Boolean): Modifier {
     )
 }
 
-/** Solid bar and solid title chips share this stroke. Glass sampling adds none. */
-object TokiChromeStroke {
-    val width: Dp = 3.dp
-    val barGap: Dp = 6.dp
-}
-
 /**
  * Scroll title / back chip. TokiStudio 0.1.10: the frost is ALWAYS on — no
  * scroll reporting, no cover animation. Frosted: content-source glass + a
  * 24% surfaceContainer veil + a 1dp outlineVariant stroke so the chip reads
- * on any background. Otherwise opaque surfaceContainer plus a 3dp primary
- * stroke (same weight as the solid bottom bar).
+ * on any background. Sampling unavailable (or no haze state): opaque
+ * surfaceContainer at the veil alpha. 0.1.21 第 4 项：原「未磨砂 =
+ * 实色 + 3dp primary 描边」的实色预设分支已删（描边常量随之删除）。
  *
  * [strong]（第二轮第 1/3 项）：悬浮标题与底栏同配方——32dp 模糊 + 45% veil。
  */
 @Composable
 fun TokiScrollChipBackdrop(
     shape: Shape,
-    backdropBlur: Boolean,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     strong: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val frosted = backdropBlur && TokiBlurCapability.canSampleInWindow
+    val frosted = TokiBlurCapability.canSampleInWindow
     val veil = if (strong) TokiGlassParams.strongVeilAlpha else 0.24f
     Box(
         modifier
@@ -245,10 +234,6 @@ fun TokiScrollChipBackdrop(
                     (if (strong) Modifier.tokiContentGlassStrong(hazeState) else Modifier.tokiContentGlass(hazeState))
                         .background(scheme.surfaceContainer.copy(alpha = veil))
                         .border(1.dp, scheme.outlineVariant.copy(alpha = 0.45f), shape)
-                } else if (!frosted) {
-                    Modifier
-                        .background(scheme.surfaceContainer)
-                        .border(TokiChromeStroke.width, scheme.primary, shape)
                 } else {
                     Modifier.background(scheme.surfaceContainer.copy(alpha = veil))
                 },
