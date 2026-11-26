@@ -90,6 +90,8 @@ dependencies {
     implementation(libs.material.color.utilities)
     implementation(libs.haze); implementation(libs.haze.blur)
     implementation(libs.coil.compose); implementation(libs.okhttp); implementation(libs.zxing.core)
+    // 0.1.20 第 7 项：SAF 目录遍历（DocumentFile）——显式声明，不靠传递依赖。
+    implementation(libs.androidx.documentfile)
     implementation(libs.media3.exoplayer); implementation(libs.media3.session)
     implementation(libs.androidx.mediarouter)
     // mediarouter 把 fragment 标为 runtime 依赖，不进编译 classpath；

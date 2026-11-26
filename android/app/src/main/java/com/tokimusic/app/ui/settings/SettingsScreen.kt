@@ -969,7 +969,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "开启后，应用会在本机记录播放历史、分析你常听的歌手，并在主页推荐可能合口味的歌单；数据只存本机、不上传。关闭后停止记录，也不再显示推荐区。",
+            "开启后，应用会在主页根据你常听的歌手推荐可能合口味的歌单。播放记录始终只保存在本机（不上传），用于主页的回顾歌单与本地模式的重温回顾，与此开关无关。",
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

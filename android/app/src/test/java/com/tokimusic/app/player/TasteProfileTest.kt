@@ -79,4 +79,58 @@ class TasteProfileTest {
         )
         assertTrue(profile.isEmpty())
     }
+
+    // ---- 0.1.20 联合：新鲜度加权 + 回顾信号 ----
+
+    private val dayMs = 24L * 60 * 60 * 1000
+
+    private fun timedEvent(artists: List<String>, seconds: Long, atMs: Long) =
+        PlayEvent(songId = 1L, source = "NETEASE", artistNames = artists, playedSeconds = seconds, playedAtMs = atMs)
+
+    @Test
+    fun recencyScalesEventWeight() {
+        val now = 200L * dayMs
+        // “中”所在月份另塞 10 位各播 2 次的歌手，把它挤出该月 top10，
+        // 单独验新鲜度系数（不掺回顾 boost）。
+        val fillers = (1..10).flatMap { i ->
+            listOf(
+                timedEvent(listOf("填$i"), 30, now - 60 * dayMs),
+                timedEvent(listOf("填$i"), 30, now - 60 * dayMs),
+            )
+        }
+        val profile = TasteProfile.build(
+            events = listOf(
+                timedEvent(listOf("近"), 30, now - 10 * dayMs), // ≤30 天 → 1.0
+                timedEvent(listOf("中"), 30, now - 60 * dayMs), // 30–90 天 → 0.7
+                timedEvent(listOf("远"), 30, now - 120 * dayMs), // >90 天 → 0.5 + 回顾 boost（见下）
+            ) + fillers,
+            likedSongs = emptyList(),
+            followedArtistNames = emptyList(),
+            nowMs = now,
+        )
+        assertEquals(1.0, profile["近"]!!, 1e-9)
+        assertEquals(0.7, profile["中"]!!, 1e-9)
+        // “远”在过去月份里出现（只有它一首也算该月 top10）→ 0.5 + 0.5 boost = 1.0。
+        assertEquals(1.0, profile["远"]!!, 1e-9)
+    }
+
+    @Test
+    fun retrospectiveBoostOnlyForPastMonths() {
+        val now = 200L * dayMs // 与 timedEvent 的月份关系由 playedAt 决定
+        // 本月事件不吃 boost：同月内播 1 次 30 秒 → 只有 1.0。
+        val thisMonth = TasteProfile.build(
+            events = listOf(timedEvent(listOf("本月"), 30, now - dayMs)),
+            likedSongs = emptyList(),
+            followedArtistNames = emptyList(),
+            nowMs = now,
+        )
+        assertEquals(1.0, thisMonth["本月"]!!, 1e-9)
+        // nowMs=0（旧调用）不启用新鲜度与 boost：120 天前的事件也按 1.0 算。
+        val legacy = TasteProfile.build(
+            events = listOf(timedEvent(listOf("旧"), 30, 0L)),
+            likedSongs = emptyList(),
+            followedArtistNames = emptyList(),
+        )
+        assertEquals(1.0, legacy["旧"]!!, 1e-9)
+    }
 }

@@ -74,9 +74,10 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */
     var scrobbleEnabled: Boolean get() = prefs.getBoolean(SCROBBLE_KEY, true)
         set(v) { prefs.edit().putBoolean(SCROBBLE_KEY, v).apply() }
-    /** 算法推荐开关（0.1.18 第 15 项，测试功能，默认关）：开时才把播放
-     * 事件写进本地数据库（PlayEventLog）并在主页显示算法推荐区；
-     * 关时不写库、不展示。数据只存本机，不上传。 */
+    /** 算法推荐开关（0.1.18 第 15 项，测试功能，默认关）。0.1.20 联合
+     * 改造后语义收窄：只控制主页是否显示算法推荐区 + 是否跑画像打分；
+     * 播放事件本身始终记录在本机（回顾歌单/重温回顾要用，见
+     * PlayerController.finishPlayEvent 与本轮 NOTES）。 */
     var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", false)
         set(v) { prefs.edit().putBoolean("algorithm_recommend_enabled", v).apply() }
 
@@ -122,6 +123,21 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 资料库的 euin 接口会先探一次再决定。退出登录时清掉。 */
     override var qqEncryptUin: String get() = prefs.getString("qq_encrypt_uin", "") ?: ""
         set(v) { prefs.edit().putString("qq_encrypt_uin", v).apply() }
+    // QIMEI（0.1.20 第 12 项）：注册结果与虚拟设备 IMEI，长期复用，
+    // 不每次启动重注册。见 data/api/QqQimei.kt。
+    override var qqQimei16: String get() = prefs.getString("qq_qimei16", "") ?: ""
+        set(v) { prefs.edit().putString("qq_qimei16", v).apply() }
+    override var qqQimei36: String get() = prefs.getString("qq_qimei36", "") ?: ""
+        set(v) { prefs.edit().putString("qq_qimei36", v).apply() }
+    override var qqImei: String get() = prefs.getString("qq_imei", "") ?: ""
+        set(v) { prefs.edit().putString("qq_imei", v).apply() }
+    /** 本地读取的 SAF 授权目录（0.1.20 第 7 项）：网易云/QQ 下载目录
+     * 的 tree URI 字符串，空 = 未授权。授权后长期有效，点「读取」
+     * 即自动遍历，不再重复选目录。 */
+    var localTreeNetease: String get() = prefs.getString("local_tree_netease", "") ?: ""
+        set(v) { prefs.edit().putString("local_tree_netease", v).apply() }
+    var localTreeQq: String get() = prefs.getString("local_tree_qq", "") ?: ""
+        set(v) { prefs.edit().putString("local_tree_qq", v).apply() }
     /** QQ 客户端 GUID（第六轮第 1 项）：CGI comm 的 OpenUDID/udid，
      * 稳定不变，首次使用时生成。 */
     override var qqDeviceId: String get() = prefs.getString("qq_device_id", null) ?: run {

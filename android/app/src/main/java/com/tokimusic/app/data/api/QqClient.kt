@@ -45,6 +45,20 @@ interface QqSettings {
     var qqEncryptUin: String
     var neteaseEnabled: Boolean
     var qqEnabled: Boolean
+    /**
+     * QIMEI q16/q36 + 虚拟设备 IMEI（0.1.20 第 12 项）：注册成功后长期
+     * 复用。接口给默认空实现（测试假件不用改），真实存储在
+     * SettingsStore；见 [QqQimei]。
+     */
+    var qqQimei16: String
+        get() = ""
+        set(_) {}
+    var qqQimei36: String
+        get() = ""
+        set(_) {}
+    var qqImei: String
+        get() = ""
+        set(_) {}
 }
 
 /** QQ login credential (musicid / musickey), persisted in [QqSettings]. */
@@ -138,16 +152,12 @@ internal fun mergeRecommendPages(pages: List<List<Song>>, target: Int): List<Son
  * polling → check_sig → graph authorize → QQLogin CGI → GetLoginUserInfo.
  *
  * Sixth round, item 1 — login shell only: QR login + session refresh +
- * profile; no QQ playback, search or playlists yet (phase C). Whether the
- * QQLogin CGI call succeeds on a real device is NOT verified by the spike
- * (it stops at the polling step); the prime suspect if it fails is the
- * missing QIMEI36 — this client sends it as an empty string, which is
- * exactly what L-1124 does when no QIMEI is cached
- * (`versioning.py: QIMEI36=qimei["q36"] if qimei is not None else ""`),
- * but the server may still demand a real one. Porting QIMEI (RSA PKCS1v15
- * + AES-128-CBC, virtual vivo device) is the follow-up if login fails;
- * the constants live in the spike's `probe-android.js` and L-1124
- * `utils/qimei.py`.
+ * profile; no QQ playback, search or playlists yet (phase C).
+ *
+ * 0.1.20 第 12 项：QIMEI 已移植（[QqQimei]，按 spike 探针已验证的
+ * RSA PKCS1v15 + AES-128-CBC 流程复刻）：首次搜索等门控请求前懒注册，
+ * q16/q36 持久化长期复用，comm 的 QIMEI36 不再恒为空串；注册失败优雅
+ * 降级（搜索返回空，与移植前一致）。
  *
  * Device identity: a virtual vivo V2408A profile (the one the spike
  * verified) — phonetype V2408A, os_ver 15, ct 11, cv/v 20090008 — with
@@ -632,7 +642,21 @@ class QqClient(
     private fun newSearchId(): String =
         "QQMusicSearch${System.currentTimeMillis() / 1000}${Random.nextInt(0, Int.MAX_VALUE)}"
 
+    /**
+     * QIMEI 懒注册（0.1.20 第 12 项）：搜索等 QIMEI 门控请求前调用。
+     * 已注册直接返回；未注册时本进程只尝试一次（失败不反复打接口，
+     * 按无 QIMEI 降级——搜索返回空，与移植前一致）。注册流程与降级
+     * 策略见 [QqQimei] 与本轮 NOTES。
+     */
+    private var qimeiAttempted = false
+    private suspend fun ensureQimei() {
+        if (store.qqQimei36.isNotBlank() || qimeiAttempted) return
+        qimeiAttempted = true
+        QqQimei.registerIfNeeded(store, http)
+    }
+
     private suspend fun searchBody(keyword: String, type: QqSearchType, limit: Int, page: Int = 1): JSONObject? {
+        ensureQimei()
         val resp = cgi(
             module = "music.search.SearchCgiService",
             method = "DoSearchForQQMusicMobile",
@@ -1267,8 +1291,10 @@ class QqClient(
             comm.put("authst", credential.musicKey)
         }
         comm.put("traceid", "10002_${uidPart}_${System.currentTimeMillis() / 1000}")
-        // 第六轮第 1 项：不移植 QIMEI；L-1124 无 QIMEI 缓存时同样传空串。
-        comm.put("QIMEI36", "")
+        // 0.1.20 第 12 项：QIMEI 已移植——注册成功后 q36 持久化在
+        // store 里，comm 直接带上；未注册/注册失败时为空串（与
+        // L-1124 无缓存时的行为一致，搜索等门控接口返回空，优雅降级）。
+        comm.put("QIMEI36", store.qqQimei36)
         comm.put("OpenUDID", store.qqDeviceId)
         comm.put("udid", store.qqDeviceId)
         comm.put("OpenUDID2", store.qqDeviceId2)

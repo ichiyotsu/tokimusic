@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -94,7 +95,6 @@ import com.tokimusic.app.ui.stats.NeteaseReportScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
-import com.tokimusic.app.ui.search.SearchSheet
 import com.tokimusic.app.ui.settings.SettingsSheet
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
@@ -222,6 +222,8 @@ fun TokiMusicApp(
         LaunchedEffect(statsOpen) { if (!statsOpen) statsNoteVisible = false }
         // Round 3 item 20: Home's floating title follows the scrolled section.
         var homeSectionTitle by remember { mutableStateOf("主页") }
+        // 0.1.20 第 4 项：资料库的悬浮标题同款跟随（最近添加 / 听歌排行）。
+        var libraryTitle by remember { mutableStateOf("资料库") }
         // 第六轮第 29 项：播放器页开关可保存——进程重建 / 从通知点进后仍回到
         // 播放器页；歌词视图与沉浸态在 PlayerScreen 里同样可保存。
         var showPlayer by rememberSaveable { mutableStateOf(openPlayerInitially) }
@@ -242,10 +244,9 @@ fun TokiMusicApp(
             if (artistFromPlayer) { artistFromPlayer = false; showPlayer = true }
         }
         // 设置页：底部弹窗（第二轮第 4 项，TokiNote SheetContainer 配方），
-        // 不再是独立全屏页；搜索自第五轮第 16 项起改回底部弹窗（推翻第三轮
-        // 第 11 项的独立页），状态与 playlistId 同级，弹窗浮在页面与底栏之上。
+        // 不再是独立全屏页。搜索在 0.1.20 第 11 项改为独立一级页
+        // （Dest.Search），不再是弹窗。
         var showSettings by remember { mutableStateOf(false) }
-        var searchSheetOpen by remember { mutableStateOf(false) }
         val density = LocalDensity.current
         // 第二轮第 8 项：歌单详情的悬浮标题只在标题行滑出可视区后出现
         // （淡入 + 上移动画）；进新歌单时先复位为隐藏。第三轮第 5 项起，
@@ -333,6 +334,8 @@ fun TokiMusicApp(
             neteaseReportOpen -> "收听报告"
             librarySection != null -> librarySection!!.title
             dest == Dest.Home -> homeSectionTitle
+            // 0.1.20 第 4 项：资料库一级页的悬浮标题跟随页内分区滚动。
+            dest == Dest.Library -> libraryTitle
             else -> stringResource(navEntries.first { it.dest == dest }.label)
         }
         // The player is a second-level page: no top bar, no bottom bar, no
@@ -428,7 +431,6 @@ fun TokiMusicApp(
                                         librarySection = null
                                         statsOpen = false
                                         neteaseReportOpen = false
-                                        searchSheetOpen = false
                                         showPlayer = false
                                     },
                                     icon = {
@@ -441,15 +443,8 @@ fun TokiMusicApp(
                                 )
                             }
                         }
-                        // 宽屏：搜索也不在 tab 里，同样走独立按钮（打开底部弹窗）。
-                        TokiLongPressLabel(stringResource(R.string.nav_search)) {
-                            NavigationRailItem(
-                                selected = false,
-                                onClick = { searchSheetOpen = true },
-                                icon = { Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.nav_search)) },
-                                label = { Text(stringResource(R.string.nav_search)) },
-                            )
-                        }
+                        // 0.1.20 第 11 项：搜索已进 navEntries（一级页），
+                        // rail 不再有独立搜索按钮。
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -530,6 +525,48 @@ fun TokiMusicApp(
                                                     hazeState = hazeState,
                                                     onClick = toggleFollow,
                                                 )
+                                            }
+                                        }
+                                        // 0.1.20 第 11 项：搜索页顶栏右侧放源
+                                        // 选择器（双源都开时才出现；单源时搜索
+                                        // 自动钳制到该源，不需要选择器）。切换
+                                        // 按新源重跑最近一次查询。
+                                        dest == Dest.Search && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen && neteaseEnabled && qqEnabled -> {
+                                            {
+                                                val searchSource by vm.searchSource.collectAsState()
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    com.tokimusic.app.ui.search.SearchSourceButton(
+                                                        MusicSource.NETEASE,
+                                                        searchSource == MusicSource.NETEASE,
+                                                    ) { vm.search(vm.lastSearchKeywords, MusicSource.NETEASE) }
+                                                    com.tokimusic.app.ui.search.SearchSourceButton(
+                                                        MusicSource.QQ,
+                                                        searchSource == MusicSource.QQ,
+                                                    ) { vm.search(vm.lastSearchKeywords, MusicSource.QQ) }
+                                                }
+                                            }
+                                        }
+                                        // 0.1.20 第 7 项：资料库本地页顶栏右侧
+                                        // 「读取」按钮——触发本地页执行读取
+                                        // （vm.requestLocalRead → localReadTick）。
+                                        librarySection == LibrarySection.Local -> {
+                                            {
+                                                val importing by vm.localImporting.collectAsState()
+                                                Box(
+                                                    Modifier.clip(RoundedCornerShape(percent = 50))
+                                                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                                                        .clickable(enabled = !importing) { vm.requestLocalRead() }
+                                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Text(
+                                                        if (importing) "读取中…" else "读取",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                    )
+                                                }
                                             }
                                         }
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
@@ -700,6 +737,13 @@ fun TokiMusicApp(
                                             onOpenQqArtist = { qqArtistMid = it },
                                             onSectionTitle = { homeSectionTitle = it },
                                         )
+                                        // 0.1.20 第 11 项：搜索独立页（一级页）。
+                                        key == Dest.Search -> com.tokimusic.app.ui.search.SearchPage(
+                                            vm,
+                                            onOpenPlaylist = { playlistId = it },
+                                            onOpenArtist = { artistId = it },
+                                            onOpenQqArtist = { qqArtistMid = it },
+                                        )
                                         else -> LibraryScreen(
                                             vm, topPadding, bottomPadding,
                                             onOpenSettings = { showSettings = true },
@@ -713,6 +757,8 @@ fun TokiMusicApp(
                                             onOpenAlbum = { albumId = it },
                                             // 0.1.15 资料库同步：QQ 关注歌手按 mid 进 QQ 歌手页。
                                             onOpenQqArtist = { qqArtistMid = it },
+                                            // 0.1.20 第 4 项：悬浮标题跟随资料库分区滚动。
+                                            onSectionTitle = { libraryTitle = it },
                                         )
                                     }
                                 }
@@ -753,10 +799,8 @@ fun TokiMusicApp(
                                     librarySection = null
                                     statsOpen = false
                                     neteaseReportOpen = false
-                                    searchSheetOpen = false
                                     showPlayer = false
                                 },
-                                onSearch = { searchSheetOpen = true },
                                 onHeight = { if (chromeVisible) measuredChrome = it },
                             )
                         }
@@ -786,18 +830,9 @@ fun TokiMusicApp(
             }
         }
         // 底部弹窗（第二轮第 4 项）：设置是 ModalBottomSheet，浮在页面与
-        // 底栏之上；chrome 在弹窗下保持可见。搜索自第五轮第 16 项起改回
-        // 同款底部弹窗（TokiSheetContainer），点行播放后弹窗留着。
+        // 底栏之上；chrome 在弹窗下保持可见。搜索自 0.1.20 第 11 项起是
+        // 独立一级页，不再有搜索弹窗。
         if (showSettings) SettingsSheet(vm, theme, updateTheme, onClose = { showSettings = false })
-        if (searchSheetOpen) SearchSheet(
-            vm,
-            backdropBlur = theme.backdropBlur,
-            onClose = { searchSheetOpen = false },
-            onOpenPlaylist = { playlistId = it; playlistTitle = ""; searchSheetOpen = false },
-            onOpenArtist = { artistId = it; searchSheetOpen = false },
-            // 0.1.15 第 2 项：QQ 歌手按 mid 进 QQ 歌手页。
-            onOpenQqArtist = { qqArtistMid = it; searchSheetOpen = false },
-        )
         // 第 6 项：长按歌曲的底部弹窗；“添加”只列我创建的歌单。
         val songActions by vm.songActions.collectAsState()
         val likedIds by vm.likedIds.collectAsState()
@@ -892,7 +927,6 @@ private fun BottomChrome(
     glassOn: Boolean,
     onOpenPlayer: () -> Unit,
     onSelect: (Dest) -> Unit,
-    onSearch: () -> Unit,
     onHeight: (Dp) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -955,19 +989,20 @@ private fun BottomChrome(
                 glass = glass,
                 solidStroke = solidStroke,
                 onSelect = onSelect,
-                onSearch = onSearch,
             )
         }
     }
 }
 
 /**
- * 底部导航栏（3 tab 胶囊 + 搜索圆钮）——单独抽成顶层 composable，
+ * 底部导航栏（3 tab 胶囊）——单独抽成顶层 composable，
  * 否则在 BottomChrome 的 Box 里调 AnimatedVisibility 会撞 ColumnScope
  * 的 DSL 作用域限制（编译失败）。0.1.14 第 12 项：显隐动画加纵向
  * 展开 / 收缩（布局高度跟着动画走），退出时导航栏滑出 + 淡出 +
  * 收缩，底锚定的 Column 收短，MiniPlayer 平滑滑下去贴底；进入时
  * 反向滑回来。0.1.13 第 26 项的固定槽已拆，不再需要 onNavHeightPx。
+ * 0.1.20 第 11 项：搜索成为胶囊里的第三个 tab，原旁边的独立搜索
+ * 圆钮（TokiSideActionButton）删除。
  */
 @Composable
 private fun NavBarSlot(
@@ -977,7 +1012,6 @@ private fun NavBarSlot(
     glass: Modifier,
     solidStroke: Boolean,
     onSelect: (Dest) -> Unit,
-    onSearch: () -> Unit,
 ) {
     val scheme = MaterialTheme.motionScheme
     AnimatedVisibility(
@@ -986,21 +1020,7 @@ private fun NavBarSlot(
         exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()) + shrinkVertically(scheme.defaultSpatialSpec()),
     ) {
         if (!wide) {
-            // 第二轮第 23 项：3 tab 胶囊 + 胶囊旁的独立搜索圆钮（TokiUI
-            // 0.1.10 的独立按钮形态，8dp 间隔，与胶囊同配方）。
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
-                TokiSideActionButton(
-                    Icons.Rounded.Search,
-                    stringResource(R.string.nav_search),
-                    onClick = onSearch,
-                    glass = glass,
-                    solidFill = solidStroke,
-                )
-            }
+            FloatingNavBar(dest, onSelect, glass = glass, solidStroke = solidStroke)
         }
     }
 }

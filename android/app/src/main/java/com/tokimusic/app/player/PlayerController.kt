@@ -354,17 +354,21 @@ class PlayerController(context: Context) {
     }
 
     /**
-     * 0.1.18 第 15 项：把当前歌累计的播放时长作为一条播放事件落库
-     * （算法推荐开关开时才写；关时直接丢弃，库里不留数据）。写库在
-     * IO 线程做，不占主线程。切歌时由 onMediaItemTransition 调用
-     * （调用前 notePlayingChanged 已把最后一段累计进来）。
+     * 播放事件落库（0.1.18 第 15 项引入；0.1.20 联合改造）：算法推荐、
+     * 回顾歌单（第 6 项）、本地模式重温回顾（第 5 项）共用同一批
+     * 事件——0.1.20 起**始终记录**，不再受 algorithmRecommendEnabled
+     * 门控（否则开关默认关时回顾永远没数据）。开关的语义收窄为
+     * 「主页是否显示算法推荐区」，设置页文案已同步说明；事件只存
+     * 本机（与 PlaybackStatsStore 同性质），不上传。写库在 IO 线程
+     * 做。切歌时由 onMediaItemTransition 调用（调用前
+     * notePlayingChanged 已把最后一段累计进来）。
      */
     private fun finishPlayEvent() {
         val song = eventSong ?: return
         eventSong = null
         val playedMs = eventPlayedMs
         eventPlayedMs = 0L
-        if (playedMs <= 0L || !settingsStore.algorithmRecommendEnabled) return
+        if (playedMs <= 0L) return
         val event = PlayEvent(
             songId = song.id,
             source = song.source.name,

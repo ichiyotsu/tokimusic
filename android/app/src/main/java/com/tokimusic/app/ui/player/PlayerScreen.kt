@@ -719,19 +719,10 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
     var titleTextWidthPx by remember { mutableIntStateOf(0) }
     var titleBoxWidthPx by remember { mutableIntStateOf(0) }
     val titleOverflow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
-    // 0.1.18 第 16 项：实时歌词——每秒把当前歌词行替换歌名显示；无歌词 /
-    // 纯音乐时回歌名。行来源复用 0.1.17 第 12 项的 LiveLyricLine（AppViewModel
-    // 的 500ms 循环推），这里只做 1 秒 tick 采样，不另算行。SongTitleBlock
-    // 是封面大标题与歌词/队列迷你条共用的标题组件，两处同走这一逻辑；
-    // MiniPlayer 与 MoreSheet 的歌名不是这个组件，保持歌名不动。
-    var lyricLine by remember(song.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(song.id) {
-        while (true) {
-            lyricLine = LiveLyricLine.current?.takeIf { it.isNotBlank() }
-            delay(1000)
-        }
-    }
-    val titleText = lyricLine ?: song.name
+    // 0.1.20 第 1 项：标题恒显示歌名——0.1.18 第 16 项的「实时歌词替换
+    // 歌名」已按用户要求撤掉（歌词进系统通知是另一个已搁置的想法，
+    // 本轮不做；通知侧的实时歌词开关 0.1.17 第 12 项保持原样）。
+    val titleText = song.name
     Column(modifier) {
         Text(
             titleText,

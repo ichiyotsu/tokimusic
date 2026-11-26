@@ -4,7 +4,14 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
     <!-- Font Awesome Free 7.3.1 music (CC BY 4.0) — system player / notification small icon, 0.1.13 item 10. White monochrome on transparent. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M468 7c7.6 6.1 12 15.3 12 25l0 304c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6l0-116.7-224 49.8 0 206.3c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6L128 96c0-15 10.4-28 25.1-31.2l288-64c9.5-2.1 19.4 .2 27 6.3z" />
+    <!-- 0.1.20 第 13 项：音符字形在画布内缩小 20%（group scale 0.8，绕中心 256,256）；桌面启动图标（mipmap ic_launcher）不动。改前：无 group、字形占满 512 画布（scale 1.0）。 -->
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M468 7c7.6 6.1 12 15.3 12 25l0 304c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6l0-116.7-224 49.8 0 206.3c0 44.2-43 80-96 80s-96-35.8-96-80 43-80 96-80c11.2 0 22 1.6 32 4.6L128 96c0-15 10.4-28 25.1-31.2l288-64c9.5-2.1 19.4 .2 27 6.3z" />
+    </group>
 </vector>
