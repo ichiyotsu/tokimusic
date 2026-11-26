@@ -212,9 +212,9 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                 // 线随之从 34dp 移到 38dp，进度条两端跟着改（见下）。
                 AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).offset(x = 4.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
-                    Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                    Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     // 0.1.17 第 5 项：歌手名颜色 #d9d9d9。
-                    Text(song.artistText, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = Color(0xFFD9D9D9))
+                    Text(song.artistText, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = Color(0xFFD9D9D9))
                 }
                 // 第六轮第 32 项：迷你播放器的播放 / 下一曲钮也按压回弹（计划里
                 // 写的“星标/更多”在 MiniPlayer 里不存在——这里只有播放与下一曲
@@ -938,8 +938,8 @@ private fun QueueListRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(song.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCover, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(song.artistText, style = MaterialTheme.typography.bodySmall, color = onCoverDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCover, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.artistText, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText), style = MaterialTheme.typography.bodySmall, color = onCoverDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -993,7 +993,7 @@ private fun MoreSheet(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
-                    Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // 0.1.17 第 6 项：时长放歌手名后面（“歌手名 · 时长”），
                     // 专辑退出这行；独立的时长行删掉。时长为 0 时只有歌手名。
                     Text(

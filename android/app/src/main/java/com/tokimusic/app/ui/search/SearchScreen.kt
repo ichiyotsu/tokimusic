@@ -210,7 +210,7 @@ fun SearchPage(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Avatar(artist.picUrl, size = 48)
-                        Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(artist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (bothEnabled) SourceBadge(MusicSource.NETEASE, size = 20)
                     }
                 }
@@ -225,7 +225,7 @@ fun SearchPage(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Avatar(artist.picUrl, size = 48)
-                        Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(artist.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(artist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (bothEnabled) SourceBadge(MusicSource.QQ, size = 20)
                     }
                 }

@@ -15,8 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +38,7 @@ import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
 import com.tokimusic.app.ui.theme.tokiPillColor
 
-data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
+data class NavBarEntry(val dest: Dest, val icon: ImageVector, val label: Int)
 
 /**
  * 底部悬浮胶囊 tab（纯图标无文字）。0.1.21 第 1 项：恢复独立搜索
@@ -50,9 +48,12 @@ data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: 
  * 回到主页 / 资料库 2 tab；同一列表也驱动 rail，rail 的搜索同样
  * 是条目之后的独立项，两处不会漂移。
  */
+// 0.1.21：主页/资料库只用圆角实心（Rounded Filled）单套图标——不再
+// 选中=实心、未选=线框两套切换；选中态只靠胶囊底色（pillColor）表达，
+// 图标着色恒为 onSurface。搜索侧按钮不在此列，维持原样。
 val navEntries = listOf(
-    NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Rounded.Home, R.string.nav_home),
-    NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, R.string.nav_library),
+    NavBarEntry(Dest.Home, Icons.Rounded.Home, R.string.nav_home),
+    NavBarEntry(Dest.Library, Icons.Rounded.LibraryMusic, R.string.nav_library),
 )
 
 /**
@@ -189,7 +190,7 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                if (selected) entry.selectedIcon else entry.icon,
+                entry.icon,
                 contentDescription = label,
                 tint = iconTint,
                 modifier = Modifier.size(24.dp),

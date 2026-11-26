@@ -46,6 +46,7 @@ import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.theme.CjkBoldFamily
+import com.tokimusic.app.ui.theme.fontFamilyForText
 
 /**
  * 分组标题（TokiStudio 0.1.10 SectionTitle 配方）：titleLarge 粗体，上边距
@@ -177,7 +178,7 @@ fun resolveArtistTap(
             // 同一行、居中对齐；歌名 weight(fill=false) 先量，长名截断后
             // icon 仍紧贴可见文字之后。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(song.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, fontFamily = fontFamilyForText(song.name), color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (titleTrailing != null) {
                     Spacer(Modifier.width(6.dp))
                     titleTrailing()
@@ -186,7 +187,7 @@ fun resolveArtistTap(
             if (onOpenArtist != null) {
                 ClickableText(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = fontFamilyForText(subtitle.text)),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     onClick = { offset ->
@@ -195,7 +196,7 @@ fun resolveArtistTap(
                     },
                 )
             } else {
-                Text(subtitle.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle.text, style = MaterialTheme.typography.bodySmall, fontFamily = fontFamilyForText(subtitle.text), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             // 0.1.21：关源不可播标注（「本地模式暂不可用」/「源已关闭暂不可用」）。
             if (dimmed && dimmedLabel != null) {
@@ -230,7 +231,7 @@ fun resolveArtistTap(
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, fontFamily = CjkBoldFamily, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, fontFamily = fontFamilyForText(playlist.name, CjkBoldFamily), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, fontFamily = CjkBoldFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

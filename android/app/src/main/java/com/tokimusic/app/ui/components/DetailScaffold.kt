@@ -133,7 +133,7 @@ fun DetailScaffold(
 @Composable
 fun DetailTitle(text: String, color: Color) {
     Text(
-        text,
+        text, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(text),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.Bold,
         color = color,

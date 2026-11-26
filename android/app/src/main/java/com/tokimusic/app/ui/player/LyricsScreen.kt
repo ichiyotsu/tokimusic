@@ -256,7 +256,8 @@ import kotlin.math.roundToInt
                 val distance = if (active < 0) i + 1 else abs(i - active)
                 LyricLineRow(
                     line, isActive, distance, effPosState, showTranslation, showRomaji, textColor, dimColor,
-                    fontFamily = fontFamily,
+                    // 0.1.21：原词行逐行按语言选字体——含假名的行整行走内置 Noto Sans JP Bold。
+                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(line.text, fontFamily) ?: fontFamily,
                     karaokeHighlight = karaokeHighlight,
                     // 0.1.15 第 1 项：已播放过的行（当前行之前）透明度 75%，
                     // 未播放的行保持 0.85，当前行 1.0。
@@ -616,7 +617,8 @@ private fun LyricLineRow(
                 textAlign = TextAlign.Start,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
-                fontFamily = fontFamily,
+                // 0.1.21：罗马音行按自身文本判定（拉丁走 Inter），不跟原词行。
+                fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(line.romaji!!, InterFamily),
                 // 0.1.15 第 1 项：已播放行的翻译/罗马音同比例再淡（0.4 → 0.3，
                 // 即整行透明度 ×0.75）。
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
@@ -627,7 +629,8 @@ private fun LyricLineRow(
                 textAlign = TextAlign.Start,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
-                fontFamily = fontFamily,
+                // 0.1.21：翻译行按自身文本判定（中文走默认链、含假名才走 JP）。
+                fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(line.translation!!, InterFamily),
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
                 modifier = Modifier.fillMaxWidth(),
             )

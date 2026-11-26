@@ -570,18 +570,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                         customDisplayName.ifBlank { profile?.nickname ?: "未登录" },
                         style = MaterialTheme.typography.headlineSmall,
                     )
-                    Text(
-                        profile?.let { "UID ${it.uid}" } ?: "点击下方按钮扫码登录网易云",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    // ID 在 UID 下方单独一行（自定义 ID 为空时显示 UID；
-                    // 源 logo 行下方不再重复显示 ID，见 SourceRow）。
-                    // 0.1.17 第 15 项：自定义 ID 为空时默认显示注册年月日时
-                    //（YYMMDDHH，如 26112511），取自首次登录时间戳；
-                    // 无首次登录记录时回退到 UID。
-                    if (profile != null) {
+                    // 0.1.21（用户追加）：头像旁不再重复显示 UID/ID——
+                    // 下方编辑区已有 User/ID 两栏，头像旁只留昵称；
+                    // 未登录时保留扫码登录提示行。
+                    if (profile == null) {
                         Text(
-                            "ID ${customUserId.ifBlank { defaultCustomId(vm.store.firstLoginMs, profile.uid) }}",
+                            "点击下方按钮扫码登录网易云",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -692,7 +686,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 iconRes = R.drawable.ic_source_qq,
                 // 0.1.16 第 1 项：源图标底色改用户指定的 #879101。
                 iconTint = QqBadgeBackground,
-                accountText = qqProfile?.nickname ?: if (qqLoggedIn) "已登录" else null,
+                // 0.1.21（用户追加）：QQ 有真实 ID 就显示——musicId 是
+                // 登录凭证绑定的真实账号 ID（QqProfile 登录时带回），
+                // 与网易云行同款在账号行呈现；为空时只显示昵称（维持
+                // 现状），不编造、不占位。
+                accountText = qqProfile?.let { p ->
+                    if (p.musicId.isNotBlank()) "${p.nickname} · ID ${p.musicId}" else p.nickname
+                } ?: if (qqLoggedIn) "已登录" else null,
                 loggedIn = qqLoggedIn,
                 enabled = qqEnabled,
                 onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.QQ, it)) },

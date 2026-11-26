@@ -446,7 +446,7 @@ fun TokiMusicApp(
                                     },
                                     icon = {
                                         Icon(
-                                            if (dest == entry.dest) entry.selectedIcon else entry.icon,
+                                            entry.icon,
                                             contentDescription = label,
                                         )
                                     },

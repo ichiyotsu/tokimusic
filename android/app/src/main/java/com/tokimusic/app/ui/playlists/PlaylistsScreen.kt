@@ -59,7 +59,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
     var expanded by remember(text) { mutableStateOf(false) }
     var overflowed by remember(text) { mutableStateOf(false) }
     Text(
-        text,
+        text, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(text),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         color = color,

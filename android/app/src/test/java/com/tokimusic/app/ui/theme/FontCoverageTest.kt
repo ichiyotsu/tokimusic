@@ -159,12 +159,13 @@ class FontCoverageTest {
 
     @Test
     fun notoSansJpSubsetCoversWhatPingFangLacks() {
-        // JP 子集的覆盖面（0.1.19 第 3 项起排回退链第一）：苹方没有半角
-        // 片假名与 FA6D，只有 JP 子集补；共用字形（假名、FA10）现在也
-        // 优先取 JP 的形状（日文默认 JP）。FA10 苹方自己有（SC 时代
-        // 没有，JP 是为它补的）。
-        // JP 子集（假名 + 半角片假名 + F900–FAFF + 2F800–2FA1F，1,074 字形），
-        // 0.1.15 第 8 项起为静态 Bold（无 fvar）。
+        // JP 文件的覆盖面：苹方没有半角片假名与 FA6D，只有 JP 补；
+        // 共用字形（假名、FA10）含假名文本整段走 JP 时取 JP 形状。
+        // FA10 苹方自己有（SC 时代没有，JP 是为它补的）。
+        // 0.1.21 起 JP 文件换成全量静态 Bold（由 NotoSansJP 可变字体
+        // wght 700 实例化 + 日语码位段子集化，15,369 码位）：除假名外
+        // 一般汉字也全覆盖——这是 0.1.19 旧子集（652 码位、无一般汉字）
+        // 做不到、日文汉字曾落苹方的根因，断言锁死。
         val bytes = fontFile("noto_sans_jp_bold.ttf").readBytes()
         val ranges = cmapRanges(bytes)
         assertTrue(covers(ranges, 0x3042)) // あ
@@ -172,6 +173,11 @@ class FontCoverageTest {
         assertTrue(covers(ranges, 0xFF76)) // ｶ 半角片假名
         assertTrue(covers(ranges, 0xFA10)) // 塚
         assertTrue(covers(ranges, 0xFA6D)) // 舘：苹方没有，JP 有
+        assertTrue(covers(ranges, 0x6B4C)) // 歌：一般汉字（0.1.21 新增覆盖）
+        assertTrue(covers(ranges, 0x8A5E)) // 詞
+        assertTrue(covers(ranges, 0x611B)) // 愛
+        assertTrue(covers(ranges, 0x3002)) // 。
+        assertTrue(covers(ranges, 0x30FC)) // ー 长音
         assertStaticBold(bytes)
         // 苹方对照：FA10 在苹方里，FA6D 与半角片假名不在——JP 子集仍不可少。
         val pingFangRanges = cmapRanges(fontFile("pingfang_bold.ttf").readBytes())
@@ -181,12 +187,12 @@ class FontCoverageTest {
     }
 
     @Test
-    fun cjkFallbackOrderIsJpThenPingFangThenKr() {
-        // 0.1.19 第 3 项：回退链顺序锁死——JP 第一（日文假名/兼容字默认
-        // 走 JP Bold）、苹方第二（一般汉字不在 JP 子集里，仍落苹方）、
-        // KR 最后（谚文）。0.1.18 时是苹方 → JP → KR，假名被苹方抢走。
+    fun cjkFallbackOrderIsPingFangThenJpThenKr() {
+        // 0.1.21：通用链改回苹方第一（0.1.18 的顺序）——纯中文文本不被
+        // JP 字形污染；日语文本改由 fontFamilyForText 按含假名整段选
+        // JpBoldFamily，不再靠链序。0.1.19 曾是 JP → 苹方 → KR。
         assertEquals(
-            listOf(com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.pingfang_bold, com.tokimusic.app.R.font.noto_sans_kr),
+            listOf(com.tokimusic.app.R.font.pingfang_bold, com.tokimusic.app.R.font.noto_sans_jp_bold, com.tokimusic.app.R.font.noto_sans_kr),
             cjkFallbackOrder,
         )
     }

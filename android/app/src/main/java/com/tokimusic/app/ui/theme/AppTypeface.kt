@@ -56,10 +56,62 @@ import com.tokimusic.app.R
  * cjkBoldFonts）——CJK 全程只有粗体，全仓没有任何常规字重的 JP
  * 字体引用（0.1.19 改前 grep 核实：AppTypeface 之外无 FontFamily
  * 声明、无 noto_sans_jp 的其它引用）。
+ *
+ * 0.1.21 日语字体修正（用户亲自追加，语气很重）：上面 0.1.19 的
+ * “JP 子集排链首”方案有两个实测问题——① 包内 noto_sans_jp_bold.ttf
+ * 旧文件只是 652 码位的子集（假名 + 半角片假名 + 兼容字），不含一般
+ * 汉字：日文歌名/歌词里的汉字（歌・詞・愛…）逐字回退落到苹方 SC，
+ * 以中文字形呈现，日语文本看着仍不对；② 链首 JP 子集对中文文本里
+ * 与子集重合的码位（兼容字等）先中者胜，中文有被日文字形污染的
+ * 风险。本轮改为“按文本语言选字体”：
+ * - noto_sans_jp_bold.ttf 换成真 Noto Sans JP Bold 全量静态文件：
+ *   由 Google Fonts 的 NotoSansJP 可变字体（~/workspace/work/
+ *   cirro-round6/fonts/NotoSansJP-wght.ttf）在 wght 700 实例化 +
+ *   按日语相关码位段子集化，15,369 码位（假名/半角片假名/一般汉字/
+ *   兼容字全覆盖），5,558,848 B，usWeightClass 700、无 fvar/gvar、
+ *   族名已正名 Noto Sans JP Bold；只带 Bold 一个字重（用户定）。
+ *   不是系统 Noto Sans CJK 兜底，文件随包走。
+ * - 通用回退链改回苹方第一（cjkFallbackOrder）：纯中文/汉字文本
+ *   不再被 JP 抢字形；假名在苹方里也有，但含假名的文本整段走
+ *   JpBoldFamily（见 containsKana / fontFamilyForText），不靠逐字
+ *   回退碰运气。
+ * - 含假名（平假名/片假名/半角片假名/片假名语音扩展）的文本判定
+ *   为日语，整段用 JpBoldFamily（JP → 苹方 → KR）；其余文本字体
+ *   链完全不动。接入点：SongRow 标题/副标题、PlaylistCard 名、
+ *   DetailTitle、歌手页大标题、播放器/迷你播放器歌名歌手名、
+ *   队列行、歌词原词行（逐行判定；翻译/罗马音行各自判定）。
  */
-/** CJK 回退链顺序（0.1.19 第 3 项：JP 第一、苹方第二、KR 最后，可单测）。
- * 0.1.18 时是苹方 → JP → KR，日文假名被苹方抢走；换序后日文默认 JP。 */
-internal val cjkFallbackOrder = listOf(R.font.noto_sans_jp_bold, R.font.pingfang_bold, R.font.noto_sans_kr)
+/** CJK 回退链顺序（0.1.21 改回苹方第一，可单测）：苹方 → JP → KR。
+ * 0.1.19 曾把 JP 子集排第一让日文假名默认走 JP，但子集不含一般汉字、
+ * 且对中文有字形污染风险；0.1.21 起日语文本由 fontFamilyForText
+ * 整段选 JpBoldFamily，通用链回到苹方优先（0.1.18 的顺序）。 */
+internal val cjkFallbackOrder = listOf(R.font.pingfang_bold, R.font.noto_sans_jp_bold, R.font.noto_sans_kr)
+
+/**
+ * 日语文本专用字体族（0.1.21）：内置 Noto Sans JP Bold 在第一位——
+ * 含假名的文本整段经它渲染，汉字也取日文字形；JP 仍缺的字（如
+ * FAD0/FAD6）才落苹方/KR。只声明 Bold 一个字重，与全局一致。
+ */
+val JpBoldFamily: FontFamily = FontFamily(
+    Font(R.font.noto_sans_jp_bold, weight = FontWeight.Bold),
+    Font(R.font.pingfang_bold, weight = FontWeight.Bold),
+    Font(R.font.noto_sans_kr, weight = FontWeight.Bold),
+)
+
+/** 文本是否含假名（0.1.21，纯函数可单测）：平假名 U+3040–309F、
+ * 片假名 U+30A0–30FF、片假名语音扩展 U+31F0–31FF、半角片假名
+ * U+FF66–FF9D。含任一假名即按日语文本处理——纯汉字无法区分中日，
+ * 按用户口径走中文字体链（不含假名的日文标题同理，属已知边界）。 */
+fun containsKana(text: String): Boolean = text.any { ch ->
+    val c = ch.code
+    c in 0x3040..0x309F || c in 0x30A0..0x30FF || c in 0x31F0..0x31FF || c in 0xFF66..0xFF9D
+}
+
+/** 按文本语言选字体（0.1.21）：含假名 → JpBoldFamily；否则返回
+ * [default]（null = 用调用处原本的主题字体）。渲染歌名/歌手名/
+ * 歌单名/歌词原词行时统一经它取值。 */
+fun fontFamilyForText(text: String, default: FontFamily? = null): FontFamily? =
+    if (containsKana(text)) JpBoldFamily else default
 
 /** CJK 静态粗体（0.1.15 第 8 项）：三个文件本身就是 Bold 字形（Noto 两个
  * usWeightClass 700；PingFang 的 OS/2 写 400 但族名与轮廓都是 Bold，见上），
