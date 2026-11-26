@@ -35,6 +35,13 @@ data class ImportReport(
  *
  * 解密产物写 filesDir/local_import/<源>/；登记统一进
  * [LocalLibraryStore]。逐文件失败都进 [ImportReport.failures]。
+ *
+ * 本轮：封面与歌词尽量从文件本身读——嵌入封面（ID3 APIC / FLAC
+ * PICTURE）提取落盘 filesDir/local_covers/，嵌入歌词（USLT /
+ * LYRICS）与 SAF 目录里的同名 .lrc 旁挂歌词落盘
+ * filesDir/local_lyrics/，路径登记进 LocalTrack（cover / lyric）。
+ * MediaStore 通道的封面走系统相册图 URI（不逐个开流解析）；歌词
+ * MediaStore 没有来源面，不读（边界记 NOTES）。
  */
 class LocalImporter(private val context: Context) {
 
@@ -42,6 +49,42 @@ class LocalImporter(private val context: Context) {
 
     private fun importDir(dirName: String): File =
         File(context.filesDir, "local_import/$dirName").apply { mkdirs() }
+
+    private fun coverDir(): File = File(context.filesDir, "local_covers").apply { mkdirs() }
+    private fun lyricDir(): File = File(context.filesDir, "local_lyrics").apply { mkdirs() }
+
+    /** 资产文件名键：来源 URI 的 SHA-256 前 16 位（同文件重导入同名覆盖，不堆积）。 */
+    private fun assetKey(sourceKey: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(sourceKey.toByteArray(Charsets.UTF_8))
+        return digest.take(8).joinToString("") { "%02x".format(it) }
+    }
+
+    /** 封面字节落盘，返回 file:// URI 串；已存在同大小不重写。 */
+    private fun writeCover(sourceKey: String, bytes: ByteArray): String {
+        val out = File(coverDir(), "${assetKey(sourceKey)}.img")
+        if (!out.exists() || out.length() != bytes.size.toLong()) out.writeBytes(bytes)
+        return Uri.fromFile(out).toString()
+    }
+
+    /** 歌词文本落盘，返回绝对路径；空歌词不落盘返回空串。 */
+    private fun writeLyric(sourceKey: String, text: String): String {
+        if (text.isBlank()) return ""
+        val out = File(lyricDir(), "${assetKey(sourceKey)}.lrc")
+        if (!out.exists() || out.length() != text.toByteArray(Charsets.UTF_8).size.toLong()) {
+            out.writeText(text, Charsets.UTF_8)
+        }
+        return out.absolutePath
+    }
+
+    /** 一首歌的封面/歌词解析结果（登记用）：封面 URI + 歌词文件路径。 */
+    private fun extractAssets(sourceKey: String, tagBytes: ByteArray, sidecarLyric: String?): Pair<String, String> {
+        val (tags, coverBytes) = AudioTags.parseAll(tagBytes)
+        val cover = coverBytes?.let { writeCover(sourceKey, it) } ?: ""
+        val lyricText = tags?.lyrics ?: sidecarLyric
+        val lyric = lyricText?.let { writeLyric(sourceKey, it) } ?: ""
+        return cover to lyric
+    }
 
     /**
      * 通道 1：MediaStore 扫普通音频，按路径归桶（[localBucketOfPath]），
@@ -56,6 +99,7 @@ class LocalImporter(private val context: Context) {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.ALBUM_ID,
         )
         val tracks = ArrayList<LocalTrack>()
         runCatching {
@@ -68,6 +112,7 @@ class LocalImporter(private val context: Context) {
                 val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 while (cursor.moveToNext()) {
                     val path = cursor.getString(dataCol) ?: continue
                     val bucket = localBucketOfPath(path)
@@ -76,6 +121,15 @@ class LocalImporter(private val context: Context) {
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                         cursor.getLong(idCol).toString(),
                     )
+                    // 封面：系统相册图 URI（MediaStore 已索引的专辑图，
+                    // 零解析成本）；相册无图时 Coil 侧自然落空占位。
+                    val albumId = cursor.getLong(albumIdCol)
+                    val cover = if (albumId > 0) {
+                        Uri.withAppendedPath(
+                            Uri.parse("content://media/external/audio/albumart"),
+                            albumId.toString(),
+                        ).toString()
+                    } else ""
                     tracks += LocalTrack(
                         originSource = bucket.originSourceValue(),
                         originId = "",
@@ -86,6 +140,7 @@ class LocalImporter(private val context: Context) {
                         durationMs = cursor.getLong(durationCol),
                         uri = contentUri.toString(),
                         format = path.substringAfterLast('.', "").lowercase(),
+                        cover = cover,
                     )
                 }
             }
@@ -104,16 +159,31 @@ class LocalImporter(private val context: Context) {
             ?: return@withContext ImportReport(0, listOf(ImportFailure("所选目录", "无法打开目录")))
         val files = ArrayList<DocumentFile>()
         collectFiles(root, depth = 0, out = files)
+        // 旁挂歌词：同目录同名 .lrc 按基名（小写、去扩展名）索引，
+        // 音频文件没有嵌入歌词时用它（本轮）。
+        val lrcByBase = HashMap<String, DocumentFile>()
+        for (file in files) {
+            val name = file.name ?: continue
+            if (name.lowercase().endsWith(".lrc")) {
+                lrcByBase[name.substringBeforeLast('.').lowercase()] = file
+            }
+        }
+        fun sidecarLyric(audioName: String): String? {
+            val lrcFile = lrcByBase[audioName.substringBeforeLast('.').lowercase()] ?: return null
+            val bytes = readBytes(lrcFile.uri) ?: return null
+            if (bytes.size > 1024 * 1024) return null
+            return String(bytes, Charsets.UTF_8).trim().ifBlank { null }
+        }
         val tracks = ArrayList<LocalTrack>()
         val failures = ArrayList<ImportFailure>()
         for (file in files) {
             val name = file.name ?: continue
             val lower = name.lowercase()
             when {
-                lower.endsWith(".ncm") -> importNcm(file, name, bucket, tracks, failures)
-                lower.endsWith(".uc") -> importUc(file, name, bucket, tracks, failures)
+                lower.endsWith(".ncm") -> importNcm(file, name, bucket, tracks, failures, sidecarLyric(name))
+                lower.endsWith(".uc") -> importUc(file, name, bucket, tracks, failures, sidecarLyric(name))
                 isQqEncrypted(lower) -> failures += ImportFailure(name, "QQ 加密格式暂不支持解密")
-                isPlainAudio(lower) -> importPlain(file, name, bucket, tracks, failures)
+                isPlainAudio(lower) -> importPlain(file, name, bucket, tracks, failures, sidecarLyric(name))
                 else -> Unit // 非音频文件（封面图/歌词/说明）静默跳过，不算失败
             }
         }
@@ -165,6 +235,7 @@ class LocalImporter(private val context: Context) {
         bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
+        sidecarLyric: String? = null,
     ) {
         val bytes = readBytes(file.uri)
         if (bytes == null) {
@@ -177,6 +248,8 @@ class LocalImporter(private val context: Context) {
         }
         val base = name.removeSuffix(".ncm").removeSuffix(".NCM")
         val uri = writeImported(bucket, base, result.format, result.audio)
+        // 解密出的音频本体通常保留原始 ID3/FLAC 标签：封面/歌词从它提。
+        val (cover, lyric) = extractAssets(uri, result.audio, sidecarLyric)
         tracks += LocalTrack(
             originSource = bucket.originSourceValue(),
             originId = result.musicId,
@@ -186,6 +259,8 @@ class LocalImporter(private val context: Context) {
             durationMs = result.durationMs,
             uri = uri,
             format = result.format,
+            cover = cover,
+            lyric = lyric,
         )
     }
 
@@ -195,6 +270,7 @@ class LocalImporter(private val context: Context) {
         bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
+        sidecarLyric: String? = null,
     ) {
         val bytes = readBytes(file.uri)
         if (bytes == null) {
@@ -210,6 +286,7 @@ class LocalImporter(private val context: Context) {
         val base = name.substringBeforeLast('.')
         val uri = writeImported(bucket, base, format, audio)
         val tags = AudioTags.parse(audio)
+        val (cover, lyric) = extractAssets(uri, audio, sidecarLyric)
         // 缓存文件名尽力取歌曲 id：首段纯数字且 ≥5 位时认为是 id。
         val idFromName = base.split('-').firstOrNull()
             ?.takeIf { it.length >= 5 && it.all { c -> c.isDigit() } } ?: ""
@@ -222,6 +299,8 @@ class LocalImporter(private val context: Context) {
             durationMs = 0L,
             uri = uri,
             format = format,
+            cover = cover,
+            lyric = lyric,
         )
     }
 
@@ -231,13 +310,17 @@ class LocalImporter(private val context: Context) {
         bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
+        sidecarLyric: String? = null,
     ) {
-        val head = readHead(file.uri)
+        // 读头 2MB：标签文本在头部几 KB，但 APIC 封面图常有几百 KB，
+        // 旧的 256KB 上限会把大封面截断丢掉。
+        val head = readHead(file.uri, 2 * 1024 * 1024)
         if (head == null) {
             failures += ImportFailure(name, "读取不到文件")
             return
         }
         val tags = AudioTags.parse(head)
+        val (cover, lyric) = extractAssets(file.uri.toString(), head, sidecarLyric)
         val base = name.substringBeforeLast('.')
         tracks += LocalTrack(
             originSource = bucket.originSourceValue(),
@@ -248,6 +331,8 @@ class LocalImporter(private val context: Context) {
             durationMs = 0L,
             uri = file.uri.toString(),
             format = name.substringAfterLast('.', "").lowercase(),
+            cover = cover,
+            lyric = lyric,
         )
     }
 

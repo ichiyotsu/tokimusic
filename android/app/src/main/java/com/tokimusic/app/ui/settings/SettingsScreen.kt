@@ -404,9 +404,10 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             // 就新建一个记进去），进出二级页不再丢位置。
             val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
             // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-            // 本轮：账户与设置页回弹单独大幅调小（96dp → 32dp）——
-            // 用户真机反馈这页弹得过头；其他页保持 96dp 不动。
-            val settingsBounce = rememberBounceOverscrollEffect(maxDistanceDp = 32f)
+            // 本轮口径（用户最终定）：回弹全局统一一套组件与参数，
+            // 不给任何页面单独调参——设置页与其它页同款（早先给这页
+            // 单独调小的特殊处理已按最终口径取消）。
+            val settingsBounce = rememberBounceOverscrollEffect()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().bounceTranslation(settingsBounce),

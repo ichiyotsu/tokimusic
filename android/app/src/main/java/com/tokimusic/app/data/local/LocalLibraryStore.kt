@@ -26,6 +26,12 @@ data class LocalTrack(
     val uri: String,
     /** mp3 / flac / m4a / ogg / wav。 */
     val format: String,
+    /** 封面 URI（本轮）：导入时从文件嵌入图提取落盘的 file://，或
+     * MediaStore 相册图的 content://；读不到为空串。 */
+    val cover: String = "",
+    /** 歌词文件路径（本轮）：导入时把嵌入/旁挂歌词落盘到
+     * filesDir/local_lyrics/ 的绝对路径；没有为空串。 */
+    val lyric: String = "",
 )
 
 /**
@@ -54,6 +60,8 @@ class LocalLibraryStore(context: Context) {
                     durationMs = o.optLong("durationMs", 0),
                     uri = uri,
                     format = o.optString("format", ""),
+                    cover = o.optString("cover", ""),
+                    lyric = o.optString("lyric", ""),
                 )
             }
         }.getOrDefault(emptyList())
@@ -85,7 +93,9 @@ class LocalLibraryStore(context: Context) {
                     .put("album", t.album)
                     .put("durationMs", t.durationMs)
                     .put("uri", t.uri)
-                    .put("format", t.format),
+                    .put("format", t.format)
+                    .put("cover", t.cover)
+                    .put("lyric", t.lyric),
             )
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
@@ -122,13 +132,14 @@ class LocalLibraryStore(context: Context) {
         }
     }
 
-    /** 登记条目 → 可播放的本地 Song（源记为 LOCAL，sourceId 即 URI 本身，与 MediaStore 本地歌同口径）。 */
+    /** 登记条目 → 可播放的本地 Song（源记为 LOCAL，sourceId 即 URI 本身，与 MediaStore 本地歌同口径）。
+     * 封面用登记时落盘/相册图的 URI（本轮）；没有就空串，展示侧走占位。 */
     fun toSong(track: LocalTrack): Song = Song(
         id = com.tokimusic.app.data.model.localSongId(track.uri),
         name = track.title.ifBlank { "未知歌曲" },
         artists = track.artist.split(" / ").filter { it.isNotBlank() }.map { Artist(0, it) },
         albumName = track.album,
-        picUrl = "",
+        picUrl = track.cover,
         durationMs = track.durationMs,
         source = MusicSource.LOCAL,
         sourceId = track.uri,

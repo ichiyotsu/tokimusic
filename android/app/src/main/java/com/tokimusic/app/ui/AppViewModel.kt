@@ -193,8 +193,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun isLocalModeNow(): Boolean = isLocalMode(_neteaseEnabled.value, _qqEnabled.value)
 
+    /** 在线封面覆盖表（本轮）：uri → 源端封面 URL。本地歌单详情在线
+     * 回落补到的封面记在这里，资料库本地页/Device 列表共用（见
+     * fillLocalOnlineCovers）。只存内存，重启后详情页会重新补。 */
+    private val _localCoverOverrides = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** 登记 → Song，并套在线封面覆盖（登记本身有封面时不覆盖）。 */
+    private fun toSongWithCover(track: com.tokimusic.app.data.local.LocalTrack): Song {
+        val song = localLibraryStore.toSong(track)
+        if (song.picUrl.isNotBlank()) return song
+        return _localCoverOverrides.value[track.uri]?.let { song.copy(picUrl = it) } ?: song
+    }
+
     /** 已导入登记 → 可播放的本地 Song 列表（本地页点播用，与登记同序）。 */
-    fun localTrackSongs(): List<Song> = _localTracks.value.map { localLibraryStore.toSong(it) }
+    fun localTrackSongs(): List<Song> = _localTracks.value.map { toSongWithCover(it) }
 
     /** 删除一条本地登记（只删登记与解密产物文件，不动用户源文件）。 */
     fun removeLocalTrack(track: com.tokimusic.app.data.local.LocalTrack) {
@@ -203,6 +215,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 localLibraryStore.remove(track.uri)
                 if (track.uri.startsWith("file://")) {
                     runCatching { java.io.File(android.net.Uri.parse(track.uri).path ?: "").delete() }
+                }
+                // 本轮：导入时落盘的封面/歌词资产一并删（只认本应用
+                // 的资产目录，不碰用户文件）。
+                if (track.cover.startsWith("file://")) {
+                    runCatching {
+                        val f = java.io.File(android.net.Uri.parse(track.cover).path ?: "")
+                        if (f.parentFile?.name == "local_covers") f.delete()
+                    }
+                }
+                if (track.lyric.isNotBlank()) {
+                    runCatching {
+                        val f = java.io.File(track.lyric)
+                        if (f.parentFile?.name == "local_lyrics") f.delete()
+                    }
                 }
             }
             refreshLocalTracks()
@@ -231,20 +257,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 库，任何模式下都可做（本地优先播放也靠它省流量）。结果（含
      * 逐条失败）落 [_localImportReport]，不弹成功假象。
      */
+    /** 读一个桶：MediaStore 按路径归桶 + 该桶已授权 SAF 目录。 */
+    private suspend fun readBucket(bucket: LocalBucket): com.tokimusic.app.data.local.ImportReport {
+        var report = withContext(Dispatchers.IO) {
+            localImporter.importFromMediaStore(setOf(bucket))
+        }
+        val tree = localTree(bucket)
+        if (tree.isNotBlank()) {
+            report += withContext(Dispatchers.IO) {
+                localImporter.importFromTreeForBucket(android.net.Uri.parse(tree), bucket)
+            }
+        }
+        return report
+    }
+
     fun runLocalRead(bucket: LocalBucket) {
         if (_localImporting.value) return
         viewModelScope.launch {
             _localImporting.value = true
             try {
-                var report = withContext(Dispatchers.IO) {
-                    localImporter.importFromMediaStore(setOf(bucket))
-                }
-                val tree = localTree(bucket)
-                if (tree.isNotBlank()) {
-                    report += withContext(Dispatchers.IO) {
-                        localImporter.importFromTreeForBucket(android.net.Uri.parse(tree), bucket)
-                    }
-                }
+                _localImportReport.value = readBucket(bucket)
+                refreshLocalTracks()
+            } finally {
+                _localImporting.value = false
+            }
+        }
+    }
+
+    /** 一次扫三桶（本轮：「本地」页页首的导入按钮落点）：三桶串行、报告合并。 */
+    fun runLocalReadAll() {
+        if (_localImporting.value) return
+        viewModelScope.launch {
+            _localImporting.value = true
+            try {
+                var report = com.tokimusic.app.data.local.ImportReport.EMPTY
+                for (bucket in LocalBucket.entries) report += readBucket(bucket)
                 _localImportReport.value = report
                 refreshLocalTracks()
             } finally {
@@ -392,7 +439,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ): Pair<Playlist, List<Song>> {
         val songs = _localTracks.value
             .filter { com.tokimusic.app.data.local.localBucketOf(it) == bucket }
-            .map { localLibraryStore.toSong(it) }
+            .map { toSongWithCover(it) }
         // 作者字段口径（用户确认）：标题用英文名（NeteaseMusic /
         // QQMusic / Device），作者写中文——云音乐 / 企鹅音乐；Device
         // 歌单的作者写当前 User 名（账户与设置的 User 值：自定义显示
@@ -408,6 +455,71 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             id = id, name = bucket.displayName(), coverUrl = "", trackCount = songs.size,
             creatorName = creator, source = MusicSource.LOCAL,
         ) to songs
+    }
+
+    /**
+     * 本地歌单在线封面回落（本轮）：登记没读到封面、但带可靠源身份
+     * （NeteaseMusic + 数字 id）的歌，在线模式下批量 songDetail 补
+     * 封面，结果记进 [_localCoverOverrides]（本地页/列表共用）。
+     * 本地模式或网易云源关闭时原样返回、绝不联网；QQ 没有按 songmid
+     * 查封面的现成客户端路径，不回落（边界记 NOTES）。
+     */
+    private suspend fun fillLocalOnlineCovers(songs: List<Song>): List<Song> {
+        if (isLocalModeNow() || isSourceDisabled(MusicSource.NETEASE)) return songs
+        val tracksByUri = _localTracks.value.associateBy { it.uri }
+        val missing = songs.filter { it.picUrl.isBlank() }.mapNotNull { song ->
+            val track = tracksByUri[song.sourceId] ?: return@mapNotNull null
+            if (track.originSource != "NETEASE") return@mapNotNull null
+            track.originId.toLongOrNull()?.let { song to it }
+        }
+        if (missing.isEmpty()) return songs
+        val fetched = runCatching { api.songDetail(missing.map { it.second }.distinct()) }
+            .getOrDefault(emptyList())
+        if (fetched.isEmpty()) return songs
+        val picById = fetched.associate { it.id to it.picUrl }
+        val idBySong = missing.toMap()
+        val overrides = _localCoverOverrides.value.toMutableMap()
+        val filled = songs.map { song ->
+            val pic = idBySong[song]?.let { picById[it] }
+            if (song.picUrl.isBlank() && !pic.isNullOrBlank()) {
+                overrides[song.sourceId] = pic
+                song.copy(picUrl = pic)
+            } else {
+                song
+            }
+        }
+        _localCoverOverrides.value = overrides
+        return filled
+    }
+
+    /**
+     * 本地歌的歌词（本轮）：先读导入时落盘的本地歌词（嵌入/旁挂）；
+     * 没有且在线、且登记带可靠源身份（originSource + originId）时按
+     * 源回落在线歌词。本地模式不回落——本地模式下没有本地歌词就
+     * 不显示（用户口径）。
+     */
+    private suspend fun localLyricPayload(song: Song): com.tokimusic.app.data.api.LyricPayload {
+        val empty = com.tokimusic.app.data.api.LyricPayload()
+        val track = _localTracks.value.firstOrNull { it.uri == song.sourceId } ?: return empty
+        if (track.lyric.isNotBlank()) {
+            val text = withContext(Dispatchers.IO) {
+                runCatching { java.io.File(track.lyric).readText(Charsets.UTF_8) }.getOrNull()
+            }
+            if (!text.isNullOrBlank()) return empty.copy(lrc = text)
+        }
+        if (isLocalModeNow()) return empty
+        return when (track.originSource) {
+            "NETEASE" -> {
+                val id = track.originId.toLongOrNull() ?: return empty
+                if (isSourceDisabled(MusicSource.NETEASE)) empty
+                else runCatching { api.lyric(id) }.getOrDefault(empty)
+            }
+            "QQ" -> {
+                if (track.originId.isBlank() || isSourceDisabled(MusicSource.QQ)) empty
+                else runCatching { qqClient.lyric(track.originId) }.getOrDefault(empty)
+            }
+            else -> empty
+        }
     }
 
     /**
@@ -941,7 +1053,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun playlistDetail(id: Long): Pair<Playlist, List<Song>> {
         // 0.1.21：本地源歌单（-7/-8）与回顾歌单（-(100+monthKey)）是
         // 虚拟歌单，曲目在 VM 状态里，先于一切网络路由返回。
-        localSourceDetail(id)?.let { return it }
+        // 本轮：本地歌单返回前先走在线封面回落（本地模式不触发）。
+        localSourceDetail(id)?.let { (pl, songs) -> return pl to fillLocalOnlineCovers(songs) }
         com.tokimusic.app.player.Retrospective.monthKeyOfPlaylist(id)?.let { key ->
             retrospectiveDetail(key)?.let { return it }
         }
@@ -1200,8 +1313,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // the item-30 fallback uses for YRC-less songs.
                 MusicSource.QQ -> qqClient.lyric(song.sourceId)
                 MusicSource.NETEASE -> api.lyric(song.id)
-                // Local files have no lyric service — empty, not an error.
-                MusicSource.LOCAL -> LyricPayload()
+                // 本地歌：本地歌词文件优先，其次按登记的源身份在线
+                // 回落（本地模式不回落），见 localLyricPayload。
+                MusicSource.LOCAL -> localLyricPayload(song)
             }
             YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
         }.getOrDefault(emptyList())

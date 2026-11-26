@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PriorityHigh
 import androidx.compose.material.icons.rounded.Search
@@ -578,23 +577,11 @@ fun TokiMusicApp(
                                                 }
                                             }
                                         }
-                                        // 读取图标（0.1.20 第 7 项的顶栏图标，
-                                        // 0.1.21 收成 56dp 磨砂圆钮）：0.1.21
-                                        // 改版后落点改为「导入本地歌曲」页——
-                                        // 在资料库主页顶栏右侧显示，点它进
-                                        // LibrarySection.Local（三桶选项页），
-                                        // 不再直接触发读取；扫描触发点是页内
-                                        // 三个来源选项。导入页本身不再挂图标。
-                                        dest == Dest.Library && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
-                                            {
-                                                TokiGlassIconButton(
-                                                    icon = Icons.Rounded.Download,
-                                                    label = "导入本地歌曲",
-                                                    hazeState = hazeState,
-                                                    onClick = { librarySection = LibrarySection.Local },
-                                                )
-                                            }
-                                        }
+                                        // 本轮：资料库顶栏右侧改回头像（与主页
+                                        // 同款同落点）——原 0.1.20/0.1.21 的
+                                        // 读取图标分支删除；导入入口收进资料
+                                        // 库主页的「本地」卡 → 二级页页首的
+                                        // 导入按钮（见 LibraryScreen）。
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
                                             {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {

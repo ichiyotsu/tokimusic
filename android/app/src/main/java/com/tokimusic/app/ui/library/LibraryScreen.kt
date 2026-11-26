@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
@@ -81,7 +82,7 @@ import com.tokimusic.app.ui.theme.tokiPageColor
 // pages get the floating OverlayTitleHeader; was private + internal state.
 // 0.1.13 第 24 项：“艺人”改名“歌手”。
 // 0.1.20 第 7 项：新增「本地」分区（读取网易云/QQ 本地文件并解密导入）。
-enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("歌手"), Albums("专辑"), Songs("歌曲"), Local("导入本地歌曲") }
+enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("歌手"), Albums("专辑"), Songs("歌曲"), Local("本地") }
 
 /** 0.1.13 第 23 项：资料库等级 / 听歌时长的显示源——两源都开时默认全部（BOTH），单源时只显示该源，无源时显示本地。 */
 enum class LibraryStatsSource { NETEASE, QQ, BOTH, LOCAL }
@@ -333,12 +334,13 @@ fun LibraryScreen(
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         // 0.1.20 第 7 项：本地入口卡（所有模式都显示；本地模式下它是
-        // 唯一的分区卡）。副文案是已导入首数。
+        // 唯一的分区卡）。副文案是已导入首数。本轮按用户口径改名
+        // 「本地」（原「导入本地歌曲」）；导入动作收进二级页页首。
         item {
             if (localMode) Spacer(Modifier.height(8.dp))
             val localCount by vm.localTracks.collectAsState()
             TokiCardRow(
-                Icons.Rounded.FolderOpen, "导入本地歌曲",
+                Icons.Rounded.FolderOpen, "本地",
                 if (localCount.isEmpty()) "读取 NeteaseMusic / QQMusic 与 Device 的本地文件" else "已导入 ${localCount.size} 首",
             ) { onOpenSection(LibrarySection.Local) }
         }
@@ -367,7 +369,7 @@ fun LibraryScreen(
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text(playlist.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(playlist.name, style = MaterialTheme.typography.bodyMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(playlist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -478,7 +480,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(playlist.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(playlist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${playlist.trackCount} 首 · ${playlist.creatorName}",
                     style = MaterialTheme.typography.bodySmall,
@@ -525,7 +527,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artist
                     ) {
                         Avatar(artist.picUrl, 64)
                         Spacer(Modifier.height(8.dp))
-                        Text(artist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(artist.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(artist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -590,10 +592,12 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(album.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(album.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(album.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val albumSubtitle = listOf(album.artistText, if (album.trackCount > 0) "${album.trackCount} 首" else "").filter { it.isNotBlank() }.joinToString(" · ")
             Text(
-                listOf(album.artistText, if (album.trackCount > 0) "${album.trackCount} 首" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                albumSubtitle,
                 style = MaterialTheme.typography.bodySmall,
+                fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(albumSubtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -603,16 +607,21 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
 }
 
 /**
- * 导入本地歌曲页（0.1.20 第 7 项建页；0.1.21 改版为三桶二级页）：
- * 三个选项——NeteaseMusic / QQMusic / Device，点任一项即扫描导入
- * 该桶：MediaStore 按路径归桶的普通音频 + 该桶已授权 SAF 目录里的
- * .ncm / .uc 解密导入；.qmc / .mflac / .mgg 如实报不支持。目录
- * 授权按桶归位（每个选项下有一行目录选择），授权持久化、之后点
- * 选项自动遍历。没音频权限时点选项直接拉系统权限弹窗（不设独立
- * 授权按钮），被拒只留一行小字。结果区如实显示导入数与逐条失败。
- * 「已导入」区：NeteaseMusic / QQMusic 两歌单常显（0 首也显示，
- * 与本地模式主页同款同数据，虚拟歌单 -7 / -8）；Device 歌单
- * （-9）只在桶里有歌时出现，其曲目同时在下方平铺（带移除按钮）。
+ * 本地页（0.1.20 第 7 项建页；0.1.21 改版为三桶二级页；本轮改名
+ * 「本地」）：页首是导入按钮（原资料库顶栏的读取图标收进这里，
+ * 点它一次扫三桶）；下面三个选项——NeteaseMusic / QQMusic /
+ * Device，点任一项即扫描导入该桶：MediaStore 按路径归桶的普通
+ * 音频 + 该桶已授权 SAF 目录里的 .ncm / .uc 解密导入；.qmc /
+ * .mflac / .mgg 如实报不支持。目录授权按桶归位（每个选项下有
+ * 一行目录选择），授权持久化、之后点选项自动遍历。没音频权限
+ * 时点选项直接拉系统权限弹窗（不设独立授权按钮），被拒只留
+ * 一行小字。结果区如实显示导入数与逐条失败。「已导入」区按
+ * 歌单格式展示（本轮）：NeteaseMusic / QQMusic 两歌单常显
+ * （0 首也显示，虚拟歌单 -7 / -8）；Device 歌单（-9）只在桶里
+ * 有歌时出现，其曲目同时在下方平铺（带移除按钮）。
+ * 注：三选项卡的图标——用户要求用他提供的 NeteaseMusic /
+ * QQMusic 图标，但仓库与用户素材里没有找到他给的图标文件，
+ * 暂保持现状图标，待他补图后替换（不拿其他图标冒充）。
  */
 @Composable
 private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlaylist: (Long) -> Unit) {
@@ -633,17 +642,19 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
     }
     var permissionDeniedHint by remember { mutableStateOf(false) }
     var pendingBucket by remember { mutableStateOf<LocalBucket?>(null) }
+    var pendingAll by remember { mutableStateOf(false) }
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { granted ->
         hasAudioPermission = granted
         if (granted) {
             permissionDeniedHint = false
-            pendingBucket?.let { vm.runLocalRead(it) }
+            if (pendingAll) vm.runLocalReadAll() else pendingBucket?.let { vm.runLocalRead(it) }
         } else {
             permissionDeniedHint = true
         }
         pendingBucket = null
+        pendingAll = false
     }
     fun startBucketRead(bucket: LocalBucket) {
         if (importing) return
@@ -651,6 +662,16 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
             vm.runLocalRead(bucket)
         } else {
             pendingBucket = bucket
+            permissionLauncher.launch(audioPermission)
+        }
+    }
+    /** 页首导入按钮：一次扫三桶（权限流程与单桶同款）。 */
+    fun startAllRead() {
+        if (importing) return
+        if (hasAudioPermission) {
+            vm.runLocalReadAll()
+        } else {
+            pendingAll = true
             permissionLauncher.launch(audioPermission)
         }
     }
@@ -697,6 +718,14 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // 页首导入按钮（本轮：原资料库顶栏读取图标的落点）——
+        // 一次扫三桶；单桶细扫用下面三个选项。
+        item {
+            TokiCardRow(
+                Icons.Rounded.Download, "导入本地歌曲",
+                if (importing) "读取中…" else "点按扫描 NeteaseMusic / QQMusic / Device 三个来源",
+            ) { startAllRead() }
         }
         if (permissionDeniedHint && !hasAudioPermission) {
             item {
@@ -765,23 +794,34 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
             }
         }
         item { SectionTitle("已导入 · ${tracks.size} 首") }
+        // 已导入按歌单格式展示（本轮）：与资料库「歌单」分区同款行式，
+        // 封面位用桶内第一首的封面（导入时读到的嵌入/MediaStore 封面），
+        // 作者口径与歌单详情一致（云音乐 / 企鹅音乐 / User 名）。
+        val coverSongs = vm.localTrackSongs()
+        fun bucketCover(bucketTracks: List<com.tokimusic.app.data.local.LocalTrack>): String {
+            val first = bucketTracks.firstOrNull() ?: return ""
+            return coverSongs.getOrNull(tracks.indexOf(first))?.picUrl ?: ""
+        }
         item {
-            TokiCardRow(
-                Icons.Rounded.QueueMusic, "NeteaseMusic",
-                "已导入 ${neteaseTracks.size} 首",
+            LocalPlaylistRow(
+                name = "NeteaseMusic", trackCount = neteaseTracks.size, creator = "云音乐",
+                coverUrl = bucketCover(neteaseTracks), icon = Icons.Rounded.QueueMusic,
             ) { onOpenPlaylist(LOCAL_NETEASE_PLAYLIST_ID) }
         }
         item {
-            TokiCardRow(
-                Icons.Rounded.MusicNote, "QQMusic",
-                "已导入 ${qqTracks.size} 首",
+            LocalPlaylistRow(
+                name = "QQMusic", trackCount = qqTracks.size, creator = "企鹅音乐",
+                coverUrl = bucketCover(qqTracks), icon = Icons.Rounded.MusicNote,
             ) { onOpenPlaylist(LOCAL_QQ_PLAYLIST_ID) }
         }
         if (deviceTracks.isNotEmpty()) {
             item {
-                TokiCardRow(
-                    Icons.Rounded.FolderOpen, "Device",
-                    "已导入 ${deviceTracks.size} 首",
+                val deviceCreator = vm.store.profileDisplayName
+                    .ifBlank { vm.profile.value?.nickname.orEmpty() }
+                    .ifBlank { "User" }
+                LocalPlaylistRow(
+                    name = "Device", trackCount = deviceTracks.size, creator = deviceCreator,
+                    coverUrl = bucketCover(deviceTracks), icon = Icons.Rounded.FolderOpen,
                 ) { onOpenPlaylist(LOCAL_DOWNLOAD_PLAYLIST_ID) }
             }
             item { SectionTitle("Device · ${deviceTracks.size} 首") }
@@ -804,6 +844,57 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     if (idx >= 0) vm.play(playableDevice, idx, "Device")
                 }
             }
+        }
+    }
+}
+
+/**
+ * 已导入歌单行（本轮：按歌单格式展示）——与资料库「歌单」分区的
+ * 歌单行同款：20dp 圆角 surfaceContainer 行、56dp 封面位、标题 +
+ * 「N 首 · 作者」。封面位优先桶内第一首的封面，没有时放源图标占位。
+ */
+@Composable
+private fun LocalPlaylistRow(
+    name: String,
+    trackCount: Int,
+    creator: String,
+    coverUrl: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (coverUrl.isNotBlank()) {
+                AsyncImage(
+                    coverUrl, name,
+                    Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "$trackCount 首 · $creator",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
