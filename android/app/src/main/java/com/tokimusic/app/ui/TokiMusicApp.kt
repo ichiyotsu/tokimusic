@@ -522,7 +522,7 @@ fun TokiMusicApp(
                                                 // 磨砂圆钮（TokiGlassIconButton）。
                                                 TokiGlassIconButton(
                                                     icon = Icons.Rounded.PriorityHigh,
-                                                    label = "查看网易云统计估算",
+                                                    label = "查看 NeteaseMusic 统计估算",
                                                                     hazeState = hazeState,
                                                     onClick = { statsNoteVisible = !statsNoteVisible },
                                                 )
@@ -578,21 +578,20 @@ fun TokiMusicApp(
                                                 }
                                             }
                                         }
-                                        // 0.1.20 第 7 项：资料库本地页顶栏右侧
-                                        // 「读取」——触发本地页执行读取
-                                        // （vm.requestLocalRead → localReadTick）。
-                                        // 0.1.21：收成图标钮——与返回片同款的
-                                        // 56dp 磨砂圆钮（TokiGlassIconButton），
-                                        // 图标 Download 表「读取导入」；导入中
-                                        // 点按无效，进行/结果反馈在本地页内。
-                                        librarySection == LibrarySection.Local -> {
+                                        // 读取图标（0.1.20 第 7 项的顶栏图标，
+                                        // 0.1.21 收成 56dp 磨砂圆钮）：0.1.21
+                                        // 改版后落点改为「导入本地歌曲」页——
+                                        // 在资料库主页顶栏右侧显示，点它进
+                                        // LibrarySection.Local（三桶选项页），
+                                        // 不再直接触发读取；扫描触发点是页内
+                                        // 三个来源选项。导入页本身不再挂图标。
+                                        dest == Dest.Library && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
                                             {
-                                                val importing by vm.localImporting.collectAsState()
                                                 TokiGlassIconButton(
                                                     icon = Icons.Rounded.Download,
-                                                    label = "读取",
+                                                    label = "导入本地歌曲",
                                                     hazeState = hazeState,
-                                                    onClick = { if (!importing) vm.requestLocalRead() },
+                                                    onClick = { librarySection = LibrarySection.Local },
                                                 )
                                             }
                                         }

@@ -40,11 +40,15 @@ class LocalImporter(private val context: Context) {
 
     private val store = LocalLibraryStore(context)
 
-    private fun importDir(source: MusicSource): File =
-        File(context.filesDir, "local_import/${source.name.lowercase()}").apply { mkdirs() }
+    private fun importDir(dirName: String): File =
+        File(context.filesDir, "local_import/$dirName").apply { mkdirs() }
 
-    /** 通道 1：MediaStore 扫已启用源目录下的普通音频。 */
-    suspend fun importFromMediaStore(enabledSources: Set<MusicSource>): ImportReport = withContext(Dispatchers.IO) {
+    /**
+     * 通道 1：MediaStore 扫普通音频，按路径归桶（[localBucketOfPath]），
+     * 只登记 [buckets] 里的桶：netease 路径 → NETEASE、qqmusic 路径 →
+     * QQ、其余路径 → DOWNLOAD（Device 桶的「设备其他位置音频」来源）。
+     */
+    suspend fun importFromMediaStore(buckets: Set<LocalBucket>): ImportReport = withContext(Dispatchers.IO) {
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
@@ -66,19 +70,14 @@ class LocalImporter(private val context: Context) {
                 val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
                 while (cursor.moveToNext()) {
                     val path = cursor.getString(dataCol) ?: continue
-                    val lower = path.lowercase()
-                    val origin = when {
-                        "netease" in lower -> MusicSource.NETEASE
-                        "qqmusic" in lower -> MusicSource.QQ
-                        else -> continue
-                    }
-                    if (origin !in enabledSources) continue
+                    val bucket = localBucketOfPath(path)
+                    if (bucket !in buckets) continue
                     val contentUri = Uri.withAppendedPath(
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                         cursor.getLong(idCol).toString(),
                     )
                     tracks += LocalTrack(
-                        originSource = origin.name,
+                        originSource = bucket.originSourceValue(),
                         originId = "",
                         title = cursor.getString(titleCol)?.trim().orEmpty()
                             .ifBlank { File(path).nameWithoutExtension },
@@ -95,8 +94,12 @@ class LocalImporter(private val context: Context) {
         ImportReport(tracks.size, emptyList())
     }
 
-    /** 通道 2：遍历一个已授权的 SAF 目录（[source] 决定登记来源与解密产物目录）。 */
-    suspend fun importFromTree(treeUri: Uri, source: MusicSource): ImportReport = withContext(Dispatchers.IO) {
+    /** 通道 2（旧签名保留）：按源遍历已授权 SAF 目录。 */
+    suspend fun importFromTree(treeUri: Uri, source: MusicSource): ImportReport =
+        importFromTreeForBucket(treeUri, if (source == MusicSource.QQ) LocalBucket.QQ else LocalBucket.NETEASE)
+
+    /** 通道 2：遍历一个已授权的 SAF 目录，整桶归 [bucket]（登记来源与解密产物目录都按桶）。 */
+    suspend fun importFromTreeForBucket(treeUri: Uri, bucket: LocalBucket): ImportReport = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, treeUri)
             ?: return@withContext ImportReport(0, listOf(ImportFailure("所选目录", "无法打开目录")))
         val files = ArrayList<DocumentFile>()
@@ -107,10 +110,10 @@ class LocalImporter(private val context: Context) {
             val name = file.name ?: continue
             val lower = name.lowercase()
             when {
-                lower.endsWith(".ncm") -> importNcm(file, name, source, tracks, failures)
-                lower.endsWith(".uc") -> importUc(file, name, source, tracks, failures)
+                lower.endsWith(".ncm") -> importNcm(file, name, bucket, tracks, failures)
+                lower.endsWith(".uc") -> importUc(file, name, bucket, tracks, failures)
                 isQqEncrypted(lower) -> failures += ImportFailure(name, "QQ 加密格式暂不支持解密")
-                isPlainAudio(lower) -> importPlain(file, name, source, tracks, failures)
+                isPlainAudio(lower) -> importPlain(file, name, bucket, tracks, failures)
                 else -> Unit // 非音频文件（封面图/歌词/说明）静默跳过，不算失败
             }
         }
@@ -150,8 +153,8 @@ class LocalImporter(private val context: Context) {
         name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(120)
 
     /** 解密产物落盘（同名同大小视为已存在，不重复写）。返回 file:// URI 串。 */
-    private fun writeImported(source: MusicSource, baseName: String, format: String, audio: ByteArray): String {
-        val out = File(importDir(source), "${sanitize(baseName)}.$format")
+    private fun writeImported(bucket: LocalBucket, baseName: String, format: String, audio: ByteArray): String {
+        val out = File(importDir(bucket.importDirName()), "${sanitize(baseName)}.$format")
         if (!out.exists() || out.length() != audio.size.toLong()) out.writeBytes(audio)
         return Uri.fromFile(out).toString()
     }
@@ -159,7 +162,7 @@ class LocalImporter(private val context: Context) {
     private fun importNcm(
         file: DocumentFile,
         name: String,
-        source: MusicSource,
+        bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
     ) {
@@ -173,9 +176,9 @@ class LocalImporter(private val context: Context) {
             return
         }
         val base = name.removeSuffix(".ncm").removeSuffix(".NCM")
-        val uri = writeImported(source, base, result.format, result.audio)
+        val uri = writeImported(bucket, base, result.format, result.audio)
         tracks += LocalTrack(
-            originSource = source.name,
+            originSource = bucket.originSourceValue(),
             originId = result.musicId,
             title = result.title.ifBlank { base },
             artist = result.artists.joinToString(" / "),
@@ -189,7 +192,7 @@ class LocalImporter(private val context: Context) {
     private fun importUc(
         file: DocumentFile,
         name: String,
-        source: MusicSource,
+        bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
     ) {
@@ -205,13 +208,13 @@ class LocalImporter(private val context: Context) {
         }
         val format = NcmDecrypt.sniffAudioFormat(audio) ?: "mp3"
         val base = name.substringBeforeLast('.')
-        val uri = writeImported(source, base, format, audio)
+        val uri = writeImported(bucket, base, format, audio)
         val tags = AudioTags.parse(audio)
         // 缓存文件名尽力取歌曲 id：首段纯数字且 ≥5 位时认为是 id。
         val idFromName = base.split('-').firstOrNull()
             ?.takeIf { it.length >= 5 && it.all { c -> c.isDigit() } } ?: ""
         tracks += LocalTrack(
-            originSource = source.name,
+            originSource = bucket.originSourceValue(),
             originId = idFromName,
             title = tags?.title ?: base,
             artist = tags?.artist ?: "",
@@ -225,7 +228,7 @@ class LocalImporter(private val context: Context) {
     private fun importPlain(
         file: DocumentFile,
         name: String,
-        source: MusicSource,
+        bucket: LocalBucket,
         tracks: MutableList<LocalTrack>,
         failures: MutableList<ImportFailure>,
     ) {
@@ -237,7 +240,7 @@ class LocalImporter(private val context: Context) {
         val tags = AudioTags.parse(head)
         val base = name.substringBeforeLast('.')
         tracks += LocalTrack(
-            originSource = source.name,
+            originSource = bucket.originSourceValue(),
             originId = "",
             title = tags?.title ?: base,
             artist = tags?.artist ?: "",

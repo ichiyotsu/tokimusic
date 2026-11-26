@@ -1,6 +1,7 @@
 package com.tokimusic.app.ui.settings
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
@@ -26,6 +27,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -66,6 +69,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,11 +77,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -100,6 +106,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -108,7 +115,15 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.tokimusic.app.R
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tokimusic.app.CrashLog
+import com.tokimusic.app.data.local.LocalBucket
+import com.tokimusic.app.data.local.displayName
+import com.tokimusic.app.data.local.formatFileSize
+import com.tokimusic.app.player.FLOATING_LYRICS_MAX_TEXT_SP
+import com.tokimusic.app.player.FLOATING_LYRICS_MIN_TEXT_SP
+import com.tokimusic.app.player.clampFloatingTextSizeSp
+import com.tokimusic.app.player.clampFloatingTopFraction
 import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
@@ -138,7 +153,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private enum class SettingsSub(val title: String) { General("通用"), Personalize("个性化"), Audio("音频"), Lyrics("歌词"), Achievements("成就") }
+private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("个性化"), Audio("音频"), Lyrics("歌词"), Achievements("成就") }
 
 /**
  * 0.1.13 第 19 项：sheet 顶边 + 两侧描边（1dp，28dp 顶圆角），不要底边——
@@ -409,6 +424,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                         shownGroups,
                     ) { sub = it }
                     SettingsSub.General -> generalSection(vm, health)
+                    SettingsSub.Storage -> storageSection(vm)
                     SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
                     SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
                     SettingsSub.Lyrics -> lyricsSection(vm)
@@ -575,7 +591,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     // 未登录时保留扫码登录提示行。
                     if (profile == null) {
                         Text(
-                            "点击下方按钮扫码登录网易云",
+                            "点击下方按钮扫码登录 NeteaseMusic",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -729,6 +745,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SubRow("通用", onClick = { onOpenSub(SettingsSub.General) }, position = SegmentPosition.First)
+            // 0.1.21 追加：存储入口（通用下方）——占用总览/缓存清理/三桶占用。
+            SubRow("存储", onClick = { onOpenSub(SettingsSub.Storage) }, position = SegmentPosition.Middle)
             SubRow("个性化", onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
             SubRow("音频", onClick = { onOpenSub(SettingsSub.Audio) }, position = SegmentPosition.Middle)
             SubRow("歌词", onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
@@ -915,7 +933,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     item {
         SettingsSubCard {
             SettingsRow(
-                "直连网易云",
+                "直连 NeteaseMusic",
                 trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
                 horizontalPadding = 0.dp,
             )
@@ -989,18 +1007,31 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "开启后，在网易云里听的歌会同步到你的网易云听歌记录；只上报网易云源的歌，需要登录网易云。",
+            "开启后，在 NeteaseMusic 里听的歌会同步到你的 NeteaseMusic 听歌记录；只上报 NeteaseMusic 源的歌，需要登录 NeteaseMusic。",
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    // 0.1.21：算法推荐开关撤除——口味画像改为常开基础设施（与听歌
-    // 统计同级），不再单独成区，直接优化推荐歌单与推荐新歌的排序；
-    // 原开关与说明项替换为下面这一条纯说明。
+    // 算法推荐开关（0.1.18 引入、默认关；0.1.21 热修一度撤除，本轮按
+    // 用户口径恢复）：切换两种推荐形式——关 = 源默认推送，开 = 自制
+    // 画像推送。主页独立分区不恢复。翻动即时生效（见 VM 的
+    // setAlgorithmRecommendEnabled：开→立即重排，关→立即还原源顺序）。
+    item {
+        var algoRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("算法推荐", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = algoRecommend,
+                    onCheckedChange = { algoRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
+                )
+            }
+        }
+    }
     item {
         Text(
-            "播放记录始终只保存在本机（不上传），用于口味画像优化推荐排序与回顾歌单；画像数据存内部存储、更新不丢，并定期自动整理成月度汇总，不会无限增长。",
+            "关闭时，推荐歌单与推荐新歌按所选音乐源的默认内容与顺序；开启后，按你的听歌口味重新排序。播放记录始终只保存在本机（不上传），用于口味画像与回顾歌单；画像数据存内部存储、更新不丢，并定期自动整理成月度汇总，不会无限增长。",
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1011,13 +1042,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     if (health != null) item {
         when (val h = health) {
             is ApiHealth.Connected -> Text(
-                if (h.loggedIn) "已连通网易云，已登录为 ${h.nickname ?: "网易云账号"}" else "已连通网易云，尚未登录",
+                if (h.loggedIn) "已连通 NeteaseMusic，已登录为 ${h.nickname ?: "NeteaseMusic 账号"}" else "已连通 NeteaseMusic，尚未登录",
                 Modifier.padding(horizontal = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             is ApiHealth.Unreachable -> Text(
-                "连不上网易云：${h.reason}",
+                "连不上 NeteaseMusic：${h.reason}",
                 Modifier.padding(horizontal = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
@@ -1220,6 +1251,65 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
     }
 }
 
+/**
+ * 存储页（0.1.21 追加，入口在设置主页「通用」下方）：总占用、缓存
+ * （可清理）、本地歌曲三桶占用——全部真实统计（见 VM 的
+ * computeStorageStats：文件系统实际字节，统计不到按 0），进页时
+ * 统计一次，清理缓存后自动重统计。
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.storageSection(vm: AppViewModel) {
+    item {
+        LaunchedEffect(Unit) { vm.loadStorageStats() }
+        val stats by vm.storageStats.collectAsState()
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SettingsSubCard(SegmentPosition.First) {
+                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("总占用", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stats?.let { formatFileSize(it.totalBytes) } ?: "统计中…",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+            SettingsSubCard(SegmentPosition.Middle) {
+                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("缓存", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stats?.let { formatFileSize(it.cacheBytes) } ?: "—",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    TextButton(onClick = { vm.clearCache() }) { Text("清理缓存") }
+                }
+            }
+            for (bucket in LocalBucket.entries) {
+                val bucketStats = stats?.buckets?.firstOrNull { it.bucket == bucket }
+                SettingsSubCard(
+                    if (bucket == LocalBucket.DOWNLOAD) SegmentPosition.Last else SegmentPosition.Middle,
+                ) {
+                    Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(bucket.displayName(), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            bucketStats?.let { "${it.count} 首 · ${formatFileSize(it.bytes)}" } ?: "统计中…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+    item {
+        Text(
+            "总占用含应用本体与全部内部数据；三桶占用按已导入登记逐条统计真实文件大小，统计不到的文件按 0 计。清理缓存只删缓存目录，不影响已导入歌曲与播放记录。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: AppViewModel) {
     // 逐字高亮开关已删（第二轮第 15 项）：逐字显示固定开启，无开关。
     // 大排查 S4：翻译 / 罗马音两个开关直接读 SharedPreferences 直值
@@ -1256,6 +1346,164 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             }
         }
     }
+    // 0.1.21 追加：悬浮歌词——开关与全部设置（颜色/大小/位置）都在歌词页。
+    item {
+        FloatingLyricsSettingsCard(vm)
+    }
+}
+
+/**
+ * 悬浮歌词设置（0.1.21 追加）：开关在设置 > 歌词。打开时若没有悬浮窗
+ * 权限，先跳系统设置授权，回来授权成功才真正落开；未授权则开关保持
+ * 关闭并给一行提示，不反复弹。颜色只有白/黑两档；大小用滑杆；位置
+ * 只能在这里调——在预览框里上下拖动歌词行定位置，悬浮窗本体不可
+ * 触摸、不可拖动（见 player/FloatingLyrics.kt 的窗口 flag）。
+ */
+@Composable
+private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
+    val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var enabled by remember { mutableStateOf(vm.store.floatingLyricsEnabled) }
+    var black by remember { mutableStateOf(vm.store.floatingLyricsBlack) }
+    var sizeSp by remember { mutableStateOf(clampFloatingTextSizeSp(vm.store.floatingLyricsTextSizeSp)) }
+    var topFraction by remember { mutableStateOf(clampFloatingTopFraction(vm.store.floatingLyricsTopFraction)) }
+    var permHint by remember { mutableStateOf(false) }
+    var pendingEnable by remember { mutableStateOf(false) }
+
+    fun canDraw() = android.provider.Settings.canDrawOverlays(context)
+
+    // 从系统权限页回来（或权限被撤销）时对账：待开启的拿到权限才落开，
+    // 没拿到保持关闭并提示；已开启但权限没了的同样关掉并提示。
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (pendingEnable) {
+                    pendingEnable = false
+                    if (canDraw()) {
+                        vm.store.floatingLyricsEnabled = true
+                        enabled = true
+                        permHint = false
+                    } else {
+                        permHint = true
+                    }
+                } else if (enabled && !canDraw()) {
+                    vm.store.floatingLyricsEnabled = false
+                    enabled = false
+                    permHint = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("悬浮歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { want ->
+                        if (!want) {
+                            vm.store.floatingLyricsEnabled = false
+                            enabled = false
+                            permHint = false
+                        } else if (canDraw()) {
+                            vm.store.floatingLyricsEnabled = true
+                            enabled = true
+                            permHint = false
+                        } else {
+                            pendingEnable = true
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:" + context.packageName),
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        if (permHint) {
+            Text(
+                "未获得悬浮窗权限，悬浮歌词无法开启",
+                Modifier.padding(horizontal = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (enabled) {
+            SettingsSubCard {
+                // 颜色：白 / 黑两档。
+                Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("颜色", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    FilterChip(
+                        selected = !black,
+                        onClick = { black = false; vm.store.floatingLyricsBlack = false },
+                        label = { Text("白色") },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        selected = black,
+                        onClick = { black = true; vm.store.floatingLyricsBlack = true },
+                        label = { Text("黑色") },
+                    )
+                }
+                // 大小：滑杆 12–28sp，松手落盘（预览实时跟随本地状态）。
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("大小", style = MaterialTheme.typography.bodyLarge)
+                    Slider(
+                        value = sizeSp,
+                        onValueChange = { sizeSp = it },
+                        onValueChangeFinished = { vm.store.floatingLyricsTextSizeSp = clampFloatingTextSizeSp(sizeSp) },
+                        valueRange = FLOATING_LYRICS_MIN_TEXT_SP..FLOATING_LYRICS_MAX_TEXT_SP,
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    )
+                    Text(
+                        "${sizeSp.toInt()}sp",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "位置：在下面预览里上下拖动，歌词停在松手处（悬浮窗本身不能拖动）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                // 预览画布：灰阶渐变（白/黑字都看得清），歌词行按位置
+                // 比例摆放；在画布上竖直拖动即改位置并落盘。
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFF4A4A4E), Color(0xFF9A9AA0))))
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                change.consume()
+                                val f = clampFloatingTopFraction(change.position.y / size.height)
+                                topFraction = f
+                                vm.store.floatingLyricsTopFraction = f
+                            }
+                        },
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Text(
+                        "悬浮歌词预览",
+                        Modifier.offset(y = 140.dp * topFraction),
+                        color = if (black) Color.Black else Color.White,
+                        fontSize = sizeSp.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1274,7 +1522,7 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     // 0.1.21：迁统一弹窗 TokiDialog（单按钮弹窗同视觉语言）。
     TokiDialog(
         icon = Icons.Rounded.QrCode2,
-        title = "扫码登录网易云",
+        title = "扫码登录 NeteaseMusic",
         onDismiss = { vm.cancelQrLogin(); onDismiss() },
         dismissText = "关闭",
     ) {
@@ -1285,7 +1533,7 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 FilledTonalButton(onClick = { vm.startQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
             } else {
-                Text(when (qr?.code) { 801 -> "等待扫码"; 802 -> "已扫码，请在手机上确认"; 803 -> "登录成功"; 800 -> "二维码已过期，正在重新生成…"; else -> "使用网易云音乐 App 扫码" }, Modifier.padding(top = 12.dp))
+                Text(when (qr?.code) { 801 -> "等待扫码"; 802 -> "已扫码，请在手机上确认"; 803 -> "登录成功"; 800 -> "二维码已过期，正在重新生成…"; else -> "使用 NeteaseMusic App 扫码" }, Modifier.padding(top = 12.dp))
             }
         }
     }
@@ -1443,7 +1691,7 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         modifier = Modifier.height(56.dp),
                     ) { Text(if (countdown > 0) "${countdown}s 后重发" else if (sent) "重新发送" else "发送验证码") }
                 }
-                Text("手机号须是 QQ音乐账号绑定的手机号。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("手机号须是 QQMusic 账号绑定的手机号。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (smsError != null) Text(smsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
     }

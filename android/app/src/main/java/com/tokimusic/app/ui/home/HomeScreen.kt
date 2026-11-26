@@ -208,7 +208,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(Icons.Rounded.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("无法连接网易云", style = MaterialTheme.typography.titleMedium)
+                    Text("无法连接 NeteaseMusic", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "请检查网络后重试",
                         style = MaterialTheme.typography.bodyMedium,
@@ -231,29 +231,44 @@ fun HomeScreen(
                     onRescan = { vm.scanLocalSongs() },
                 )
             }
-            // 0.1.21 口径（覆盖 0.1.20 第 5 项）：本地模式主页只有两个
-            // 源歌单——「云音乐」装全部已导入的网易云本地歌曲、「企鹅
-            // 音乐」装全部已导入的 QQ 本地歌曲（虚拟歌单 -7 / -8）。
+            // 0.1.21 口径（覆盖 0.1.20 第 5 项）：本地模式主页只有本地
+            // 三桶歌单——NeteaseMusic / QQMusic 装各自已导入全部（虚拟
+            // 歌单 -7 / -8，0 首也显示卡片）；Device 歌单（-9）只在
+            // Device 桶有歌时出现。歌单名按全局文本规范（标题英文、
+            // 作者字段写中文，见 AppViewModel.localBucketPlaylist）。
             // 随机歌单 / 重温回顾从本地主页撤下（普通模式主页与回顾
             // 功能本身不动）；平铺的本地歌曲列表也不再上主页。
-            // 某源还没导入过歌曲时卡片照常显示，点开是空状态。
             item {
-                val neteaseLocalCount = localTracks.count { it.originSource == "NETEASE" }
-                val qqLocalCount = localTracks.count { it.originSource == "QQ" }
+                val neteaseLocalCount = localTracks.count {
+                    com.tokimusic.app.data.local.localBucketOf(it) == com.tokimusic.app.data.local.LocalBucket.NETEASE
+                }
+                val qqLocalCount = localTracks.count {
+                    com.tokimusic.app.data.local.localBucketOf(it) == com.tokimusic.app.data.local.LocalBucket.QQ
+                }
+                val deviceLocalCount = localTracks.count {
+                    com.tokimusic.app.data.local.localBucketOf(it) == com.tokimusic.app.data.local.LocalBucket.DOWNLOAD
+                }
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     LocalGeneratedCard(
-                        title = "云音乐",
-                        caption = "$neteaseLocalCount 首 · 本地",
+                        title = "NeteaseMusic",
+                        caption = "$neteaseLocalCount 首 · Device",
                         modifier = Modifier.weight(1f),
                     ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID) }
                     LocalGeneratedCard(
-                        title = "企鹅音乐",
-                        caption = "$qqLocalCount 首 · 本地",
+                        title = "QQMusic",
+                        caption = "$qqLocalCount 首 · Device",
                         modifier = Modifier.weight(1f),
                     ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID) }
+                    if (deviceLocalCount > 0) {
+                        LocalGeneratedCard(
+                            title = "Device",
+                            caption = "$deviceLocalCount 首 · Device",
+                            modifier = Modifier.weight(1f),
+                        ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_DOWNLOAD_PLAYLIST_ID) }
+                    }
                 }
             }
         }
@@ -411,13 +426,13 @@ fun HomeScreen(
                 if (home.newSongs.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     // 0.1.20 第 3 项：源小标题改英文原名（Netease Music / QQ Music）。
-                    NewSongsSourceLabel("Netease Music")
+                    NewSongsSourceLabel("NeteaseMusic")
                     Spacer(Modifier.height(8.dp))
                     NewSongsGrid(home.newSongs, vm, onOpenArtist, onOpenQqArtist)
                 }
                 if (home.qqNewSongs.isNotEmpty()) {
                     Spacer(Modifier.height(if (home.newSongs.isNotEmpty()) 20.dp else 8.dp))
-                    NewSongsSourceLabel("QQ Music")
+                    NewSongsSourceLabel("QQMusic")
                     Spacer(Modifier.height(8.dp))
                     NewSongsGrid(home.qqNewSongs, vm, onOpenArtist, onOpenQqArtist)
                 }

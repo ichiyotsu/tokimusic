@@ -56,10 +56,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.R
+import com.tokimusic.app.data.local.LocalBucket
+import com.tokimusic.app.data.local.displayName
+import com.tokimusic.app.data.local.localBucketOf
 import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Artist
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.LOCAL_DOWNLOAD_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID
 import com.tokimusic.app.ui.components.Avatar
@@ -77,7 +81,7 @@ import com.tokimusic.app.ui.theme.tokiPageColor
 // pages get the floating OverlayTitleHeader; was private + internal state.
 // 0.1.13 第 24 项：“艺人”改名“歌手”。
 // 0.1.20 第 7 项：新增「本地」分区（读取网易云/QQ 本地文件并解密导入）。
-enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("歌手"), Albums("专辑"), Songs("歌曲"), Local("本地") }
+enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("歌手"), Albums("专辑"), Songs("歌曲"), Local("导入本地歌曲") }
 
 /** 0.1.13 第 23 项：资料库等级 / 听歌时长的显示源——两源都开时默认全部（BOTH），单源时只显示该源，无源时显示本地。 */
 enum class LibraryStatsSource { NETEASE, QQ, BOTH, LOCAL }
@@ -334,8 +338,8 @@ fun LibraryScreen(
             if (localMode) Spacer(Modifier.height(8.dp))
             val localCount by vm.localTracks.collectAsState()
             TokiCardRow(
-                Icons.Rounded.FolderOpen, "本地",
-                if (localCount.isEmpty()) "读取网易云 / QQ 音乐的本地文件" else "已导入 ${localCount.size} 首",
+                Icons.Rounded.FolderOpen, "导入本地歌曲",
+                if (localCount.isEmpty()) "读取 NeteaseMusic / QQMusic 与 Device 的本地文件" else "已导入 ${localCount.size} 首",
             ) { onOpenSection(LibrarySection.Local) }
         }
         if (loggedIn) {
@@ -599,17 +603,16 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
 }
 
 /**
- * 本地页（0.1.20 第 7 项；0.1.21 规格收拢）：读取网易云 / QQ 音乐下载
- * 到本机的歌曲。顶栏右侧「读取」图标（TokiMusicApp trailing 槽 →
- * vm.localReadTick）触发：没权限时直接拉系统权限弹窗（0.1.21 起不
- * 再有独立的「允许访问本地音乐」按钮，被拒只留一行小字）；有权限
- * 走 vm.runLocalRead()：MediaStore 普通音频 + 已授权目录里的
- * .ncm/.uc 解密导入；.qmc/.mflac/.mgg 如实报不支持。目录首次要
- * 在这里用 SAF 选一次（授权持久化，之后读取自动遍历）。
- * 结果区如实显示导入数与逐条失败（文件名 + 原因），不伪装成功。
- * 「已导入」区（0.1.21 简化口径）：只列两个源歌单——云音乐 / 企鹅
- * 音乐，与本地模式主页同款同数据（虚拟歌单 -7 / -8）；带不上来源
- * 的登记留在「来源不明」平铺列表里，不丢歌。
+ * 导入本地歌曲页（0.1.20 第 7 项建页；0.1.21 改版为三桶二级页）：
+ * 三个选项——NeteaseMusic / QQMusic / Device，点任一项即扫描导入
+ * 该桶：MediaStore 按路径归桶的普通音频 + 该桶已授权 SAF 目录里的
+ * .ncm / .uc 解密导入；.qmc / .mflac / .mgg 如实报不支持。目录
+ * 授权按桶归位（每个选项下有一行目录选择），授权持久化、之后点
+ * 选项自动遍历。没音频权限时点选项直接拉系统权限弹窗（不设独立
+ * 授权按钮），被拒只留一行小字。结果区如实显示导入数与逐条失败。
+ * 「已导入」区：NeteaseMusic / QQMusic 两歌单常显（0 首也显示，
+ * 与本地模式主页同款同数据，虚拟歌单 -7 / -8）；Device 歌单
+ * （-9）只在桶里有歌时出现，其曲目同时在下方平铺（带移除按钮）。
  */
 @Composable
 private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlaylist: (Long) -> Unit) {
@@ -617,7 +620,6 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
     val tracks by vm.localTracks.collectAsState()
     val report by vm.localImportReport.collectAsState()
     val importing by vm.localImporting.collectAsState()
-    val readTick by vm.localReadTick.collectAsState()
     val audioPermission = if (android.os.Build.VERSION.SDK_INT >= 33) {
         android.Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -630,47 +632,56 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         )
     }
     var permissionDeniedHint by remember { mutableStateOf(false) }
+    var pendingBucket by remember { mutableStateOf<LocalBucket?>(null) }
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { granted ->
         hasAudioPermission = granted
         if (granted) {
             permissionDeniedHint = false
-            vm.runLocalRead()
+            pendingBucket?.let { vm.runLocalRead(it) }
         } else {
             permissionDeniedHint = true
         }
+        pendingBucket = null
     }
-    var lastTick by remember { mutableStateOf(readTick) }
-    LaunchedEffect(readTick) {
-        if (readTick != lastTick) {
-            lastTick = readTick
-            if (hasAudioPermission) vm.runLocalRead() else permissionLauncher.launch(audioPermission)
+    fun startBucketRead(bucket: LocalBucket) {
+        if (importing) return
+        if (hasAudioPermission) {
+            vm.runLocalRead(bucket)
+        } else {
+            pendingBucket = bucket
+            permissionLauncher.launch(audioPermission)
         }
     }
-    var neteaseTreePicked by remember { mutableStateOf(vm.localTree(MusicSource.NETEASE)) }
-    var qqTreePicked by remember { mutableStateOf(vm.localTree(MusicSource.QQ)) }
-    fun persistTree(source: MusicSource, uri: android.net.Uri) {
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
+    // SAF 目录授权按桶归位：一个启动器 + 待授权桶；选完自动读该桶。
+    var treeVersion by remember { mutableStateOf(0) }
+    var pendingTreeBucket by remember { mutableStateOf<LocalBucket?>(null) }
+    val treeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        val bucket = pendingTreeBucket
+        pendingTreeBucket = null
+        if (uri != null && bucket != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            vm.saveLocalTree(bucket, uri.toString())
+            treeVersion++
+            startBucketRead(bucket)
         }
-        vm.saveLocalTree(source, uri.toString())
-        if (source == MusicSource.NETEASE) neteaseTreePicked = uri.toString()
-        if (source == MusicSource.QQ) qqTreePicked = uri.toString()
-        vm.runLocalRead()
     }
-    val neteaseTreeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
-    ) { uri -> if (uri != null) persistTree(MusicSource.NETEASE, uri) }
-    val qqTreeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
-    ) { uri -> if (uri != null) persistTree(MusicSource.QQ, uri) }
-    val neteaseTracks = tracks.filter { it.originSource == "NETEASE" }
-    val qqTracks = tracks.filter { it.originSource == "QQ" }
-    val unknownTracks = tracks.filter { it.originSource != "NETEASE" && it.originSource != "QQ" }
+    val neteaseTracks = tracks.filter { localBucketOf(it) == LocalBucket.NETEASE }
+    val qqTracks = tracks.filter { localBucketOf(it) == LocalBucket.QQ }
+    val deviceTracks = tracks.filter { localBucketOf(it) == LocalBucket.DOWNLOAD }
+    fun tracksOf(bucket: LocalBucket): List<com.tokimusic.app.data.local.LocalTrack> = when (bucket) {
+        LocalBucket.NETEASE -> neteaseTracks
+        LocalBucket.QQ -> qqTracks
+        LocalBucket.DOWNLOAD -> deviceTracks
+    }
     // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
     val localBounce = rememberBounceOverscrollEffect()
     LazyColumn(
@@ -681,7 +692,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
     ) {
         item {
             Text(
-                "读取网易云音乐与 QQ 音乐下载到本机的歌曲文件。网易云的 .ncm / .uc 与普通音频可以解密导入；QQ 加密文件（.qmc / .mflac / .mgg）暂不支持解密，会在结果里逐条说明。先选择对应应用的下载目录，再点右上角的读取图标。",
+                "把本机里的歌曲文件导入本地库，按来源分三个桶扫描：NeteaseMusic 与 QQMusic 读各自的下载目录，Device 读其他目录与设备里的其他音频。NeteaseMusic 的 .ncm / .uc 与普通音频可以解密导入；QQMusic 加密文件（.qmc / .mflac / .mgg）暂不支持解密，会在结果里逐条说明。点某个来源即开始扫描；目录没授权时先在该来源下选一次目录。",
                 Modifier.padding(horizontal = 24.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -690,24 +701,41 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         if (permissionDeniedHint && !hasAudioPermission) {
             item {
                 Text(
-                    "未授予本地音乐权限，无法读取；下次点读取图标会再次询问。",
+                    "未授予本地音乐权限，无法读取；下次点来源会再次询问。",
                     Modifier.padding(horizontal = 24.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        item {
-            TokiCardRow(
-                Icons.Rounded.FolderOpen, "网易云音乐目录",
-                if (neteaseTreePicked.isNotBlank()) "已选择，点此更换" else "未选择（常见位置：netease/cloudmusic/Music）",
-            ) { neteaseTreeLauncher.launch(null) }
-        }
-        item {
-            TokiCardRow(
-                Icons.Rounded.FolderOpen, "QQ 音乐目录",
-                if (qqTreePicked.isNotBlank()) "已选择，点此更换" else "未选择（常见位置：qqmusic/song）",
-            ) { qqTreeLauncher.launch(null) }
+        // 三个导入选项（点卡扫描该桶；卡下小行管该桶的目录授权）。
+        for (bucket in listOf(LocalBucket.NETEASE, LocalBucket.QQ, LocalBucket.DOWNLOAD)) {
+            item {
+                Column {
+                    TokiCardRow(
+                        when (bucket) {
+                            LocalBucket.NETEASE -> Icons.Rounded.QueueMusic
+                            LocalBucket.QQ -> Icons.Rounded.MusicNote
+                            LocalBucket.DOWNLOAD -> Icons.Rounded.FolderOpen
+                        },
+                        bucket.displayName(),
+                        "已导入 ${tracksOf(bucket).size} 首 · 点按扫描导入",
+                    ) { startBucketRead(bucket) }
+                    val treePicked = remember(treeVersion, bucket) { vm.localTree(bucket) }
+                    Text(
+                        if (treePicked.isNotBlank()) "下载目录：已选择，点此更换" else "下载目录：未选择，点此选择",
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                pendingTreeBucket = bucket
+                                treeLauncher.launch(null)
+                            }
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
         if (importing) {
             item {
@@ -739,19 +767,25 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         item { SectionTitle("已导入 · ${tracks.size} 首") }
         item {
             TokiCardRow(
-                Icons.Rounded.QueueMusic, "云音乐",
+                Icons.Rounded.QueueMusic, "NeteaseMusic",
                 "已导入 ${neteaseTracks.size} 首",
             ) { onOpenPlaylist(LOCAL_NETEASE_PLAYLIST_ID) }
         }
         item {
             TokiCardRow(
-                Icons.Rounded.MusicNote, "企鹅音乐",
+                Icons.Rounded.MusicNote, "QQMusic",
                 "已导入 ${qqTracks.size} 首",
             ) { onOpenPlaylist(LOCAL_QQ_PLAYLIST_ID) }
         }
-        if (unknownTracks.isNotEmpty()) {
-            item { SectionTitle("来源不明 · ${unknownTracks.size} 首") }
-            itemsIndexed(unknownTracks) { i, track ->
+        if (deviceTracks.isNotEmpty()) {
+            item {
+                TokiCardRow(
+                    Icons.Rounded.FolderOpen, "Device",
+                    "已导入 ${deviceTracks.size} 首",
+                ) { onOpenPlaylist(LOCAL_DOWNLOAD_PLAYLIST_ID) }
+            }
+            item { SectionTitle("Device · ${deviceTracks.size} 首") }
+            itemsIndexed(deviceTracks) { i, track ->
                 val allSongs = vm.localTrackSongs()
                 val songIndex = tracks.indexOf(track)
                 val song = allSongs.getOrNull(songIndex) ?: return@itemsIndexed
@@ -765,9 +799,9 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     },
                     onLongPress = { vm.openSongActions(it) },
                 ) {
-                    val playableUnknown = unknownTracks.mapNotNull { t -> allSongs.getOrNull(tracks.indexOf(t)) }
-                    val idx = playableUnknown.indexOf(song)
-                    if (idx >= 0) vm.play(playableUnknown, idx, "本地")
+                    val playableDevice = deviceTracks.mapNotNull { t -> allSongs.getOrNull(tracks.indexOf(t)) }
+                    val idx = playableDevice.indexOf(song)
+                    if (idx >= 0) vm.play(playableDevice, idx, "Device")
                 }
             }
         }

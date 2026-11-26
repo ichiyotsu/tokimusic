@@ -270,9 +270,9 @@ fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifi
         Icon(
             painterResource(iconRes),
             contentDescription = when (source) {
-                MusicSource.NETEASE -> "网易云音乐"
-                MusicSource.QQ -> "QQ音乐"
-                MusicSource.LOCAL -> "本地"
+                MusicSource.NETEASE -> "NeteaseMusic"
+                MusicSource.QQ -> "QQMusic"
+                MusicSource.LOCAL -> "Device"
             },
             tint = Color.White,
             modifier = Modifier.size((size * 0.6).dp),
@@ -295,9 +295,9 @@ fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifie
     Icon(
         painterResource(iconRes),
         contentDescription = when (source) {
-            MusicSource.NETEASE -> "网易云音乐"
-            MusicSource.QQ -> "QQ音乐"
-            MusicSource.LOCAL -> "本地"
+            MusicSource.NETEASE -> "NeteaseMusic"
+            MusicSource.QQ -> "QQMusic"
+            MusicSource.LOCAL -> "Device"
         },
         tint = sourceBadgeBackground(source),
         modifier = modifier.size(size.dp),

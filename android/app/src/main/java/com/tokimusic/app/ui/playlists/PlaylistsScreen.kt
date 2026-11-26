@@ -18,6 +18,7 @@ import com.tokimusic.app.player.DetailPlayButtonState
 import com.tokimusic.app.player.detailPlayButtonState
 import com.tokimusic.app.player.nextModeAfterSingleButtonTap
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.LOCAL_DOWNLOAD_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID
 import com.tokimusic.app.ui.components.COLLAPSING_COVER_FRACTION
@@ -124,7 +125,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 name = name,
                 coverUrl = songs.firstOrNull()?.picUrl ?: "",
                 trackCount = songs.size,
-                creatorName = if (isQq) "QQ 音乐" else "Netease Music",
+                creatorName = if (isQq) "QQMusic" else "NeteaseMusic",
                 source = if (isQq) MusicSource.QQ else MusicSource.NETEASE,
             ) to songs
         } else {
@@ -269,7 +270,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 item {
                     Text(
                         when {
-                            playlistId == LOCAL_NETEASE_PLAYLIST_ID || playlistId == LOCAL_QQ_PLAYLIST_ID -> "暂无导入歌曲"
+                            playlistId == LOCAL_NETEASE_PLAYLIST_ID || playlistId == LOCAL_QQ_PLAYLIST_ID || playlistId == LOCAL_DOWNLOAD_PLAYLIST_ID -> "暂无导入歌曲"
                             vm.isSourceDisabled(pl.source) -> "暂无本地缓存曲目"
                             else -> "暂无歌曲"
                         },

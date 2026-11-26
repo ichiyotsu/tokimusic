@@ -73,15 +73,36 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 显示当前唱到的歌词行；关闭后恢复歌名。只在实时通知开启时生效。 */
     var liveLyricsEnabled: Boolean get() = prefs.getBoolean(LIVE_LYRICS_KEY, false)
         set(v) { prefs.edit().putBoolean(LIVE_LYRICS_KEY, v).apply() }
+    /** 悬浮歌词开关（0.1.21 追加，默认关）：开启后在屏幕顶部以无背景、
+     * 无边框、不可触摸的悬浮窗显示当前歌词行；本体不拦截任何操作，
+     * 颜色/大小/位置只能在设置 > 歌词里调。需要悬浮窗权限
+     * （SYSTEM_ALERT_WINDOW），未授权时设置页不落开。 */
+    var floatingLyricsEnabled: Boolean get() = prefs.getBoolean("floating_lyrics_enabled", false)
+        set(v) { prefs.edit().putBoolean("floating_lyrics_enabled", v).apply() }
+    /** 悬浮歌词颜色：false = 白（默认），true = 黑。只有这两档。 */
+    var floatingLyricsBlack: Boolean get() = prefs.getBoolean("floating_lyrics_black", false)
+        set(v) { prefs.edit().putBoolean("floating_lyrics_black", v).apply() }
+    /** 悬浮歌词字号（sp）：范围与钳制见 player/FloatingLyrics.kt（12–28，默认 16）。 */
+    var floatingLyricsTextSizeSp: Float get() = prefs.getFloat("floating_lyrics_text_size_sp", 16f)
+        set(v) { prefs.edit().putFloat("floating_lyrics_text_size_sp", v).apply() }
+    /** 悬浮歌词顶部位置（占屏幕高度的比例，0 = 贴顶；钳制见 FloatingLyrics.kt）。 */
+    var floatingLyricsTopFraction: Float get() = prefs.getFloat("floating_lyrics_top_fraction", 0f)
+        set(v) { prefs.edit().putFloat("floating_lyrics_top_fraction", v).apply() }
+    /** 算法推荐开关（0.1.18 引入，默认关；0.1.21 热修一度撤除，本轮按
+     * 用户口径恢复）：关 = 推荐歌单/新歌按所选音乐源的默认内容与顺序；
+     * 开 = 口味画像重排/加权介入推荐。播放事件记录与此开关无关
+     * （0.1.20 起常开，供回顾歌单与画像积累）。 */
+    var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", false)
+        set(v) { prefs.edit().putBoolean("algorithm_recommend_enabled", v).apply() }
     /** 听歌记录上报开关（0.1.17 第 13 项，默认开——用户 2026-11-25 定）：
      * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */
     var scrobbleEnabled: Boolean get() = prefs.getBoolean(SCROBBLE_KEY, true)
         set(v) { prefs.edit().putBoolean(SCROBBLE_KEY, v).apply() }
     /**
      * 播放事件库上次瘦身整理的时间（0.1.21）：启动时距今超过一周
-     * 才再跑一次月度聚合+剪除。算法推荐开关于 0.1.21 撤除（画像
-     * 改为常开基础设施，直接重排推荐流）——旧键
-     * algorithm_recommend_enabled 不再读取。
+     * 才再跑一次月度聚合+剪除。事件记录常开（供回顾歌单与口味
+     * 画像），与算法推荐开关无关——开关只决定画像是否介入推荐
+     * 排序（见 algorithmRecommendEnabled）。
      */
     var playLogLastCompactMs: Long get() = prefs.getLong("play_log_last_compact_ms", 0L)
         set(v) { prefs.edit().putLong("play_log_last_compact_ms", v).apply() }
@@ -143,6 +164,10 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putString("local_tree_netease", v).apply() }
     var localTreeQq: String get() = prefs.getString("local_tree_qq", "") ?: ""
         set(v) { prefs.edit().putString("local_tree_qq", v).apply() }
+    /** Device 桶的 SAF 授权目录（0.1.21 三桶改版）：两个源之外的任意
+     * 目录，导入整桶归 Device；空 = 未授权。 */
+    var localTreeDownload: String get() = prefs.getString("local_tree_download", "") ?: ""
+        set(v) { prefs.edit().putString("local_tree_download", v).apply() }
     /** QQ 客户端 GUID（第六轮第 1 项）：CGI comm 的 OpenUDID/udid，
      * 稳定不变，首次使用时生成。 */
     override var qqDeviceId: String get() = prefs.getString("qq_device_id", null) ?: run {

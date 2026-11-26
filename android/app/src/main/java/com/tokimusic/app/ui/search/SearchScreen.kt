@@ -234,7 +234,7 @@ fun SearchPage(
                 if (searchSource == MusicSource.QQ) {
                     item {
                         Text(
-                            "QQ 音乐暂不支持歌词搜索。",
+                            "QQMusic 暂不支持歌词搜索。",
                             Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -283,7 +283,7 @@ fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Un
     ) {
         Icon(
             painterResource(if (source == MusicSource.NETEASE) R.drawable.ic_source_netease else R.drawable.ic_source_qq),
-            contentDescription = if (source == MusicSource.NETEASE) "用网易云搜索" else "用 QQ 搜索",
+            contentDescription = if (source == MusicSource.NETEASE) "用 NeteaseMusic 搜索" else "用 QQMusic 搜索",
             tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
             modifier = Modifier.size(24.dp),
         )
