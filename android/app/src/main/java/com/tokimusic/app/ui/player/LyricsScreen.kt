@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.ui.components.TokiLongPressLabel
+import com.tokimusic.app.ui.components.bounceTranslation
+import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.InterFamily
 import com.tokimusic.app.ui.theme.TokiBlurCapability
@@ -183,11 +185,12 @@ import kotlin.math.roundToInt
         springAlpha.animateTo(1f, scheme.defaultEffectsSpec())
         springRunning = false
     }
-    // 第六轮第 26 项：按屏上位置淡化——只有上下 64dp 渐隐带内的行才模糊/
-    // 变淡（平滑 0→8px / →18% alpha），中间净区无论离当前行多远都清晰
-    // （模糊 0、alpha ≥0.85）。用 layoutInfo + derivedStateOf 算每行
-    // 的（模糊，alpha），量化后才变，减少滚动时的重组；distance 只留给
-    // 入场 stagger（见下）。
+    // 第六轮第 26 项：按屏上位置淡化——上下 64dp 渐隐带内的行模糊/
+    // 变淡（平滑 0→8px / →18% alpha）。用 layoutInfo + derivedStateOf
+    // 算每行的（模糊，alpha），量化后才变，减少滚动时的重组。
+    // 0.1.21：中间净区不再强制清晰——非当前行另按与当前行的距离
+    // 分级模糊（lyricDistanceBlurPx，在 LyricLineRow 里与这里的位置
+    // 模糊取大），这才是用户要的 Apple Music 式距离模糊。
     val fadeBandPx = with(density) { 64.dp.toPx() }
     // 0.1.15 第 1 项：下半段淡出与上半段同强度——结构上上下带本就对称，
     // 但面板背景越往下越暗，白字在下半段对比度更高、看起来淡得弱；
@@ -237,9 +240,12 @@ import kotlin.math.roundToInt
         }
     }
     Box(modifier.fillMaxSize()) {
+        // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
+        val bounce = rememberBounceOverscrollEffect()
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().onSizeChanged { viewportH = it.height },
+            modifier = Modifier.fillMaxSize().bounceTranslation(bounce).onSizeChanged { viewportH = it.height },
+            overscrollEffect = bounce,
             contentPadding = PaddingValues(
                 top = if (viewportH > 0) with(density) { anchorPx.toDp() } else 120.dp,
                 bottom = if (viewportH > 0) with(density) { (viewportH * 0.6f).toInt().toDp() } else 240.dp,
@@ -369,6 +375,16 @@ data class VisualLineSegment(val startChar: Int, val endChar: Int)
  * 占段长的比例（纯函数，JVM 单测覆盖）。sungChars 是整行已唱字符数
  * （lineProgress × 行总字符数）；不折行时只有一段，与整行扫过一致。
  */
+/**
+ * 歌词距离模糊（0.1.21，纯函数，单测覆盖）：以当前行为焦点，非当前
+ * 行按行距分级模糊——每远一行 +3.5px、封顶 14px；当前行恒 0（清晰，
+ * 逐字扫动不受影响）。这就是 Apple Music 式「未播放区域看不到模糊」
+ * 的修复：旧实现只有上下边缘的位置淡化带，中间区域无论离当前行
+ * 多远都强制清晰。
+ */
+internal fun lyricDistanceBlurPx(distance: Int): Float =
+    if (distance <= 0) 0f else minOf(distance * 3.5f, 14f)
+
 fun visualLineProgresses(sungChars: Float, segments: List<VisualLineSegment>): List<Float> =
     segments.map { seg ->
         val len = (seg.endChar - seg.startChar).coerceAtLeast(1)
@@ -441,9 +457,17 @@ private fun LyricLineRow(
     // 贴向文本一侧；右侧空白不接点击，透传给父级手势（单击回封面、双击沉浸）。
     var textWidthPx by remember { mutableIntStateOf(0) }
     var rowHeightPx by remember { mutableIntStateOf(0) }
-    // 第六轮第 26 项：模糊 / 变淡只看屏上位置（fade），不再按离当前行的距离；
-    // distance 只留给入场 stagger 的延迟。
-    val blurPx = fade.first
+    // 第六轮第 26 项：位置淡化（fade）；0.1.21 起再叠加距离模糊——
+    // 两者取大：边缘带内的行走位置模糊，中间区域的行按与当前行的
+    // 距离模糊。距离模糊随焦点移动用 300ms tween 平滑过渡（不跳
+    // 变），且只在组合层算（视口附近的行才进组合）；施加时用
+    // TileMode.Clamp 避免 Decal 在行边缘切字。
+    val distanceBlur by animateFloatAsState(
+        targetValue = lyricDistanceBlurPx(distance),
+        animationSpec = tween(300),
+        label = "lyricDistanceBlur",
+    )
+    val blurPx = maxOf(fade.first, distanceBlur)
     val rowAlpha = fade.second
     // 0.1.13 第 6 项：当前行进出时的缩放过渡——当前行 1f、非当前行
     // 约 0.8f，走 spatial spec（0.1.18 第 6 项：之前手写 tween(300)），锚点左中。
@@ -476,7 +500,7 @@ private fun LyricLineRow(
                 scaleX = rowScale
                 scaleY = rowScale
                 transformOrigin = TransformOrigin(0f, 0.5f)
-                renderEffect = if (blurPx > 0f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
+                renderEffect = if (blurPx > 0f) BlurEffect(blurPx, blurPx, if (distanceBlur > 0f) TileMode.Clamp else TileMode.Decal) else null
             },
     ) {
         androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {

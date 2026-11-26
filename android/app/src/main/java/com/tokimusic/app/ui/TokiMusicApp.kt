@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PriorityHigh
 import androidx.compose.material.icons.rounded.Search
@@ -578,23 +579,21 @@ fun TokiMusicApp(
                                             }
                                         }
                                         // 0.1.20 第 7 项：资料库本地页顶栏右侧
-                                        // 「读取」按钮——触发本地页执行读取
+                                        // 「读取」——触发本地页执行读取
                                         // （vm.requestLocalRead → localReadTick）。
+                                        // 0.1.21：收成图标钮——与返回片同款的
+                                        // 56dp 磨砂圆钮（TokiGlassIconButton），
+                                        // 图标 Download 表「读取导入」；导入中
+                                        // 点按无效，进行/结果反馈在本地页内。
                                         librarySection == LibrarySection.Local -> {
                                             {
                                                 val importing by vm.localImporting.collectAsState()
-                                                Box(
-                                                    Modifier.clip(RoundedCornerShape(percent = 50))
-                                                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                                                        .clickable(enabled = !importing) { vm.requestLocalRead() }
-                                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    Text(
-                                                        if (importing) "读取中…" else "读取",
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                    )
-                                                }
+                                                TokiGlassIconButton(
+                                                    icon = Icons.Rounded.Download,
+                                                    label = "读取",
+                                                    hazeState = hazeState,
+                                                    onClick = { if (!importing) vm.requestLocalRead() },
+                                                )
                                             }
                                         }
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {

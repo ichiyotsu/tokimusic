@@ -53,7 +53,11 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Sms
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -85,6 +89,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -109,6 +114,9 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.TokiDialog
+import com.tokimusic.app.ui.components.bounceTranslation
+import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
@@ -378,9 +386,12 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             // 大排查 B3：本页的滚动状态从 sheet 作用域的 map 里取（没有
             // 就新建一个记进去），进出二级页不再丢位置。
             val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
+            // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
+            val settingsBounce = rememberBounceOverscrollEffect()
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().bounceTranslation(settingsBounce),
+                overscrollEffect = settingsBounce,
                 contentPadding = PaddingValues(bottom = 8.dp),
                 // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
                 // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
@@ -405,11 +416,8 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 }
             }
             if (targetSub == null) {
-                Box(
-                    Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
-                        Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
-                    ),
-                )
+                // 0.1.21：顶部 24dp 渐变淡出已按用户口径去掉——它压在
+                // 账户卡上方，看起来像第一个栏自带渐变。底部淡出保留。
                 Box(
                     Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
                         Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
@@ -423,7 +431,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             // list item，spacedBy(12.dp) 下会在列表底多出空隙；
             // AlertDialog 是独立窗口，放哪里渲染都一样。
             if (showLogin) LoginDialog(vm) { showLogin = false }
-            if (showQqLogin) QqSmsLoginDialog(vm, onBack = { showQqLogin = false }, onDismiss = { showQqLogin = false })
+            if (showQqLogin) QqSmsLoginDialog(vm, onDismiss = { showQqLogin = false })
             // 第六轮第 19 项：开关 / 退出登录的二次确认弹窗（AlertDialog，
             // 默认内容边距 24dp 横向，与页边距一致）。
             sourceConfirm?.let { confirm ->
@@ -492,8 +500,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
             label = "editChevron",
         )
-        var nameDraft by remember(customDisplayName) { mutableStateOf(customDisplayName) }
-        var idDraft by remember(customUserId) { mutableStateOf(customUserId) }
+        // 0.1.21：编辑区预填当前登录用户的真实值——User 预填昵称
+        // （自定义名优先）、ID 预填默认 ID（自定义优先）；未登录时
+        // 编辑区不展开（profile == null 才有编辑按钮），卡面本身
+        // 显示明确的未登录态，不留空白假装有值。
+        var nameDraft by remember(customDisplayName, profile?.nickname) {
+            mutableStateOf(customDisplayName.ifBlank { profile?.nickname ?: "" })
+        }
+        var idDraft by remember(customUserId, profile?.uid) {
+            mutableStateOf(
+                if (profile == null) customUserId
+                else customUserId.ifBlank { defaultCustomId(vm.store.firstLoginMs, profile.uid) },
+            )
+        }
         val avatarPicker = rememberLauncherForActivityResult(
             ActivityResultContracts.PickVisualMedia(),
         ) { uri ->
@@ -517,7 +536,20 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
         ) {
             Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 64)
+                    // 0.1.21：头像加一圈约 25% 透明度的柔和阴影环——
+                    // 账户卡渐变去掉后头像容易融进纯色背景，靠这圈
+                    // 阴影把头像从背景里分出来（深浅模式同值成立）。
+                    Box(
+                        Modifier.shadow(
+                            elevation = 6.dp,
+                            shape = CircleShape,
+                            clip = false,
+                            ambientColor = Color.Black.copy(alpha = 0.25f),
+                            spotColor = Color.Black.copy(alpha = 0.25f),
+                        ),
+                    ) {
+                        Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 64)
+                    }
                     Box(
                         Modifier.align(Alignment.BottomEnd).size(24.dp).clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary)
@@ -582,7 +614,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     OutlinedTextField(
                         value = nameDraft,
                         onValueChange = { nameDraft = it },
-                        label = { Text("显示名") },
+                        label = { Text("User") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -608,8 +640,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                         ) { Text("保存") }
                         OutlinedButton(
                             onClick = {
-                                nameDraft = customDisplayName
-                                idDraft = customUserId
+                                nameDraft = customDisplayName.ifBlank { profile?.nickname ?: "" }
+                                idDraft = if (profile == null) customUserId
+                                    else customUserId.ifBlank { defaultCustomId(vm.store.firstLoginMs, profile.uid) }
                                 editing = false
                             },
                             Modifier.height(56.dp),
@@ -699,8 +732,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             SubRow("个性化", onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
             SubRow("音频", onClick = { onOpenSub(SettingsSub.Audio) }, position = SegmentPosition.Middle)
             SubRow("歌词", onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
-            // 0.1.13 第 12 项：成就页入口放设置页最下面（加入天数搬进成就页）。
-            SubRow("成就", onClick = { onOpenSub(SettingsSub.Achievements) }, position = SegmentPosition.Last)
+            // 0.1.13 第 12 项：成就页入口（加入天数搬进成就页）。
+            SubRow("成就", onClick = { onOpenSub(SettingsSub.Achievements) }, position = SegmentPosition.Middle)
+            // 0.1.21：页面最底下（成就下面）加「管理你的 Toki 账号」
+            // 占位入口——点击只给一句短提示，不做页面/跳转。
+            val tokiAccountContext = LocalContext.current
+            SubRow(
+                "管理你的 Toki 账号",
+                onClick = { Toast.makeText(tokiAccountContext, "该功能暂不可用", Toast.LENGTH_SHORT).show() },
+                position = SegmentPosition.Last,
+            )
         }
     }
 }
@@ -954,23 +995,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    // 0.1.18 第 15 项：算法推荐开关（测试功能，默认关），与播放行为
-    // 开关同组（听歌记录上报之后）。
-    item {
-        var algorithmRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
-        SettingsSubCard {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("算法推荐（测试功能）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = algorithmRecommend,
-                    onCheckedChange = { algorithmRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
-                )
-            }
-        }
-    }
+    // 0.1.21：算法推荐开关撤除——口味画像改为常开基础设施（与听歌
+    // 统计同级），不再单独成区，直接优化推荐歌单与推荐新歌的排序；
+    // 原开关与说明项替换为下面这一条纯说明。
     item {
         Text(
-            "开启后，应用会在主页根据你常听的歌手推荐可能合口味的歌单。播放记录始终只保存在本机（不上传），用于主页的回顾歌单与本地模式的重温回顾，与此开关无关。",
+            "播放记录始终只保存在本机（不上传），用于口味画像优化推荐排序与回顾歌单；画像数据存内部存储、更新不丢，并定期自动整理成月度汇总，不会无限增长。",
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1241,8 +1271,14 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         }
     }
     // Closing the dialog cancels the poll; reopening starts a fresh one.
-    AlertDialog(onDismissRequest = { vm.cancelQrLogin(); onDismiss() }, title = { Text("扫码登录网易云") }, text = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    // 0.1.21：迁统一弹窗 TokiDialog（单按钮弹窗同视觉语言）。
+    TokiDialog(
+        icon = Icons.Rounded.QrCode2,
+        title = "扫码登录网易云",
+        onDismiss = { vm.cancelQrLogin(); onDismiss() },
+        dismissText = "关闭",
+    ) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             val bitmap = remember(img) { runCatching { val raw = img.substringAfter("base64,", img); if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull() }
             if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
             if (qrError != null) {
@@ -1252,7 +1288,7 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 Text(when (qr?.code) { 801 -> "等待扫码"; 802 -> "已扫码，请在手机上确认"; 803 -> "登录成功"; 800 -> "二维码已过期，正在重新生成…"; else -> "使用网易云音乐 App 扫码" }, Modifier.padding(top = 12.dp))
             }
         }
-    }, confirmButton = { TextButton(onClick = { vm.cancelQrLogin(); onDismiss() }) { Text("关闭") } })
+    }
 }
 
 /**
@@ -1298,10 +1334,16 @@ private fun SourceRow(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(checked = enabled, onCheckedChange = onToggle, enabled = loggedIn)
             if (loggedIn) {
-                TextButton(onClick = onLogout) { Text("退出", color = TokiLogoutRed) }
-            } else {
+                // 0.1.21：退出改图标钮（登出语义图标，无障碍标签保留
+                // 「退出登录」），并与开关左右对调——退出在左、开关在
+                // 最右。退出仍走 SourceConfirmDialog 二次确认。
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = "退出登录", tint = TokiLogoutRed)
+                }
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle, enabled = loggedIn)
+            if (!loggedIn) {
                 TextButton(onClick = onLogin) { Text("登录") }
             }
         }
@@ -1329,23 +1371,23 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
             true,
         )
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("确认", color = if (isLogout) TokiLogoutRed else MaterialTheme.colorScheme.primary)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+    // 0.1.21：迁统一弹窗 TokiDialog（退出确认的确认钮走危险色）。
+    TokiDialog(
+        icon = if (isLogout) Icons.AutoMirrored.Rounded.Logout else Icons.Rounded.SwapHoriz,
+        title = title,
+        onDismiss = onDismiss,
+        confirmText = "确认",
+        onConfirm = onConfirm,
+        confirmDestructive = isLogout,
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 /** 0.1.12：手机号短信登录弹窗——手机号 + 发送验证码 + 验证码输入；
  * CAPTCHA 事件时弹 WebView 打开 securityURL 做人机验证，验证完返回重新发送。 */
 @Composable
-private fun QqSmsLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: () -> Unit) {
+private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val phone by vm.qqSmsPhone.collectAsState()
     val code by vm.qqSmsCode.collectAsState()
     val sent by vm.qqSmsSent.collectAsState()
@@ -1364,10 +1406,17 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: ()
             onDismiss()
         }
     }
-    AlertDialog(
-        onDismissRequest = { vm.cancelQqSmsLogin(); onDismiss() },
-        title = { Text("手机号短信登录") },
-        text = {
+    // 0.1.21：迁统一弹窗 TokiDialog（带输入的弹窗同视觉语言；原
+    // 「返回」与「关闭」在唯一调用点行为等价，合并为「关闭」）。
+    TokiDialog(
+        icon = Icons.Rounded.Sms,
+        title = "手机号短信登录",
+        onDismiss = { vm.cancelQqSmsLogin(); onDismiss() },
+        dismissText = "关闭",
+        confirmText = "登录",
+        onConfirm = { vm.verifyQqSmsCode() },
+        confirmEnabled = sent && code.isNotBlank(),
+    ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = phone,
@@ -1397,17 +1446,7 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: ()
                 Text("手机号须是 QQ音乐账号绑定的手机号。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (smsError != null) Text(smsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
-        },
-        confirmButton = {
-            FilledTonalButton(onClick = { vm.verifyQqSmsCode() }, enabled = sent && code.isNotBlank(), modifier = Modifier.height(56.dp)) { Text("登录") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { vm.cancelQqSmsLogin(); onBack() }) { Text("返回") }
-                TextButton(onClick = { vm.cancelQqSmsLogin(); onDismiss() }) { Text("关闭") }
-            }
-        },
-    )
+    }
     if (captchaUrl != null) CaptchaWebViewDialog(captchaUrl!!, onDismiss = { vm.qqSmsCaptchaUrl.value = null })
 }
 
@@ -1415,10 +1454,13 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onBack: () -> Unit, onDismiss: ()
  * 应用内 WebView 打开，验证完点关闭，返回重新发送验证码。 */
 @Composable
 private fun CaptchaWebViewDialog(url: String, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("人机验证") },
-        text = {
+    // 0.1.21：迁统一弹窗 TokiDialog。
+    TokiDialog(
+        icon = Icons.Rounded.Security,
+        title = "人机验证",
+        onDismiss = onDismiss,
+        dismissText = "关闭",
+    ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("请在下方完成验证，完成后返回重新发送验证码。", style = MaterialTheme.typography.bodyMedium)
                 AndroidView(
@@ -1435,7 +1477,5 @@ private fun CaptchaWebViewDialog(url: String, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(420.dp),
                 )
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-    )
+    }
 }

@@ -141,3 +141,38 @@ class LocalLibraryStore(context: Context) {
         const val KEY = "tracks"
     }
 }
+
+/**
+ * 登记表匹配键（0.1.21）：与 [LocalLibraryStore.findFor] 同口径的两类
+ * 键——源 + 源内 id 精确键、标题 + 主歌手归一化键。列表置灰判断是
+ * 同步渲染，不能逐行查登记表 + 文件存在性，所以把登记表压成键集合
+ * 供 UI 同步查；播放门控仍以 findFor + 文件存在性为准（权威路径）。
+ */
+internal fun localTrackKeys(tracks: List<LocalTrack>): Set<String> {
+    val keys = HashSet<String>()
+    for (t in tracks) {
+        if (t.originId.isNotBlank() && t.originSource.isNotBlank()) {
+            keys += "id:${t.originSource}:${t.originId}"
+        }
+        val title = normalizeKeyText(t.title)
+        if (title.isNotBlank()) {
+            keys += "ta:$title|${normalizeKeyText(t.artist.substringBefore(" / ").substringBefore(","))}"
+        }
+    }
+    return keys
+}
+
+/** 这首歌是否命中登记表（键口径，与 findFor 的两段匹配一致）。 */
+internal fun isLocallyAvailable(song: Song, keys: Set<String>): Boolean {
+    when (song.source) {
+        MusicSource.NETEASE -> if ("id:NETEASE:${song.id}" in keys) return true
+        MusicSource.QQ -> if (song.sourceId.isNotBlank() && "id:QQ:${song.sourceId}" in keys) return true
+        MusicSource.LOCAL -> return true
+    }
+    val title = normalizeKeyText(song.name)
+    if (title.isBlank()) return false
+    return "ta:$title|${normalizeKeyText(song.artists.firstOrNull()?.name ?: "")}" in keys
+}
+
+private fun normalizeKeyText(text: String): String =
+    text.lowercase().replace(Regex("\\s+"), "")

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FormatListNumbered
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -102,10 +103,14 @@ fun DetailScaffold(
             errorContent()
         } else {
             Box(Modifier.fillMaxSize()) {
+                // 0.1.21：列表回弹（官方 OverscrollEffect 自实现，
+                // 见 BounceOverscroll.kt）——详情页（歌单/歌手/专辑共用本脚手架）统一生效。
+                val bounce = rememberBounceOverscrollEffect()
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().bounceTranslation(bounce),
                     contentPadding = PaddingValues(bottom = bottomPadding),
+                    overscrollEffect = bounce,
                 ) {
                     collapsingCoverItem(coverUrl, coverName, coverHeight, coverFadeTo)
                     item {
@@ -149,6 +154,8 @@ fun DetailSongRow(
     rowBackground: Color,
     onOpenArtist: (Long) -> Unit,
     onLongPress: (Song) -> Unit,
+    dimmed: Boolean = false,
+    dimmedLabel: String? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -162,6 +169,8 @@ fun DetailSongRow(
             onOpenArtist = onOpenArtist,
             horizontalPadding = 16.dp,
             onLongPress = onLongPress,
+            dimmed = dimmed,
+            dimmedLabel = dimmedLabel,
         ) { onClick() }
     }
 }
@@ -179,6 +188,10 @@ fun DetailPlayControls(
     modeIconTint: Color,
     onPlayAll: () -> Unit,
     onToggleMode: () -> Unit,
+    // 0.1.21：大播放钮跟随播放状态（队列正是本页时显示暂停/继续，
+    // 图标由调用方按 detailPlayButtonState 判定后传入；点击行为也
+    // 由调用方决定——Play 时起播本页，Pause/Resume 时切换播放态）。
+    buttonState: com.tokimusic.app.player.DetailPlayButtonState = com.tokimusic.app.player.DetailPlayButtonState.Play,
 ) {
     val modeInteraction = remember { MutableInteractionSource() }
     Row(
@@ -193,7 +206,15 @@ fun DetailPlayControls(
                 .padding(horizontal = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.PlayArrow, "播放全部", tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(28.dp))
+            Icon(
+                if (buttonState == com.tokimusic.app.player.DetailPlayButtonState.Pause) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                when (buttonState) {
+                    com.tokimusic.app.player.DetailPlayButtonState.Pause -> "暂停"
+                    com.tokimusic.app.player.DetailPlayButtonState.Resume -> "继续播放"
+                    com.tokimusic.app.player.DetailPlayButtonState.Play -> "播放全部"
+                },
+                tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(28.dp),
+            )
         }
         Box(
             Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(modeButtonBg)

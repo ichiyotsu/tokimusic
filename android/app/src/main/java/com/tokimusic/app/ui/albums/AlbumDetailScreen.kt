@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.data.model.qqAlbumId
 import com.tokimusic.app.ui.AppViewModel
@@ -84,6 +85,11 @@ fun AlbumDetailScreen(
     val isQq = qqMid != null
     LaunchedEffect(albumId, qqMid, reloadKey) {
         loadError = false
+        // 0.1.21：本页源已关闭（含本地模式）时不加载——零联网，停在错误页（可返回）。
+        if (vm.isSourceDisabled(if (isQq) MusicSource.QQ else MusicSource.NETEASE)) {
+            loadError = true
+            return@LaunchedEffect
+        }
         if (isQq) {
             val qqDetail = runCatching { vm.qqClient.qqAlbumDetail(qqMid!!) }
                 .onFailure { loadError = true }.getOrNull()

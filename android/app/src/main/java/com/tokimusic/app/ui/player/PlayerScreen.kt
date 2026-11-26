@@ -165,6 +165,10 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
         }
     }
     val playLabel = if (state.isPlaying) "暂停" else "播放"
+    // 0.1.21：左右划切歌的累计位移（pointerInput 里累加，松手按
+    // 72dp 阈值判定；点按打开播放页不受影响——拖动成立后 click
+    // 会被手势消费取消）。
+    var swipeTotalPx by remember { mutableFloatStateOf(0f) }
     val scheme = MaterialTheme.colorScheme
     // 0.1.18 第 6 项：播放/暂停 icon 切换补淡入淡出 + 缩放（之前瞬切）。
     val motion = MaterialTheme.motionScheme
@@ -173,7 +177,24 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             .clip(shape)
             .then(glass)
-            .clickable(onClick = onOpen),
+            .clickable(onClick = onOpen)
+            // 0.1.21：左右划切歌——左划下一首、右划上一首（72dp
+            // 阈值触发）；进度条是纯展示（不可交互），不与手势冲突。
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { swipeTotalPx = 0f },
+                    onHorizontalDrag = { _, dragAmount -> swipeTotalPx += dragAmount },
+                    onDragEnd = {
+                        val thresholdPx = 72.dp.toPx()
+                        when {
+                            swipeTotalPx <= -thresholdPx -> vm.player.next()
+                            swipeTotalPx >= thresholdPx -> vm.player.previous()
+                        }
+                        swipeTotalPx = 0f
+                    },
+                    onDragCancel = { swipeTotalPx = 0f },
+                )
+            },
     ) {
         Column {
             Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -218,17 +239,8 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                         }
                     }
                 }
-                TokiLongPressLabel("下一首") {
-                    val nextInteraction = remember { MutableInteractionSource() }
-                    Box(
-                        Modifier.size(48.dp).offset(x = (-6).dp).clip(RoundedCornerShape(percent = 50))
-                            .clickable(interactionSource = nextInteraction, indication = null) { vm.player.next() }
-                            .pressRebound(nextInteraction),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = "下一首", modifier = Modifier.size(28.dp))
-                    }
-                }
+                // 0.1.21：下一首按钮移除（左右划切歌替代）；播放 /
+                // 暂停钮成为控制区最右端的唯一按钮。
             }
             // 第五轮第 9 项：细进度线用当前播放歌曲的封面取色（与播放器页
             // 滑杆同款逻辑）；没传取色时走默认主题色。

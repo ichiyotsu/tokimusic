@@ -50,17 +50,20 @@ data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, 
     /** 0.1.20 第 11 项：歌词搜索结果（网易云 cloudsearch type=1006；QQ 无歌词搜索恒空）。 */
     val searchLyricResults: List<Song> = emptyList(),
     /** 0.1.20 第 6 项：回顾歌单——(monthKey, 该月 top 歌已解析列表)，月份倒序。 */
-    val retrospectives: List<Pair<Int, List<Song>>> = emptyList(),
-    /** 0.1.20 第 5 项：本地模式生成的随机歌单 / 重温回顾（虚拟歌单 -5 / -6 的曲目）。 */
-    val localRandom: List<Song> = emptyList(), val localRevisit: List<Song> = emptyList())
+    val retrospectives: List<Pair<Int, List<Song>>> = emptyList())
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
 /** 单个来源的资料库统计（0.1.13 第 23 项）：等级 + 听歌分钟数；minutes 为 null 表示该源没有时长数据（QQ 暂无时长接口），显示 "—"。 */
 data class SourceStats(val level: Int, val minutes: Long?)
 
-/** 0.1.20 第 5 项：本地模式生成歌单的虚拟 id（与每日 -1 / 雷达 -2 / QQ 每日 -3 / QQ 雷达 -4、回顾歌单 -(100+monthKey) 都不冲突）。 */
-const val LOCAL_RANDOM_PLAYLIST_ID = -5L
-const val LOCAL_REVISIT_PLAYLIST_ID = -6L
+/**
+ * 本地模式主页/资料库本地页的两个源歌单虚拟 id（0.1.21 口径，覆盖
+ * 0.1.20 第 5 项的随机歌单 -5 / 重温回顾 -6）：-7 = 网易云已导入全部
+ * （「云音乐」）、-8 = QQ 已导入全部（「企鹅音乐」）。与每日 -1 /
+ * 雷达 -2 / QQ 每日 -3 / QQ 雷达 -4、回顾歌单 -(100+monthKey) 不冲突。
+ */
+const val LOCAL_NETEASE_PLAYLIST_ID = -7L
+const val LOCAL_QQ_PLAYLIST_ID = -8L
 
 /** 关注歌手 id 集合的纯切换（0.1.13 第 24 项，JVM 单测覆盖）：已关注则去掉，未关注则加上。 */
 fun toggleFollowedIds(ids: Set<Long>, id: Long): Set<Long> =
@@ -96,18 +99,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // The toggled source's sections must appear / vanish immediately.
         refreshHome()
     }
-    // 0.1.18 第 15 项：算法推荐（测试功能，默认关）——开关 + 推荐结果。
-    // 0.1.20 联合：开关只管推荐区显隐与打分；播放事件改为始终记录
-    // （回顾/重温回顾共用同一批事件，见 PlayerController）。
-    private val _algorithmRecommendEnabled = MutableStateFlow(store.algorithmRecommendEnabled)
-    val algorithmRecommendEnabled: StateFlow<Boolean> = _algorithmRecommendEnabled
-    private val _algorithmPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
-    val algorithmPlaylists: StateFlow<List<Playlist>> = _algorithmPlaylists
-    fun setAlgorithmRecommendEnabled(enabled: Boolean) {
-        store.algorithmRecommendEnabled = enabled
-        _algorithmRecommendEnabled.value = enabled
-        if (!enabled) _algorithmPlaylists.value = emptyList()
-    }
+    // 0.1.21：算法推荐不再单独成区、设置开关撤除——口味画像是常开
+    // 基础设施（与听歌统计同级），直接重排主页推荐歌单 / 推荐新歌，
+    // 见 loadHome 尾部的 rerankHomeByTaste 与 buildTasteProfile。
+    /** 歌单详情快照（关源 / 本地模式时详情页的离线数据源，零联网）。 */
+    private val playlistSnapshots = com.tokimusic.app.data.PlaylistSnapshotStore(getApplication())
+    /** 推荐歌单画像打分缓存（歌单 id → 分数），避免每次 loadHome 重拉曲目。 */
+    private val playlistScoreCache = HashMap<Long, Double>()
 
     // ---- 0.1.20：本地音乐库（第 7/8 项）+ 回顾（第 6 项）+ 本地模式生成歌单（第 5 项）----
     private val localLibraryStore = com.tokimusic.app.data.local.LocalLibraryStore(getApplication())
@@ -116,6 +114,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _localTracks = MutableStateFlow(localLibraryStore.all())
     /** 已导入的本地文件登记（本地页展示 + 第 8 项匹配的数据源）。 */
     val localTracks: StateFlow<List<com.tokimusic.app.data.local.LocalTrack>> = _localTracks
+    private val _localKeys = MutableStateFlow(com.tokimusic.app.data.local.localTrackKeys(localLibraryStore.all()))
+    /** 已导入登记的匹配键集合（列表置灰判断用，与 findFor 同口径；随登记表刷新）。 */
+    val localKeys: StateFlow<Set<String>> = _localKeys
     private val _localImportReport = MutableStateFlow<com.tokimusic.app.data.local.ImportReport?>(null)
     /** 最近一次「读取」的结果（导入数 + 逐条失败），本地页如实展示。 */
     val localImportReport: StateFlow<com.tokimusic.app.data.local.ImportReport?> = _localImportReport
@@ -137,8 +138,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 重新从登记表刷新本地池与本地页列表（导入完成/条目删除后调用）。 */
     fun refreshLocalTracks() {
         _localTracks.value = localLibraryStore.all()
+        _localKeys.value = com.tokimusic.app.data.local.localTrackKeys(_localTracks.value)
         _home.value = _home.value.copy(localSongs = mergedLocalPool())
     }
+
+    /** 某首歌是否有本地文件（置灰判断；不查文件存在性，播放以 localFirstUrl 的存在性检查为准）。 */
+    fun isSongLocallyAvailable(song: Song): Boolean =
+        com.tokimusic.app.data.local.isLocallyAvailable(song, _localKeys.value)
+
+    /** 关源/本地模式下这首歌被挡住的原因文案；可播时返回 null（列表置灰 + 不可点播用）。 */
+    fun songBlockedLabel(song: Song): String? = songBlockedReason(
+        song, _neteaseEnabled.value, _qqEnabled.value, isSongLocallyAvailable(song),
+    )
+
+    /** 某源是否被关闭（LOCAL 不是可关的源，恒 false）。 */
+    fun isSourceDisabled(source: MusicSource): Boolean = when (source) {
+        MusicSource.NETEASE -> !_neteaseEnabled.value
+        MusicSource.QQ -> !_qqEnabled.value
+        MusicSource.LOCAL -> false
+    }
+
+    private fun isLocalModeNow(): Boolean = isLocalMode(_neteaseEnabled.value, _qqEnabled.value)
 
     /** 已导入登记 → 可播放的本地 Song 列表（本地页点播用，与登记同序）。 */
     fun localTrackSongs(): List<Song> = _localTracks.value.map { localLibraryStore.toSong(it) }
@@ -153,7 +173,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             refreshLocalTracks()
-            refreshLocalGenerated()
         }
     }
 
@@ -201,47 +220,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _localImportReport.value = report
                 refreshLocalTracks()
-                refreshLocalGenerated()
             } finally {
                 _localImporting.value = false
             }
-        }
-    }
-
-    /**
-     * 第 5 项：本地模式主页的两个生成分区（数据与算法推荐/回顾同源——
-     * PlayEventLog + TasteProfile，不另建统计）：
-     * - 重温回顾：播放事件按歌聚合 top 30，与本地池按 id 求交（事件
-     *   只记播过的歌；池里没有的跳过，历史薄时列表随之变短，没播过
-     *   本地歌时为空、主页不显示该卡）。
-     * - 随机歌单：以画像 top 歌手为「曲风类似」种子——池里同歌手歌
-     *   优先、同专辑次之，其余随机补满 50 首；画像为空（没历史）
-     *   时纯随机。每次刷新重新洗牌。
-     */
-    fun refreshLocalGenerated() {
-        viewModelScope.launch {
-            val pool = mergedLocalPool()
-            if (pool.isEmpty()) {
-                _home.value = _home.value.copy(localRandom = emptyList(), localRevisit = emptyList())
-                return@launch
-            }
-            val events = withContext(Dispatchers.IO) { player.playEventLog.recentEvents(20_000) }
-            val poolById = pool.associateBy { it.id }
-            val revisit = com.tokimusic.app.player.Retrospective.topSongs(events, 30)
-                .mapNotNull { poolById[it.songId] }
-            val profile = com.tokimusic.app.player.TasteProfile.build(
-                events = events,
-                likedSongs = emptyList(),
-                followedArtistNames = emptyList(),
-                nowMs = System.currentTimeMillis(),
-            )
-            val topArtists = profile.entries.sortedByDescending { it.value }.take(5).map { it.key }.toSet()
-            val seedSongs = pool.filter { s -> s.artists.any { it.name in topArtists } }
-            val seedAlbums = seedSongs.map { it.albumName }.filter { it.isNotBlank() }.toSet()
-            val albumSongs = pool.filter { it.albumName in seedAlbums && it !in seedSongs }
-            val rest = pool.filter { it !in seedSongs && it !in albumSongs }
-            val random = (seedSongs.shuffled() + albumSongs.shuffled() + rest.shuffled()).take(50)
-            _home.value = _home.value.copy(localRandom = random, localRevisit = revisit)
         }
     }
 
@@ -254,7 +235,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshRetrospectives() {
         viewModelScope.launch {
             val events = withContext(Dispatchers.IO) { player.playEventLog.recentEvents(20_000) }
-            val monthly = com.tokimusic.app.player.Retrospective.monthlyTop(events, System.currentTimeMillis())
+            // 0.1.21 瘦身后：原始事件 + 月度聚合合并出数（先聚合再剪，
+            // 回顾按月数据不丢）；口径见 Retrospective.monthlyTopMerged。
+            val aggregates = withContext(Dispatchers.IO) { player.playEventLog.monthlySongAggregates() }
+            val monthly = com.tokimusic.app.player.Retrospective.monthlyTopMerged(
+                events, aggregates, System.currentTimeMillis(),
+            )
             if (monthly.isEmpty()) {
                 _home.value = _home.value.copy(retrospectives = emptyList())
                 return@launch
@@ -266,7 +252,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .map { it.songId }
                 .filter { (MusicSource.NETEASE to it) !in byKey }
                 .distinct()
-            val fetched = if (missingNetease.isNotEmpty()) {
+            // 本地模式零联网：缓存缺失的歌直接跳过，不走 songDetail 兜底。
+            val fetched = if (missingNetease.isNotEmpty() && !isLocalModeNow()) {
                 runCatching { api.songDetail(missingNetease.take(200)) }.getOrDefault(emptyList())
             } else {
                 emptyList()
@@ -297,58 +284,97 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return playlist to songs
     }
 
-    /** 本地生成歌单详情（虚拟 id -5 随机 / -6 重温回顾）。 */
-    fun localGeneratedDetail(id: Long): Pair<Playlist, List<Song>>? = when (id) {
-        LOCAL_RANDOM_PLAYLIST_ID -> Playlist(
-            id = id, name = "随机歌单", coverUrl = "", trackCount = _home.value.localRandom.size,
-            creatorName = "TokiMusic", source = MusicSource.LOCAL,
-        ) to _home.value.localRandom
-        LOCAL_REVISIT_PLAYLIST_ID -> Playlist(
-            id = id, name = "重温回顾", coverUrl = "", trackCount = _home.value.localRevisit.size,
-            creatorName = "TokiMusic", source = MusicSource.LOCAL,
-        ) to _home.value.localRevisit
+    /**
+     * 本地源歌单详情（虚拟 id -7 云音乐 / -8 企鹅音乐，0.1.21 口径）：
+     * 该源全部已导入本地歌曲，全部可播；没导入过时曲目为空，详情页
+     * 如实显示「暂无导入歌曲」。
+     */
+    fun localSourceDetail(id: Long): Pair<Playlist, List<Song>>? = when (id) {
+        LOCAL_NETEASE_PLAYLIST_ID -> localSourcePlaylist(id, "云音乐", "NETEASE")
+        LOCAL_QQ_PLAYLIST_ID -> localSourcePlaylist(id, "企鹅音乐", "QQ")
         else -> null
     }
 
+    private fun localSourcePlaylist(id: Long, name: String, origin: String): Pair<Playlist, List<Song>> {
+        val songs = _localTracks.value.filter { it.originSource == origin }
+            .map { localLibraryStore.toSong(it) }
+        return Playlist(
+            id = id, name = name, coverUrl = "", trackCount = songs.size,
+            creatorName = "TokiMusic 本地", source = MusicSource.LOCAL,
+        ) to songs
+    }
+
     /**
-     * 0.1.18 第 15 项：按本地口味画像给两源推荐歌单打分选前 6——候选是
-     * 主页已拉取的两源推荐歌单（交错顺序取前 12 个逐个拉曲目算歌手
-     * 重合度）；画像来自本地播放事件 + 喜欢的歌 + 关注的歌手
-     * （TasteProfile）。只在开关开时跑；画像为空（还没数据）时不出推荐。
+     * 0.1.21：口味画像构建（常开基础设施）——播放事件 + 月度歌手聚合
+     * 的回顾信号 + 喜欢 + 关注。原始事件被瘦身剪除后，过去月份的
+     * top 歌手从聚合表回喂（与 TasteProfile 内部的回顾信号同权重，
+     * 且按不变量不会与原始事件重复计）。
      */
-    fun refreshAlgorithmRecommendations() {
-        if (!_algorithmRecommendEnabled.value) return
-        viewModelScope.launch {
-            val candidates = interleavePlaylists(_home.value.playlists, _home.value.qqPlaylists).take(12)
-            if (candidates.isEmpty()) {
-                _algorithmPlaylists.value = emptyList()
-                return@launch
-            }
-            val profile = withContext(Dispatchers.IO) {
-                com.tokimusic.app.player.TasteProfile.build(
-                    events = player.playEventLog.recentEvents(),
-                    likedSongs = _likedSongs.value,
-                    followedArtistNames = _artists.value.map { it.name },
-                    // 0.1.20 联合：画像带新鲜度加权 + 回顾信号（过去月份高频歌手回喂）。
-                    nowMs = System.currentTimeMillis(),
-                )
-            }
-            if (profile.isEmpty()) {
-                _algorithmPlaylists.value = emptyList()
-                return@launch
-            }
-            val scored = candidates.map { pl ->
-                val trackArtists = runCatching { playlistDetail(pl.id).second }
-                    .getOrDefault(emptyList())
-                    .map { s -> s.artists.map { a -> a.name } }
-                pl to com.tokimusic.app.player.TasteProfile.score(trackArtists, profile)
-            }
-            _algorithmPlaylists.value = scored
-                .filter { it.second > 0.0 }
-                .sortedByDescending { it.second }
-                .take(6)
-                .map { it.first }
+    private suspend fun buildTasteProfile(): Map<String, Double> {
+        val now = System.currentTimeMillis()
+        val profile = withContext(Dispatchers.IO) {
+            val base = com.tokimusic.app.player.TasteProfile.build(
+                events = player.playEventLog.recentEvents(),
+                likedSongs = _likedSongs.value,
+                followedArtistNames = _artists.value.map { it.name },
+                nowMs = now,
+            ).toMutableMap()
+            val currentMonth = com.tokimusic.app.player.Retrospective.monthKey(now)
+            player.playEventLog.monthlyArtistAggregates()
+                .filter { it.monthKey < currentMonth }
+                .groupBy { it.monthKey }
+                .values
+                .forEach { monthAggs ->
+                    monthAggs.sortedByDescending { it.plays }
+                        .take(com.tokimusic.app.player.TasteProfile.RETROSPECTIVE_TOP_ARTISTS)
+                        .forEach { agg ->
+                            base[agg.artist] = (base[agg.artist] ?: 0.0) +
+                                com.tokimusic.app.player.TasteProfile.RETROSPECTIVE_BOOST
+                        }
+                }
+            base
         }
+        return profile
+    }
+
+    /**
+     * 0.1.21：算法推荐新形态——不建展示区，用画像对既有推荐流重排：
+     * 推荐新歌按歌手命中直接稳定重排；推荐歌单按曲目歌手重合度打分
+     * 重排（候选前 8 个拉曲目打分，分数按会话缓存；得 0 分的不硬排，
+     * 保持原序沉底）。画像为空（没数据）时整段跳过、推荐流原样。
+     * 只在 loadHome 的非本地模式路径调用。
+     */
+    private suspend fun rerankHomeByTaste() {
+        val profile = buildTasteProfile()
+        if (profile.isEmpty()) return
+        val home = _home.value
+        fun songScore(song: Song): Double = song.artists.sumOf { profile[it.name] ?: 0.0 }
+        val newSongs = home.newSongs.sortedByDescending { songScore(it) }
+        val qqNewSongs = home.qqNewSongs.sortedByDescending { songScore(it) }
+        suspend fun rankPlaylists(lists: List<Playlist>): List<Playlist> {
+            if (lists.isEmpty()) return lists
+            val head = lists.take(8)
+            val tail = lists.drop(8)
+            val scored = head.map { pl ->
+                val score = playlistScoreCache[pl.id] ?: run {
+                    val artists = runCatching { playlistDetail(pl.id).second }
+                        .getOrDefault(emptyList())
+                        .map { s -> s.artists.map { a -> a.name } }
+                    com.tokimusic.app.player.TasteProfile.score(artists, profile)
+                        .also { playlistScoreCache[pl.id] = it }
+                }
+                pl to score
+            }
+            val positive = scored.filter { it.second > 0.0 }.sortedByDescending { it.second }.map { it.first }
+            val zero = scored.filter { it.second <= 0.0 }.map { it.first }
+            return positive + zero + tail
+        }
+        val playlists = rankPlaylists(home.playlists)
+        val qqPlaylists = rankPlaylists(home.qqPlaylists)
+        _home.value = _home.value.copy(
+            newSongs = newSongs, qqNewSongs = qqNewSongs,
+            playlists = playlists, qqPlaylists = qqPlaylists,
+        )
     }
 
     private val _myPlaylists = MutableStateFlow<List<Playlist>>(emptyList()); val myPlaylists: StateFlow<List<Playlist>> = _myPlaylists
@@ -399,7 +425,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         // 网易云、已登录、非自己建的、真实歌单：走服务端订阅/取消订阅
         // （方向按服务端态，不按显示态——本地星标不代表服务端已订阅）。
-        if (playlist.source == MusicSource.NETEASE && _profile.value != null && playlist.id > 0 && playlist.creatorId != _profile.value?.uid) {
+        // 0.1.21：源已关闭时不走服务端（本地模式零联网），只翻本地收藏。
+        if (playlist.source == MusicSource.NETEASE && !isSourceDisabled(playlist.source) && _profile.value != null && playlist.id > 0 && playlist.creatorId != _profile.value?.uid) {
             if (!favToggleInFlight.add(key)) return
             viewModelScope.launch {
                 try {
@@ -522,8 +549,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        refreshSession()
-        refreshQqSession()
+        // 0.1.21 本地模式零联网底线：两源全关时启动不做任何会话校验
+        // （网易云 refreshLogin/loginStatus、QQ GetLoginUserInfo 都不
+        // 发），只置登录态显示（QQ 看凭证存在性）并走 loadHome 的本地
+        // 分支。用户在本地模式里主动登录某源时，登录成功路径会打开
+        // 该源开关并各自刷新会话，不受此门控影响。
+        if (isLocalModeNow()) {
+            _qqLoggedIn.value = store.qqMusicId.isNotBlank()
+            viewModelScope.launch { loadHome() }
+        } else {
+            refreshSession()
+            refreshQqSession()
+        }
+        // 0.1.21 播放事件库定期瘦身：距上次整理超过一周才跑（先聚合
+        // 再剪，月度聚合长期保留，见 PlayEventLog.compactIfDue）。
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val ran = withContext(Dispatchers.IO) {
+                runCatching { player.playEventLog.compactIfDue(now, store.playLogLastCompactMs) }
+                    .getOrDefault(false)
+            }
+            if (ran) store.playLogLastCompactMs = now
+        }
         // 0.1.17 第 12 / 13 项：实时歌词推送 + 听歌上报累计（同一 500ms 循环）。
         startPlaybackSideEffects()
     }
@@ -626,6 +673,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 第六轮第 1 项：启动时校验 QQ 凭证（GetLoginUserInfo）；无凭证直接
      * 回未登录，不发请求。 */
     fun refreshQqSession() = viewModelScope.launch {
+        // 0.1.21：本地模式下不校验 QQ 会话（零联网）；登录态只看凭证。
+        if (isLocalModeNow()) {
+            _qqLoggedIn.value = store.qqMusicId.isNotBlank()
+            return@launch
+        }
         val p = runCatching { qqClient.getLoginUserInfo() }.getOrNull()
         // 0.1.13 第 4 项：登录态只看凭证——资料拉取失败也不把已登录
         // 打回未登录（开关与已登录显示不依赖这次拉取）。
@@ -754,6 +806,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _home.value = _home.value.copy(
                 daily = dailyD.await(), radar = radarD.await(), recent = recentD.await(),
             )
+            // 0.1.21：画像重排既有推荐流（本地模式无推荐流，跳过）。
+            if (neEnabled || qqEnabledNow) runCatching { rerankHomeByTaste() }
             !failed
         }
     }
@@ -762,30 +816,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun scanLocalSongs() = viewModelScope.launch {
         val songs = withContext(Dispatchers.IO) { LocalMusicScanner.scan(getApplication()) }
         scannedLocalSongs = songs
-        // 0.1.20：本地池 = 扫描 ∪ 已导入登记；扫完顺带刷新本地生成歌单（第 5 项）。
+        // 0.1.20：本地池 = 扫描 ∪ 已导入登记。
         _home.value = _home.value.copy(localSongs = mergedLocalPool())
-        refreshLocalGenerated()
     }
 
     /** Playlist detail, routed by id namespace (sixth round, batch 2): QQ diss / toplist synthetic ids go to QqClient, everything else to NetEase. */
     suspend fun playlistDetail(id: Long): Pair<Playlist, List<Song>> {
-        // 0.1.20：本地生成歌单（-5/-6）与回顾歌单（-(100+monthKey)）是
+        // 0.1.21：本地源歌单（-7/-8）与回顾歌单（-(100+monthKey)）是
         // 虚拟歌单，曲目在 VM 状态里，先于一切网络路由返回。
-        localGeneratedDetail(id)?.let { return it }
+        localSourceDetail(id)?.let { return it }
         com.tokimusic.app.player.Retrospective.monthKeyOfPlaylist(id)?.let { key ->
             retrospectiveDetail(key)?.let { return it }
         }
         val dissid = QqPlaylistIds.dissidOf(id)
-        if (dissid != null) return qqClient.playlistDetail(dissid)
         val topId = QqPlaylistIds.topIdOf(id)
+        val source = if (dissid != null || topId != null) MusicSource.QQ else MusicSource.NETEASE
+        // 0.1.21 播放门控的展示侧：源已关闭时详情走快照（在线成功打开
+        // 过的落盘副本），绝不联网；没快照就只有列表元数据 + 空曲目，
+        // 详情页如实标注「暂无本地缓存曲目」。
+        if (isSourceDisabled(source)) {
+            playlistSnapshots.get(id)?.let { return it }
+            val known = (_myPlaylists.value + _home.value.playlists + _home.value.qqPlaylists +
+                _home.value.qqToplist + _home.value.searchPlaylists)
+                .firstOrNull { it.id == id }
+            return (known ?: Playlist(id = id, name = "歌单", source = source)) to emptyList()
+        }
+        if (dissid != null) {
+            return qqClient.playlistDetail(dissid).also { (pl, tracks) ->
+                withContext(Dispatchers.IO) { runCatching { playlistSnapshots.put(pl, tracks) } }
+            }
+        }
         if (topId != null) {
             val (title, songs) = qqClient.toplistDetail(topId)
-            return Playlist(id = id, name = title, source = MusicSource.QQ, sourceId = topId.toString()) to songs
+            val pl = Playlist(id = id, name = title, source = MusicSource.QQ, sourceId = topId.toString())
+            withContext(Dispatchers.IO) { runCatching { playlistSnapshots.put(pl, songs) } }
+            return pl to songs
         }
         // 0.1.17 第 3 项：详情返回的 subscribed 是服务端态——播种进已订阅集合，
         // 详情页星标据此显示已收藏（不等资料库拉取）。
-        return api.playlistDetail(id).also { (pl, _) ->
+        return api.playlistDetail(id).also { (pl, tracks) ->
             if (pl.subscribed) _subscribedPlaylistIds.value += playlistFavoriteKey(pl.source, pl.id)
+            withContext(Dispatchers.IO) { runCatching { playlistSnapshots.put(pl, tracks) } }
         }
     }
 
@@ -806,6 +877,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun search(keywords: String, source: MusicSource? = null) {
         lastSearchKeywords = keywords
         searchJob?.cancel()
+        // 0.1.21：本地模式下 VM 层直接拒绝搜索（界面已禁用搜索框，
+        // 这里是双保险）——否则两源全关时会按记住的搜索源发请求，
+        // QQ 搜索还会顺带触发 QIMEI 注册。
+        if (isLocalModeNow()) {
+            _home.value = _home.value.copy(
+                searchResults = emptyList(), searchPlaylists = emptyList(),
+                searchArtists = emptyList(), searchQqArtists = emptyList(),
+                searchLyricResults = emptyList(), searching = false,
+            )
+            return
+        }
         if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchLyricResults = emptyList(), searching = false); return }
         val src = when {
             _neteaseEnabled.value && !_qqEnabled.value -> MusicSource.NETEASE
@@ -843,7 +925,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun play(songs: List<Song>, index: Int, sourceName: String? = null) = viewModelScope.launch {
+    fun play(songs: List<Song>, index: Int, sourceName: String? = null, sourceKey: String? = null) = viewModelScope.launch {
         val first = songs.getOrNull(index) ?: return@launch
         // 0.1.20：队列里的歌写入歌曲缓存——回顾/重温回顾靠它把播放
         // 事件的 id 还原成完整歌曲对象（事件只来自播放，播过的必在）。
@@ -854,7 +936,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // source — a mixed queue resolves per song (QQ via QqClient,
         // NetEase via the existing multi-route client).
         val url = firstSongUrl(first) ?: return@launch
-        player.playQueue(songs, index, mapOf(first.id to url), sourceName) { id ->
+        player.playQueue(songs, index, mapOf(first.id to url), sourceName, sourceKey) { id ->
             val song = player.state.value.queue.firstOrNull { it.id == id } ?: return@playQueue null
             songUrlQuiet(song)
         }
@@ -868,7 +950,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun playPlaylist(songs: List<Song>, playlist: Playlist, shuffle: Boolean = false) {
         if (songs.isEmpty()) return
         player.setPlayMode(if (shuffle) PlayMode.Shuffle else PlayMode.Sequential)
-        play(songs, if (shuffle) shuffleStartIndex(songs.size) else 0, playlist.name)
+        // 0.1.21：队列来源键 = 歌单 id，详情页大播放钮据此跟随播放态。
+        play(songs, if (shuffle) shuffleStartIndex(songs.size) else 0, playlist.name, sourceKey = "playlist:${playlist.id}")
     }
 
     /**
@@ -887,6 +970,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 0.1.20 第 8 项：本地优先——这首歌已导入本地库且文件还在就
         // 直接播本地文件（不走网络取址）；文件没了回落下面的网络路径。
         localFirstUrl(song)?.let { return it }
+        // 0.1.21：源已关闭（含本地模式）且没有本地文件——不联网取址、
+        // 不回退在线，直接说明原因。
+        songBlockedLabel(song)?.let { _userMessage.value = it; return null }
         if (song.source == MusicSource.QQ) {
             if (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank()) {
                 _userMessage.value = "请先登录 QQ 音乐"; return null
@@ -931,8 +1017,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Lazy per-track URL, silent: the player already explains a skipped track. */
     private suspend fun songUrlQuiet(song: Song): String? {
-        // 0.1.20 第 8 项：懒加载同样本地优先（静默版）。
+        // 0.1.20 第 8 项：懒加载同样本地优先（静默版）。队列懒加载 /
+        // 下一首 / 报错重试重取址（PlayerController 的 urlLoader）都走
+        // 这里——0.1.21 总口径：所有取址路径先本地、再过关源门控。
         if (song.source != MusicSource.LOCAL) localFirstUrl(song)?.let { return it }
+        // 0.1.21：源已关闭且无本地文件 → 静默返回 null（播放器跳歌），
+        // 绝不联网取址。
+        if (songBlockedLabel(song) != null) return null
         return when (song.source) {
             MusicSource.QQ -> (runCatching { qqClient.songUrl(song.sourceId, store.audioQuality) }.getOrNull() as? QqSongUrlResult.Url)?.url
             MusicSource.NETEASE -> runCatching { api.songUrl(song.id).url }.getOrNull()
@@ -942,6 +1033,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playNext(song: Song) = viewModelScope.launch {
         withContext(Dispatchers.IO) { runCatching { songCache.putAll(listOf(song)) } }
+        // 0.1.21：关源且无本地文件的歌不进「下一首」（play 内部还有
+        // firstSongUrl 门控兜底，这里先拦下并说明，免得静默无反应）。
+        songBlockedLabel(song)?.let { _userMessage.value = it; return@launch }
         if (player.state.value.queue.isEmpty()) { play(listOf(song), 0); return@launch }
         if (song.source == MusicSource.QQ && (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank())) {
             _userMessage.value = "请先登录 QQ 音乐"; return@launch
@@ -976,6 +1070,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun loadLyrics(song: Song) = viewModelScope.launch {
+        // 0.1.21：源已关闭的歌不拉在线歌词（本地模式零联网）；本地
+        // 文件歌的歌词走既有本地路径（LOCAL 源在下面分支本就为空）。
+        if (song.source != MusicSource.LOCAL && isSourceDisabled(song.source)) {
+            _lyrics.value = emptyList()
+            return@launch
+        }
         _lyrics.value = runCatching {
             val p = when (song.source) {
                 // Sixth round, QQ playback: QQ lyrics are LRC line level
@@ -1125,6 +1225,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 喜爱歌曲：喜欢的 id 列表 + /song/detail 分批取详情（一次最多 100 个 id）。 */
     fun loadLikedSongs() {
+        // 0.1.21：网易云源已关闭（含本地模式）时不拉该源资料库——零联网；已有内存数据照常展示。
+        if (isSourceDisabled(MusicSource.NETEASE)) return
         if (likedSongsLoaded) return
         viewModelScope.launch {
             val ids = _likedIds.value.toList()
@@ -1140,6 +1242,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadArtists() {
+        // 0.1.21：网易云源已关闭（含本地模式）时不拉该源资料库——零联网；已有内存数据照常展示。
+        if (isSourceDisabled(MusicSource.NETEASE)) return
         if (artistsLoaded) return
         viewModelScope.launch {
             // 大排查 B6：同 loadQqLibrary——成功才记 loaded。
@@ -1188,6 +1292,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadAlbums() {
+        // 0.1.21：网易云源已关闭（含本地模式）时不拉该源资料库——零联网；已有内存数据照常展示。
+        if (isSourceDisabled(MusicSource.NETEASE)) return
         if (albumsLoaded) return
         viewModelScope.launch {
             // 大排查 B6：同 loadQqLibrary——成功才记 loaded。
@@ -1222,6 +1328,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
  * 未上报也上报；否则返回 null。返回值为要上报的已播秒数。
  * 时长未知（durationMs ≤ 0）时阈值按 240 秒算。
  */
+/** 本地模式判定（纯函数，单测覆盖）：两源全关 = 本地模式。 */
+internal fun isLocalMode(neteaseEnabled: Boolean, qqEnabled: Boolean): Boolean =
+    !neteaseEnabled && !qqEnabled
+
+/**
+ * 关源播放门控（纯函数，单测覆盖）：歌的源被关闭（含两源全关的本地
+ * 模式）且没有本地文件时返回不可播文案，否则 null（可播）。
+ * 文案：本地模式用「本地模式暂不可用」，单源关闭用「源已关闭暂不可用」。
+ * LOCAL 源不是可关的源，恒可播。
+ */
+internal fun songBlockedReason(
+    song: Song,
+    neteaseEnabled: Boolean,
+    qqEnabled: Boolean,
+    locallyAvailable: Boolean,
+): String? {
+    if (locallyAvailable) return null
+    val disabled = when (song.source) {
+        MusicSource.NETEASE -> !neteaseEnabled
+        MusicSource.QQ -> !qqEnabled
+        MusicSource.LOCAL -> false
+    }
+    if (!disabled) return null
+    return if (isLocalMode(neteaseEnabled, qqEnabled)) "本地模式暂不可用" else "源已关闭暂不可用"
+}
+
 internal fun scrobbleReportSeconds(playedMs: Long, durationMs: Long, reported: Boolean, ended: Boolean): Int? {
     if (reported) return null
     val thresholdMs = minOf(durationMs.takeIf { it > 0 } ?: 240_000L, 240_000L)

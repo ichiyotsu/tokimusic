@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -130,7 +131,7 @@ fun resolveArtistTap(
     else if (song.source != MusicSource.QQ) onOpenArtist(id)
 }
 
-@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, titleTrailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+@Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, titleTrailing: (@Composable () -> Unit)? = null, dimmed: Boolean = false, dimmedLabel: String? = null, onClick: () -> Unit) {
     // 第三轮第 12 项：副标题里的歌手名带 "artist" 注解，可点进歌手页；
     // 点副标题其他部分仍走行点击（播放）。不传 onOpenArtist 时副标题
     // 是普通文本（播放队列等处）。
@@ -149,15 +150,16 @@ fun resolveArtistTap(
         }
     }
     // 第 6 项：长按打开歌曲操作弹窗；没传 onLongPress 的地方保持普通点击。
-    val rowModifier = if (onLongPress != null) {
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongPress(song) })
-    } else {
-        Modifier.fillMaxWidth().clickable(onClick = onClick)
+    // 0.1.21：dimmed（关源且无本地文件）时整行不可点、不可长按。
+    val rowModifier = when {
+        dimmed -> Modifier.fillMaxWidth()
+        onLongPress != null -> Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { onLongPress(song) })
+        else -> Modifier.fillMaxWidth().clickable(onClick = onClick)
     }
     Row(rowModifier.padding(horizontal = horizontalPadding, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) { Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp)) }
         // 0.1.13 第 23 项：双源同时展示时，封面左上角叠源徽标。
-        Box(Modifier.size(48.dp)) {
+        Box(Modifier.size(48.dp).then(if (dimmed) Modifier.alpha(0.5f) else Modifier)) {
             AsyncImage(song.picUrl, song.name, Modifier.matchParentSize().clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
             if (showSourceBadge) SourceBadge(song.source, size = 20, modifier = Modifier.align(Alignment.TopStart).padding(2.dp))
         }
@@ -175,7 +177,7 @@ fun resolveArtistTap(
             // 同一行、居中对齐；歌名 weight(fill=false) 先量，长名截断后
             // icon 仍紧贴可见文字之后。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(song.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (titleTrailing != null) {
                     Spacer(Modifier.width(6.dp))
                     titleTrailing()
@@ -195,10 +197,15 @@ fun resolveArtistTap(
             } else {
                 Text(subtitle.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            // 0.1.21：关源不可播标注（「本地模式暂不可用」/「源已关闭暂不可用」）。
+            if (dimmed && dimmedLabel != null) {
+                Text(dimmedLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
         }
         // trailingText 优先（听歌排行显示“x 次”）；否则显示歌曲时长。
         // 第五轮第 10 项：可选尾部操作位（搜索行的小圆播放钮），其余调用点默认无。
-        if (trailingText != null) Text(trailingText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (dimmed) Unit
+        else if (trailingText != null) Text(trailingText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         else if (song.durationMs > 0) Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (trailingAction != null) { Spacer(Modifier.width(12.dp)); trailingAction() }
     }

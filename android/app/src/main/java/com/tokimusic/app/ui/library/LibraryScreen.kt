@@ -60,7 +60,11 @@ import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Artist
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID
+import com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.bounceTranslation
+import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.TokiCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
@@ -163,10 +167,12 @@ fun LibraryScreen(
     val allLikedSongs = likedSongs + (qqLibrary?.favSongs ?: emptyList())
     val allPlaylists = myPlaylists + (qqLibrary?.playlists ?: emptyList())
     val allArtists = artists + (qqLibrary?.followedArtists ?: emptyList())
-    // 0.1.20 第 9 项：本地模式（两源都关）——资料库只显示本地内容：
-    // 本地入口卡 + 本地统计行；网络分区卡（收藏/歌单/歌手/专辑/歌曲）
-    // 与最近添加/听歌排行全部隐藏（此前只看登录态不看源开关，QQ 歌单
-    // 在本地模式仍漏出，就是这个 bug）。
+    // 0.1.21 口径（覆盖 0.1.20 第 9 项的隐藏规则）：资料库正常显示——
+    // 歌单与曲目照常全量展示，不因关源/本地模式隐藏；门控只落在播放
+    // 上（关源且无本地文件的歌置灰标注、不可点播、不联网取址，见
+    // AppViewModel.songBlockedLabel 与各分区函数的 blockedLabel）。
+    // 0.1.20 第 9 项修的是「本地模式仍连接 QQ」——连接层已由 VM 的
+    // 会话/加载门控收口，展示层不再靠隐藏兜底。
     val localMode = !neteaseEnabled && !qqEnabled
     // 0.1.20 第 4 项：分区标题追踪（与主页 HomeScreen 同款机制：标题
     // 上沿越过顶栏下沿即接管悬浮标题；hazeSource 的条件接法在
@@ -190,12 +196,15 @@ fun LibraryScreen(
     if (section == LibrarySection.Local) {
         // 0.1.20 第 7 项：本地页是独立组合（要 SAF/权限启动器与订阅），
         // 不走下面的 LazyListScope 分区函数。
-        LocalLibraryPage(vm, topPadding, bottomPadding)
+        LocalLibraryPage(vm, topPadding, bottomPadding, onOpenPlaylist)
     } else {
+    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
+    val libraryBounce = rememberBounceOverscrollEffect()
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().bounceTranslation(libraryBounce),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
+        overscrollEffect = libraryBounce,
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
         // 头像入口在标题行右侧（见 TokiMusicApp）。
@@ -203,11 +212,19 @@ fun LibraryScreen(
             // Round 3 item 2: no in-page back row — the floating header
             // (OverlayTitleHeader) carries the back chip + title now.
             when (section) {
-                LibrarySection.Liked -> likedSongsSection(allLikedSongs, { id -> resolveArtistTap(allLikedSongs, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(allLikedSongs, i, "收藏") }
+                LibrarySection.Liked -> likedSongsSection(allLikedSongs, { id -> resolveArtistTap(allLikedSongs, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
+                    val playable = allLikedSongs.filter { vm.songBlockedLabel(it) == null }
+                    val idx = playable.indexOf(song)
+                    if (idx >= 0) vm.play(playable, idx, "收藏")
+                }
                 LibrarySection.Playlists -> playlistsSection(allPlaylists, profile?.uid ?: 0, showSourceBadge, onOpenPlaylist)
                 LibrarySection.Artists -> artistsSection(allArtists, onOpenArtist, onOpenQqArtist)
                 LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
-                LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }) { i -> vm.play(mine.recent, i, "歌曲") }
+                LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
+                    val playable = mine.recent.filter { vm.songBlockedLabel(it) == null }
+                    val idx = playable.indexOf(song)
+                    if (idx >= 0) vm.play(playable, idx, "歌曲")
+                }
                 null -> {}
             }
             return@LazyColumn
@@ -275,8 +292,8 @@ fun LibraryScreen(
                 }
             }
         }
-        // 0.1.20 第 9 项：本地模式下网络分区卡整组隐藏（见 localMode 注释）。
-        if (!localMode) {
+        // 0.1.21：分区卡照常显示（不再按本地模式整组隐藏）；本地模式
+        // 下也可进入（展示用既有本地状态数据，播放受门控）。
         item {
             Spacer(Modifier.height(8.dp))
             // 0.1.17 第 8 项：Monet 已删——五个分区卡不再按色板取色，
@@ -284,33 +301,32 @@ fun LibraryScreen(
             TokiCardRow(
                 Icons.Rounded.Star, "收藏",
                 if (anyLoggedIn) "$likedCount 首" else "登录后查看",
-            ) { if (anyLoggedIn) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
+            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.QueueMusic, "歌单",
                 if (anyLoggedIn) "$playlistCount 个歌单" else "登录后查看",
-            ) { if (anyLoggedIn) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
+            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 // 0.1.13 第 24 项：“艺人”改名“歌手”。
                 Icons.Rounded.Mic, "歌手",
                 if (anyLoggedIn) "我关注的歌手" else "登录后查看",
-            ) { if (anyLoggedIn) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
+            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.Album, "专辑",
                 if (anyLoggedIn) "我收藏的专辑" else "登录后查看",
-            ) { if (anyLoggedIn) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
+            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 Icons.Rounded.MusicNote, "歌曲",
                 if (anyLoggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
-            ) { if (anyLoggedIn) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
-        }
+            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         // 0.1.20 第 7 项：本地入口卡（所有模式都显示；本地模式下它是
         // 唯一的分区卡）。副文案是已导入首数。
@@ -322,7 +338,7 @@ fun LibraryScreen(
                 if (localCount.isEmpty()) "读取网易云 / QQ 音乐的本地文件" else "已导入 ${localCount.size} 首",
             ) { onOpenSection(LibrarySection.Local) }
         }
-        if (loggedIn && !localMode) {
+        if (loggedIn) {
             item {
                 Box(
                     Modifier.onGloballyPositioned { recentTitleY = it.positionInRoot().y },
@@ -361,7 +377,12 @@ fun LibraryScreen(
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
-                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge) { vm.play(mine.record.take(10).map { it.song }, i, "听歌排行") }
+                val blocked = vm.songBlockedLabel(r.song)
+                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge, dimmed = blocked != null, dimmedLabel = blocked) {
+                    val playable = mine.record.take(10).map { it.song }.filter { vm.songBlockedLabel(it) == null }
+                    val idx = playable.indexOf(r.song)
+                    if (idx >= 0) vm.play(playable, idx, "听歌排行")
+                }
             }
         }
     }
@@ -384,7 +405,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
     onOpenArtist: (Long) -> Unit,
     showSourceBadge: Boolean = false,
     onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
-    onPlay: (Int) -> Unit,
+    blockedLabel: (com.tokimusic.app.data.model.Song) -> String? = { null },
+    onPlay: (com.tokimusic.app.data.model.Song) -> Unit,
 ) {
     if (likedSongs.isEmpty()) {
         item {
@@ -396,7 +418,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
             )
         }
     } else {
-        itemsIndexed(likedSongs) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge) { onPlay(i) } }
+        itemsIndexed(likedSongs) { i, song ->
+            val blocked = blockedLabel(song)
+            SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, dimmed = blocked != null, dimmedLabel = blocked) { onPlay(song) }
+        }
     }
 }
 
@@ -525,7 +550,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     onOpenArtist: (Long) -> Unit,
     showSourceBadge: Boolean = false,
     onLongPressSong: (com.tokimusic.app.data.model.Song) -> Unit,
-    onPlay: (Int) -> Unit,
+    blockedLabel: (com.tokimusic.app.data.model.Song) -> String? = { null },
+    onPlay: (com.tokimusic.app.data.model.Song) -> Unit,
 ) {
     // “歌曲”行定义（PLAN 默认）：最近播放全量列表。
     // 大排查 S8：最近播放为空时之前整栏空白、无任何提示（喜欢/歌手/
@@ -540,7 +566,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
             )
         }
     } else {
-        itemsIndexed(recent) { i, song -> SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge) { onPlay(i) } }
+        itemsIndexed(recent) { i, song ->
+            val blocked = blockedLabel(song)
+            SongRow(song, i, onOpenArtist = onOpenArtist, onLongPress = onLongPressSong, showSourceBadge = showSourceBadge, dimmed = blocked != null, dimmedLabel = blocked) { onPlay(song) }
+        }
     }
 }
 
@@ -570,25 +599,53 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
 }
 
 /**
- * 本地页（0.1.20 第 7 项）：读取网易云 / QQ 音乐下载到本机的歌曲。
- * 顶栏右侧「读取」按钮（TokiMusicApp trailing 槽 → vm.localReadTick）
- * 触发 vm.runLocalRead()：MediaStore 普通音频 + 已授权目录里的
+ * 本地页（0.1.20 第 7 项；0.1.21 规格收拢）：读取网易云 / QQ 音乐下载
+ * 到本机的歌曲。顶栏右侧「读取」图标（TokiMusicApp trailing 槽 →
+ * vm.localReadTick）触发：没权限时直接拉系统权限弹窗（0.1.21 起不
+ * 再有独立的「允许访问本地音乐」按钮，被拒只留一行小字）；有权限
+ * 走 vm.runLocalRead()：MediaStore 普通音频 + 已授权目录里的
  * .ncm/.uc 解密导入；.qmc/.mflac/.mgg 如实报不支持。目录首次要
  * 在这里用 SAF 选一次（授权持久化，之后读取自动遍历）。
  * 结果区如实显示导入数与逐条失败（文件名 + 原因），不伪装成功。
+ * 「已导入」区（0.1.21 简化口径）：只列两个源歌单——云音乐 / 企鹅
+ * 音乐，与本地模式主页同款同数据（虚拟歌单 -7 / -8）；带不上来源
+ * 的登记留在「来源不明」平铺列表里，不丢歌。
  */
 @Composable
-private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp) {
+private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlaylist: (Long) -> Unit) {
     val context = LocalContext.current
     val tracks by vm.localTracks.collectAsState()
     val report by vm.localImportReport.collectAsState()
     val importing by vm.localImporting.collectAsState()
     val readTick by vm.localReadTick.collectAsState()
+    val audioPermission = if (android.os.Build.VERSION.SDK_INT >= 33) {
+        android.Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        android.Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(context, audioPermission) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var permissionDeniedHint by remember { mutableStateOf(false) }
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasAudioPermission = granted
+        if (granted) {
+            permissionDeniedHint = false
+            vm.runLocalRead()
+        } else {
+            permissionDeniedHint = true
+        }
+    }
     var lastTick by remember { mutableStateOf(readTick) }
     LaunchedEffect(readTick) {
         if (readTick != lastTick) {
             lastTick = readTick
-            vm.runLocalRead()
+            if (hasAudioPermission) vm.runLocalRead() else permissionLauncher.launch(audioPermission)
         }
     }
     var neteaseTreePicked by remember { mutableStateOf(vm.localTree(MusicSource.NETEASE)) }
@@ -611,42 +668,33 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
     val qqTreeLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> if (uri != null) persistTree(MusicSource.QQ, uri) }
-    val audioPermission = if (android.os.Build.VERSION.SDK_INT >= 33) {
-        android.Manifest.permission.READ_MEDIA_AUDIO
-    } else {
-        android.Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-    var hasAudioPermission by remember {
-        mutableStateOf(
-            androidx.core.content.ContextCompat.checkSelfPermission(context, audioPermission) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        hasAudioPermission = granted
-        if (granted) vm.runLocalRead()
-    }
+    val neteaseTracks = tracks.filter { it.originSource == "NETEASE" }
+    val qqTracks = tracks.filter { it.originSource == "QQ" }
+    val unknownTracks = tracks.filter { it.originSource != "NETEASE" && it.originSource != "QQ" }
+    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
+    val localBounce = rememberBounceOverscrollEffect()
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().bounceTranslation(localBounce),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
+        overscrollEffect = localBounce,
     ) {
         item {
             Text(
-                "读取网易云音乐与 QQ 音乐下载到本机的歌曲文件。网易云的 .ncm / .uc 与普通音频可以解密导入；QQ 加密文件（.qmc / .mflac / .mgg）暂不支持解密，会在结果里逐条说明。先选择对应应用的下载目录，再点右上角「读取」。",
+                "读取网易云音乐与 QQ 音乐下载到本机的歌曲文件。网易云的 .ncm / .uc 与普通音频可以解密导入；QQ 加密文件（.qmc / .mflac / .mgg）暂不支持解密，会在结果里逐条说明。先选择对应应用的下载目录，再点右上角的读取图标。",
                 Modifier.padding(horizontal = 24.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (!hasAudioPermission) {
+        if (permissionDeniedHint && !hasAudioPermission) {
             item {
-                androidx.compose.material3.FilledTonalButton(
-                    onClick = { permissionLauncher.launch(audioPermission) },
-                    Modifier.padding(horizontal = 24.dp).height(56.dp),
-                ) { Text("允许访问本地音乐") }
+                Text(
+                    "未授予本地音乐权限，无法读取；下次点读取图标会再次询问。",
+                    Modifier.padding(horizontal = 24.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item {
@@ -688,21 +736,27 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                 )
             }
         }
-        if (tracks.isEmpty()) {
-            item {
-                Text(
-                    "还没有导入的本地歌曲",
-                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            item { SectionTitle("已导入 · ${tracks.size} 首") }
-            itemsIndexed(tracks) { i, track ->
-                val songs = vm.localTrackSongs()
+        item { SectionTitle("已导入 · ${tracks.size} 首") }
+        item {
+            TokiCardRow(
+                Icons.Rounded.QueueMusic, "云音乐",
+                "已导入 ${neteaseTracks.size} 首",
+            ) { onOpenPlaylist(LOCAL_NETEASE_PLAYLIST_ID) }
+        }
+        item {
+            TokiCardRow(
+                Icons.Rounded.MusicNote, "企鹅音乐",
+                "已导入 ${qqTracks.size} 首",
+            ) { onOpenPlaylist(LOCAL_QQ_PLAYLIST_ID) }
+        }
+        if (unknownTracks.isNotEmpty()) {
+            item { SectionTitle("来源不明 · ${unknownTracks.size} 首") }
+            itemsIndexed(unknownTracks) { i, track ->
+                val allSongs = vm.localTrackSongs()
+                val songIndex = tracks.indexOf(track)
+                val song = allSongs.getOrNull(songIndex) ?: return@itemsIndexed
                 SongRow(
-                    songs[i],
+                    song,
                     trailingText = track.format.uppercase(),
                     trailingAction = {
                         IconButton(onClick = { vm.removeLocalTrack(track) }) {
@@ -710,7 +764,11 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                         }
                     },
                     onLongPress = { vm.openSongActions(it) },
-                ) { vm.play(songs, i, "本地") }
+                ) {
+                    val playableUnknown = unknownTracks.mapNotNull { t -> allSongs.getOrNull(tracks.indexOf(t)) }
+                    val idx = playableUnknown.indexOf(song)
+                    if (idx >= 0) vm.play(playableUnknown, idx, "本地")
+                }
             }
         }
     }

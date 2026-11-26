@@ -39,8 +39,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val sourceName: String? = null) {
+data class PlayerState(val queue: List<Song> = emptyList(), val index: Int = -1, val isPlaying: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val sourceName: String? = null, /** 队列来源上下文键（0.1.21）：详情页起播时写入（"playlist:<id>" / "artist:<id>"），队列被其他来源替换或冷启动恢复时为空——详情页大播放钮据此判定是否跟随播放状态，见 [detailPlayButtonState]。 */ val sourceKey: String? = null) {
     val current: Song? get() = queue.getOrNull(index)
+}
+
+/** 详情页大播放钮的三态（0.1.21）：与本页无关的队列 = Play（原始态）；队列正是本页且在播 = Pause；队列正是本页但已暂停 = Resume。 */
+enum class DetailPlayButtonState { Play, Pause, Resume }
+
+/**
+ * 详情页大播放钮状态判定（纯函数，JVM 单测覆盖）：队列来源键与
+ * 本页键相等且队列非空时才跟随播放态，其余一律 Play——退出本页
+ * 或队列被别的来源替换后，按钮自然回归原始态。
+ */
+fun detailPlayButtonState(queueSourceKey: String?, pageSourceKey: String, isPlaying: Boolean, queueEmpty: Boolean): DetailPlayButtonState {
+    if (queueEmpty || queueSourceKey == null || queueSourceKey != pageSourceKey) return DetailPlayButtonState.Play
+    return if (isPlaying) DetailPlayButtonState.Pause else DetailPlayButtonState.Resume
 }
 
 /**
@@ -198,7 +211,7 @@ class PlayerController(context: Context) {
     private var pendingQueue: PendingQueue? = null
     /** 会话接通前收到的队列恢复请求（只存最新一次；接通后不自动播放）。 */
     private var pendingRestore: PendingQueue? = null
-    private data class PendingQueue(val songs: List<Song>, val startIndex: Int, val urls: Map<Long, String?>, val sourceName: String? = null)
+    private data class PendingQueue(val songs: List<Song>, val startIndex: Int, val urls: Map<Long, String?>, val sourceName: String? = null, val sourceKey: String? = null)
 
     /** 空间音频开关的当前值；接通前调用只记下来，接通后立即应用。 */
     private var spatialAudioEnabled = false
@@ -242,8 +255,8 @@ class PlayerController(context: Context) {
         controller.addListener(createListener(controller))
         applySpatialAudio(controller, spatialAudioEnabled)
         applyPlayMode(controller, _playMode.value)
-        pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
-        pendingRestore?.let { pendingRestore = null; startRestore(controller, it.songs, it.startIndex, it.urls, it.sourceName) }
+        pendingQueue?.let { pendingQueue = null; startQueue(controller, it.songs, it.startIndex, it.urls, it.sourceName, it.sourceKey) }
+        pendingRestore?.let { pendingRestore = null; startRestore(controller, it.songs, it.startIndex, it.urls, it.sourceName, it.sourceKey) }
     }
 
     private fun createListener(player: Player) = object : Player.Listener {
@@ -356,7 +369,7 @@ class PlayerController(context: Context) {
     /**
      * 播放事件落库（0.1.18 第 15 项引入；0.1.20 联合改造）：算法推荐、
      * 回顾歌单（第 6 项）、本地模式重温回顾（第 5 项）共用同一批
-     * 事件——0.1.20 起**始终记录**，不再受 algorithmRecommendEnabled
+     * 事件——0.1.20 起**始终记录**（0.1.21 起算法推荐开关已撤除，画像常开）
      * 门控（否则开关默认关时回顾永远没数据）。开关的语义收窄为
      * 「主页是否显示算法推荐区」，设置页文案已同步说明；事件只存
      * 本机（与 PlaybackStatsStore 同性质），不上传。写库在 IO 线程
@@ -440,23 +453,23 @@ class PlayerController(context: Context) {
         }
     }
 
-    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
+    fun playQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, sourceKey: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
         this.urlLoader = urlLoader
         unplayable.clear()
         val controller = mediaController
         if (controller == null) {
             // 会话还没接通：先记下来，接通后立即开播；界面状态先行更新。
-            pendingQueue = PendingQueue(songs, startIndex, urls, sourceName)
-            _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName)
+            pendingQueue = PendingQueue(songs, startIndex, urls, sourceName, sourceKey)
+            _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName, sourceKey = sourceKey)
             return
         }
-        startQueue(controller, songs, startIndex, urls, sourceName)
+        startQueue(controller, songs, startIndex, urls, sourceName, sourceKey)
     }
 
-    private fun startQueue(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null) {
+    private fun startQueue(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, sourceKey: String? = null) {
         controller.setMediaItems(songs.map { mediaItemForSong(it, urls[it.id]) }, startIndex, 0)
         controller.prepare(); controller.play()
-        _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName)
+        _state.value = PlayerState(songs, startIndex, true, sourceName = sourceName, sourceKey = sourceKey)
         ensureUrlForCurrent(controller)
     }
 
@@ -469,21 +482,21 @@ class PlayerController(context: Context) {
      * starts immediately; a failed prefetch stays silent — the user
      * hasn't asked to play anything yet).
      */
-    fun restoreQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
+    fun restoreQueue(songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, sourceKey: String? = null, urlLoader: (suspend (Long) -> String?)? = null) {
         this.urlLoader = urlLoader
         val controller = mediaController
         if (controller == null) {
-            pendingRestore = PendingQueue(songs, startIndex, urls, sourceName)
-            _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName)
+            pendingRestore = PendingQueue(songs, startIndex, urls, sourceName, sourceKey)
+            _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName, sourceKey = sourceKey)
             return
         }
-        startRestore(controller, songs, startIndex, urls, sourceName)
+        startRestore(controller, songs, startIndex, urls, sourceName, sourceKey)
     }
 
-    private fun startRestore(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null) {
+    private fun startRestore(controller: Player, songs: List<Song>, startIndex: Int, urls: Map<Long, String?>, sourceName: String? = null, sourceKey: String? = null) {
         controller.setMediaItems(songs.map { mediaItemForSong(it, urls[it.id]) }, startIndex, 0)
         controller.prepare()
-        _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName)
+        _state.value = PlayerState(songs, startIndex, false, sourceName = sourceName, sourceKey = sourceKey)
         ensureUrlForCurrent(controller, autoPlay = false)
     }
 

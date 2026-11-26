@@ -19,7 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
+import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.player.nextModeAfterSingleButtonTap
 import com.tokimusic.app.player.shuffleStartIndex
@@ -54,6 +55,9 @@ import com.tokimusic.app.ui.components.DetailScaffold
 import com.tokimusic.app.ui.components.DetailSongRow
 import com.tokimusic.app.ui.components.DetailTitle
 import com.tokimusic.app.ui.components.formatTotalDurationMs
+import com.tokimusic.app.player.DetailPlayButtonState
+import com.tokimusic.app.player.detailPlayButtonState
+import com.tokimusic.app.ui.components.TokiDialog
 import com.tokimusic.app.ui.components.resolveArtistTap
 import com.tokimusic.app.ui.theme.tokiPageColor
 import com.tokimusic.app.ui.theme.rememberCoverColors
@@ -105,6 +109,11 @@ fun ArtistScreen(
     LaunchedEffect(artistId, qqMid, reloadKey) {
         loadError = false
         songsLoaded = false
+        // 0.1.21：本页源已关闭（含本地模式）时不加载——零联网，停在空态。
+        if (vm.isSourceDisabled(if (isQq) MusicSource.QQ else MusicSource.NETEASE)) {
+            songsLoaded = true
+            return@LaunchedEffect
+        }
         if (isQq) {
             val detail = runCatching { vm.qqClient.qqSingerDetail(qqMid!!) }
                 .onFailure { loadError = true }.getOrNull()
@@ -153,16 +162,26 @@ fun ArtistScreen(
         onFollowAction(if (isQq || a == null) null else isFollowed to { if (isFollowed) showUnfollowConfirm = true else vm.toggleFollowArtist(artistId) })
     }
     if (showUnfollowConfirm && a != null) {
-        AlertDialog(
-            onDismissRequest = { showUnfollowConfirm = false },
-            title = { Text("取消关注${a.name}？") },
-            confirmButton = { TextButton(onClick = { showUnfollowConfirm = false; vm.toggleFollowArtist(artistId) }) { Text("取消关注") } },
-            dismissButton = { TextButton(onClick = { showUnfollowConfirm = false }) { Text("取消") } },
+        // 0.1.21：迁统一弹窗 TokiDialog（确认钮走危险色）。
+        TokiDialog(
+            icon = Icons.Rounded.PersonRemove,
+            title = "取消关注${a.name}？",
+            onDismiss = { showUnfollowConfirm = false },
+            confirmText = "取消关注",
+            onConfirm = { showUnfollowConfirm = false; vm.toggleFollowArtist(artistId) },
+            confirmDestructive = true,
         )
     }
     val coverColors = rememberCoverColors(if (isQq) qqArtistId(qqMid!!) else artistId, a?.picUrl ?: "")
     // 0.1.18 第 21 项 b：播放模式（播放控制组用，与歌单页同款单按钮）。
     val playMode by vm.player.playMode.collectAsState()
+    // 0.1.21：大播放钮跟随播放状态——队列来源键用歌手上下文
+    // （网易云 artist:<id> / QQ qqartist:<mid>），判定见 detailPlayButtonState。
+    val playerState by vm.player.state.collectAsState()
+    val artistPageKey = if (isQq) "qqartist:$qqMid" else "artist:$artistId"
+    val detailButtonState = detailPlayButtonState(
+        playerState.sourceKey, artistPageKey, playerState.isPlaying, playerState.queue.isEmpty(),
+    )
     // 第 12 项：x = 本页歌曲与网易云累计听歌榜的交集（未登录时 record
     // 为空，x=0）；y = 歌手全部歌曲数 musicSize（不是本页条数）。
     val mine by vm.mine.collectAsState()
@@ -256,7 +275,14 @@ fun ArtistScreen(
                         playMode = playMode,
                         modeButtonBg = coverColors.onCoverButtonBg(),
                         modeIconTint = coverColors.onCoverText(),
-                        onPlayAll = { vm.play(allSongs, if (playMode == PlayMode.Shuffle) shuffleStartIndex(allSongs.size) else 0, a?.name) },
+                        buttonState = detailButtonState,
+                        onPlayAll = {
+                            if (detailButtonState == DetailPlayButtonState.Play) {
+                                vm.play(allSongs, if (playMode == PlayMode.Shuffle) shuffleStartIndex(allSongs.size) else 0, a?.name, sourceKey = artistPageKey)
+                            } else {
+                                vm.player.toggle()
+                            }
+                        },
                         onToggleMode = { vm.player.setPlayMode(nextModeAfterSingleButtonTap(playMode)) },
                     )
                     Spacer(Modifier.width(16.dp))
@@ -300,7 +326,7 @@ fun ArtistScreen(
                         rowBackground = coverColors.onCoverButtonBg(),
                         onOpenArtist = openArtistForRows,
                         onLongPress = { vm.openSongActions(it) },
-                        onClick = { vm.play(allSongs, i, a?.name) },
+                        onClick = { vm.play(allSongs, i, a?.name, sourceKey = artistPageKey) },
                     )
                 }
                 // 大排查 B4：加载完成仍无歌曲时给一句空态（之前

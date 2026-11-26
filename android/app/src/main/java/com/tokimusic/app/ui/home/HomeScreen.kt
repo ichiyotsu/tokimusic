@@ -74,6 +74,8 @@ import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.PlaylistCard
+import com.tokimusic.app.ui.components.bounceTranslation
+import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
@@ -119,13 +121,9 @@ fun HomeScreen(
     val home by vm.home.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
-    // 0.1.18 第 15 项：算法推荐（开关 + 结果在组合层收集；候选或开关
-    // 变化时重算，VM 里开关关时直接返回）。
-    val algorithmEnabled by vm.algorithmRecommendEnabled.collectAsState()
-    val algorithmPlaylists by vm.algorithmPlaylists.collectAsState()
-    LaunchedEffect(algorithmEnabled, home.playlists, home.qqPlaylists) {
-        if (algorithmEnabled) vm.refreshAlgorithmRecommendations()
-    }
+    // 0.1.21：算法推荐分区与开关已撤除（画像改为常开基础设施，在
+    // VM 的 loadHome 里直接重排推荐流），主页不再有独立推荐区。
+    val localTracks by vm.localTracks.collectAsState()
     val bothEnabled = neteaseEnabled && qqEnabled
     var entered by remember { mutableStateOf(false) }
     // 0.1.18 第 6 项：进场淡入走 effects spec（之前手写 tween(300)）。
@@ -182,10 +180,15 @@ fun HomeScreen(
     // 第三轮第 14 项：列表上下边缘 32dp 淡出（内容滑到悬浮标题 / 底栏
     // 下方时柔和消失，与歌单详情同款；淡出层不处理触摸，不挡滚动）。
     Box(Modifier.fillMaxSize()) {
+    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）——主页顶部
+    // 有下拉刷新（PullToRefreshBox），顶边不吸收过冲（applyTop =
+    // false，与下拉刷新不冲突），底边照常回弹。
+    val homeBounce = rememberBounceOverscrollEffect(applyTop = false)
     LazyColumn(
-        Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha },
+        Modifier.fillMaxSize().bounceTranslation(homeBounce).graphicsLayer { alpha = enterAlpha },
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
+        overscrollEffect = homeBounce,
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
         // 头像入口在标题行右侧（见 TokiMusicApp）。
@@ -228,37 +231,29 @@ fun HomeScreen(
                     onRescan = { vm.scanLocalSongs() },
                 )
             }
-            // 0.1.20 第 5 项：本地模式生成分区——随机歌单（画像种子选
-            // 曲风类似 50 首）/ 重温回顾（播放事件 top 30 与本地池求
-            // 交）；与每日推荐同排双列卡，点开走虚拟歌单 -5 / -6。
-            // 列表为空（没历史/池太小）时整卡不显示。
-            if (home.localRandom.isNotEmpty() || home.localRevisit.isNotEmpty()) {
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        if (home.localRandom.isNotEmpty()) {
-                            LocalGeneratedCard(
-                                title = "随机歌单",
-                                caption = "${home.localRandom.size} 首 · 本地",
-                                modifier = Modifier.weight(1f),
-                            ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_RANDOM_PLAYLIST_ID) }
-                        }
-                        if (home.localRevisit.isNotEmpty()) {
-                            LocalGeneratedCard(
-                                title = "重温回顾",
-                                caption = "常听的 ${home.localRevisit.size} 首",
-                                modifier = Modifier.weight(1f),
-                            ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_REVISIT_PLAYLIST_ID) }
-                        }
-                        if (home.localRandom.isEmpty() || home.localRevisit.isEmpty()) Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-            if (hasLocalPermission) {
-                itemsIndexed(home.localSongs) { index, song ->
-                    SongRow(song, onLongPress = { vm.openSongActions(it) }) { vm.play(home.localSongs, index, "本地音乐") }
+            // 0.1.21 口径（覆盖 0.1.20 第 5 项）：本地模式主页只有两个
+            // 源歌单——「云音乐」装全部已导入的网易云本地歌曲、「企鹅
+            // 音乐」装全部已导入的 QQ 本地歌曲（虚拟歌单 -7 / -8）。
+            // 随机歌单 / 重温回顾从本地主页撤下（普通模式主页与回顾
+            // 功能本身不动）；平铺的本地歌曲列表也不再上主页。
+            // 某源还没导入过歌曲时卡片照常显示，点开是空状态。
+            item {
+                val neteaseLocalCount = localTracks.count { it.originSource == "NETEASE" }
+                val qqLocalCount = localTracks.count { it.originSource == "QQ" }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    LocalGeneratedCard(
+                        title = "云音乐",
+                        caption = "$neteaseLocalCount 首 · 本地",
+                        modifier = Modifier.weight(1f),
+                    ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID) }
+                    LocalGeneratedCard(
+                        title = "企鹅音乐",
+                        caption = "$qqLocalCount 首 · 本地",
+                        modifier = Modifier.weight(1f),
+                    ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID) }
                 }
             }
         }
@@ -395,27 +390,6 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(allPlaylists, key = { it.id }) { playlist ->
-                        PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) }
-                    }
-                }
-            }
-        }
-        // 0.1.18 第 15 项：算法推荐（测试功能）——开关开且有推荐结果时
-        // 才出现；内容是按本地口味画像（播放事件 + 喜欢 + 关注）给两源
-        // 推荐歌单打分选出的歌单，卡片与推荐歌单同款（收集与重算触发
-        // 在组合层，见 HomeScreen 开头）。
-        if (algorithmEnabled && algorithmPlaylists.isNotEmpty()) {
-            item {
-                Text("算法推荐", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                LazyHorizontalGrid(
-                    rows = GridCells.Fixed(1),
-                    modifier = Modifier.fillMaxWidth().height(204.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    items(algorithmPlaylists, key = { it.id }) { playlist ->
                         PlaylistCard(playlist, showSourceBadge = bothEnabled) { onOpenPlaylist(playlist.id) }
                     }
                 }

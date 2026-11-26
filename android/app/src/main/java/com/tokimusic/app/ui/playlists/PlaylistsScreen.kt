@@ -14,8 +14,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.tokimusic.app.data.model.*
 import com.tokimusic.app.data.playlistFavoriteKey
+import com.tokimusic.app.player.DetailPlayButtonState
+import com.tokimusic.app.player.detailPlayButtonState
 import com.tokimusic.app.player.nextModeAfterSingleButtonTap
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID
+import com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID
 import com.tokimusic.app.ui.components.COLLAPSING_COVER_FRACTION
 import com.tokimusic.app.ui.components.DetailPlayControls
 import com.tokimusic.app.ui.components.DetailScaffold
@@ -128,6 +132,24 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
         }
     }
     val (pl, tracks) = detail ?: (Playlist(playlistId, "加载中…") to emptyList())
+    // 0.1.21 播放门控的展示侧：源开关 / 本地登记变化时重算每首的
+    // 不可播标注；可播子集保持原序（播放全部 / 点播都只走子集，
+    // 被挡的歌不进队列，也不会在队列里触发联网取址）。
+    val neteaseEnabled by vm.neteaseEnabled.collectAsState()
+    val qqEnabled by vm.qqEnabled.collectAsState()
+    val localKeys by vm.localKeys.collectAsState()
+    val blockedLabels = remember(tracks, neteaseEnabled, qqEnabled, localKeys) {
+        tracks.map { vm.songBlockedLabel(it) }
+    }
+    val playableTracks = remember(tracks, blockedLabels) {
+        tracks.filterIndexed { i, _ -> blockedLabels[i] == null }
+    }
+    // 0.1.21：大播放钮跟随播放状态——队列来源键与本页歌单 id 对上
+    // 才跟随（判定纯函数 detailPlayButtonState，PlayerController）。
+    val playerState by vm.player.state.collectAsState()
+    val detailButtonState = detailPlayButtonState(
+        playerState.sourceKey, "playlist:$playlistId", playerState.isPlaying, playerState.queue.isEmpty(),
+    )
     // 第 6 项：自己的歌单 = creator 是当前登录用户；虚拟歌单（creatorId 0）
     // 和“我喜欢的音乐”（取消喜欢走 /like，不走删歌接口）不算。
     val isOwnPlaylist = pl.creatorId != 0L && pl.creatorId == profile?.uid && !pl.name.contains("喜欢的音乐")
@@ -210,7 +232,14 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                     playMode = playMode,
                     modeButtonBg = coverColors.onCoverButtonBg(),
                     modeIconTint = coverColors.onCoverTextAt(titleFraction),
-                    onPlayAll = { vm.playPlaylist(tracks, pl, shuffle = false) },
+                    buttonState = detailButtonState,
+                    onPlayAll = {
+                        if (detailButtonState == DetailPlayButtonState.Play) {
+                            vm.playPlaylist(playableTracks, pl, shuffle = false)
+                        } else {
+                            vm.player.toggle()
+                        }
+                    },
                     onToggleMode = { vm.player.setPlayMode(nextModeAfterSingleButtonTap(playMode)) },
                 )
                 Spacer(Modifier.height(12.dp))
@@ -236,13 +265,32 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
         },
         listContent = {
             val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }
+            if (detail != null && tracks.isEmpty()) {
+                item {
+                    Text(
+                        when {
+                            playlistId == LOCAL_NETEASE_PLAYLIST_ID || playlistId == LOCAL_QQ_PLAYLIST_ID -> "暂无导入歌曲"
+                            vm.isSourceDisabled(pl.source) -> "暂无本地缓存曲目"
+                            else -> "暂无歌曲"
+                        },
+                        Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = coverColors.onCoverTextDim(),
+                    )
+                }
+            }
             itemsIndexed(tracks) { i, song ->
                 DetailSongRow(
                     song, i, tracks.size,
                     rowBackground = coverColors.onCoverButtonBg(),
                     onOpenArtist = openArtistForRows,
                     onLongPress = { vm.openSongActions(it, playlistId, isOwnPlaylist) },
-                    onClick = { vm.play(tracks, i, pl.name) },
+                    dimmed = blockedLabels[i] != null,
+                    dimmedLabel = blockedLabels[i],
+                    onClick = {
+                        val playableIndex = playableTracks.indexOf(song)
+                        if (playableIndex >= 0) vm.play(playableTracks, playableIndex, pl.name, sourceKey = "playlist:$playlistId")
+                    },
                 )
             }
         },

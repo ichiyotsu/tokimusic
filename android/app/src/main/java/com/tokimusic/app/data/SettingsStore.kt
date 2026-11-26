@@ -77,12 +77,14 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */
     var scrobbleEnabled: Boolean get() = prefs.getBoolean(SCROBBLE_KEY, true)
         set(v) { prefs.edit().putBoolean(SCROBBLE_KEY, v).apply() }
-    /** 算法推荐开关（0.1.18 第 15 项，测试功能，默认关）。0.1.20 联合
-     * 改造后语义收窄：只控制主页是否显示算法推荐区 + 是否跑画像打分；
-     * 播放事件本身始终记录在本机（回顾歌单/重温回顾要用，见
-     * PlayerController.finishPlayEvent 与本轮 NOTES）。 */
-    var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", false)
-        set(v) { prefs.edit().putBoolean("algorithm_recommend_enabled", v).apply() }
+    /**
+     * 播放事件库上次瘦身整理的时间（0.1.21）：启动时距今超过一周
+     * 才再跑一次月度聚合+剪除。算法推荐开关于 0.1.21 撤除（画像
+     * 改为常开基础设施，直接重排推荐流）——旧键
+     * algorithm_recommend_enabled 不再读取。
+     */
+    var playLogLastCompactMs: Long get() = prefs.getLong("play_log_last_compact_ms", 0L)
+        set(v) { prefs.edit().putLong("play_log_last_compact_ms", v).apply() }
 
     /** 播放服务监听开关变化，开关翻动时立即刷新媒体通知。 */
     fun registerLiveUpdatesListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {

@@ -14,8 +14,8 @@ import java.util.Calendar
  *   数据」；每月取播放次数 top [TOP_LIMIT]（并列时听得久的靠前）。
  * - 封面渐变：莫奈色板（睡莲/干草堆/雾色系的柔和印象派色）按月份
  *   键哈希取 3 色——同一月永远同三色，不同月大概率不同。
- * - 虚拟歌单 id：-(100 + monthKey)，与既有虚拟 id（-1..-6）、本地
- *   生成歌单（-5/-6）、QQ 负 id 段（≤ -1_000_000）都不冲突。
+ * - 虚拟歌单 id：-(100 + monthKey)，与既有虚拟 id（-1..-4）、本地
+ *   源歌单（-7/-8）、QQ 负 id 段（≤ -1_000_000）都不冲突。
  */
 object Retrospective {
     const val TOP_LIMIT = 40
@@ -75,6 +75,43 @@ object Retrospective {
                 if (top.size < MIN_DISTINCT_SONGS) null else key to top
             }
             .sortedByDescending { it.first }
+    }
+
+    /**
+     * 同 [monthlyTop]，但把已瘦身的月度聚合（[MonthlySongAgg]）按
+     * (songId, source) 并回对应月份再排序/过门槛——瘦身剪掉原始
+     * 事件后，回顾歌单的月度数据一条不少（0.1.21）。
+     * 不变量：一条事件要么还在原始表、要么已进聚合表，永不同时
+     * 存在，所以合并不会重复计数。
+     */
+    fun monthlyTopMerged(
+        events: List<PlayEvent>,
+        songAggregates: List<MonthlySongAgg>,
+        nowMs: Long,
+        limit: Int = TOP_LIMIT,
+    ): List<Pair<Int, List<PlayCount>>> {
+        val current = monthKey(nowMs)
+        val merged = HashMap<Int, HashMap<Pair<Long, String>, PlayCount>>()
+        fun add(monthKey: Int, pc: PlayCount) {
+            if (monthKey >= current) return
+            val bySong = merged.getOrPut(monthKey) { HashMap() }
+            val key = pc.songId to pc.source
+            val cur = bySong[key]
+            bySong[key] = if (cur == null) pc else cur.copy(plays = cur.plays + pc.plays, seconds = cur.seconds + pc.seconds)
+        }
+        for ((key, monthEvents) in events.groupBy { monthKey(it.playedAtMs) }) {
+            topSongs(monthEvents, Int.MAX_VALUE).forEach { add(key, it) }
+        }
+        for (agg in songAggregates) {
+            add(agg.monthKey, PlayCount(agg.songId, agg.source, agg.plays, agg.seconds))
+        }
+        return merged.mapNotNull { (key, bySong) ->
+            if (bySong.size < MIN_DISTINCT_SONGS) return@mapNotNull null
+            val top = bySong.values
+                .sortedWith(compareByDescending<PlayCount> { it.plays }.thenByDescending { it.seconds })
+                .take(limit)
+            key to top
+        }.sortedByDescending { it.first }
     }
 
     /** 莫奈色板（柔和印象派色，封面渐变专用；与第 6 项口径一致）。 */
