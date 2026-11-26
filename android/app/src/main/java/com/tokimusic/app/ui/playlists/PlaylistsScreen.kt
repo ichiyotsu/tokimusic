@@ -1,4 +1,5 @@
 package com.tokimusic.app.ui.playlists
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,34 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
  *   随机播放（右）；收藏星星移到顶栏右侧（onFavoriteAction 上报）。
  * - 0.1.13 第 12 项：歌曲行底色改莫奈色系（按歌单 id 稳定取色）。
  */
+/**
+ * 歌单页大标题（0.1.20 第 10 项）：与 [DetailTitle] 同排版；文本溢出
+ * （被省略号截断）时可点——点一下展开全文（不限行数），再点收回
+ * 单行。不溢出时点按无反应；没有任何提示文字、图标或引导元素。
+ */
+@Composable
+private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graphics.Color) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflowed by remember(text) { mutableStateOf(false) }
+    Text(
+        text,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        color = color,
+        maxLines = if (expanded) Int.MAX_VALUE else 1,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (!expanded) overflowed = it.hasVisualOverflow },
+        modifier = if (overflowed || expanded) {
+            Modifier.clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) { expanded = !expanded }
+        } else {
+            Modifier
+        },
+    )
+}
+
 @Composable fun PlaylistDetailScreen(
     vm: AppViewModel,
     playlistId: Long,
@@ -169,7 +198,9 @@ import com.tokimusic.app.ui.theme.rememberCoverColors
                 )
                 Spacer(Modifier.height(4.dp))
             }
-            DetailTitle(pl.name, coverColors.onCoverTextAt(titleFraction))
+            // 0.1.20 第 10 项：歌单标题过长被截断时，点标题展开全文，
+            // 再点收起——不加任何提示文字/图标，纯点按行为。
+            ExpandableDetailTitle(pl.name, coverColors.onCoverTextAt(titleFraction))
             Spacer(Modifier.height(16.dp))
             // 0.1.14 第 6/7 项的播放控制组（56dp 白 pill + 顺序/随机单
             // 按钮，单按钮只切模式不开始播放）已抽到共用的

@@ -11,7 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 
-enum class Dest { Home, Library }
+/** 0.1.20 第 11 项：搜索升为一级页，与主页/资料库并列（原为仅主页/资料库两项的枚举）。 */
+enum class Dest { Home, Library, Search }
 
 /** Press scale follows the current MotionScheme. No hardcoded spring. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

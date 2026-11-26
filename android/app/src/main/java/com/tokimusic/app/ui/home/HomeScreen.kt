@@ -229,6 +229,34 @@ fun HomeScreen(
                     onRescan = { vm.scanLocalSongs() },
                 )
             }
+            // 0.1.20 第 5 项：本地模式生成分区——随机歌单（画像种子选
+            // 曲风类似 50 首）/ 重温回顾（播放事件 top 30 与本地池求
+            // 交）；与每日推荐同排双列卡，点开走虚拟歌单 -5 / -6。
+            // 列表为空（没历史/池太小）时整卡不显示。
+            if (home.localRandom.isNotEmpty() || home.localRevisit.isNotEmpty()) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (home.localRandom.isNotEmpty()) {
+                            LocalGeneratedCard(
+                                title = "随机歌单",
+                                caption = "${home.localRandom.size} 首 · 本地",
+                                modifier = Modifier.weight(1f),
+                            ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_RANDOM_PLAYLIST_ID) }
+                        }
+                        if (home.localRevisit.isNotEmpty()) {
+                            LocalGeneratedCard(
+                                title = "重温回顾",
+                                caption = "常听的 ${home.localRevisit.size} 首",
+                                modifier = Modifier.weight(1f),
+                            ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_REVISIT_PLAYLIST_ID) }
+                        }
+                        if (home.localRandom.isEmpty() || home.localRevisit.isEmpty()) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
             if (hasLocalPermission) {
                 itemsIndexed(home.localSongs) { index, song ->
                     SongRow(song, onLongPress = { vm.openSongActions(it) }) { vm.play(home.localSongs, index, "本地音乐") }
@@ -413,15 +441,37 @@ fun HomeScreen(
                 )
                 if (home.newSongs.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    NewSongsSourceLabel("网易云音乐")
+                    // 0.1.20 第 3 项：源小标题改英文原名（Netease Music / QQ Music）。
+                    NewSongsSourceLabel("Netease Music")
                     Spacer(Modifier.height(8.dp))
                     NewSongsGrid(home.newSongs, vm, onOpenArtist, onOpenQqArtist)
                 }
                 if (home.qqNewSongs.isNotEmpty()) {
                     Spacer(Modifier.height(if (home.newSongs.isNotEmpty()) 20.dp else 8.dp))
-                    NewSongsSourceLabel("QQ音乐")
+                    NewSongsSourceLabel("QQ Music")
                     Spacer(Modifier.height(8.dp))
                     NewSongsGrid(home.qqNewSongs, vm, onOpenArtist, onOpenQqArtist)
+                }
+            }
+        }
+        // 0.1.20 第 6 项：回顾歌单——过去月份的月度回顾（数据来自
+        // PlayEventLog，与算法推荐共用同一批事件；每月不同歌曲 ≥10
+        // 才生成，VM 已过滤）。卡片与每日推荐同版式（200/260）：封面
+        // 是莫奈色板 3 色渐变（按月确定），左上角是月份文案 M'YY
+        // （Inter Regular、放大、30% 阴影），点开走虚拟歌单详情。
+        if (home.retrospectives.isNotEmpty()) {
+            item {
+                Text("回顾", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(home.retrospectives, key = { it.first }) { (monthKey, songs) ->
+                        RetrospectiveCard(monthKey, songs) {
+                            onOpenPlaylist(com.tokimusic.app.player.Retrospective.playlistId(monthKey))
+                        }
+                    }
                 }
             }
         }
@@ -441,8 +491,8 @@ fun HomeScreen(
 }
 
 
-/** 推荐新歌分源小标题（0.1.19 第 1 项）：源命名与 SourceBadge /
- * SourceIcon 的无障碍文案一致（网易云音乐 / QQ音乐）。 */
+/** 推荐新歌分源小标题（0.1.19 第 1 项；0.1.20 第 3 项改英文原名
+ * "Netease Music" / "QQ Music"）。 */
 @Composable
 private fun NewSongsSourceLabel(text: String) {
     Text(
@@ -453,12 +503,12 @@ private fun NewSongsSourceLabel(text: String) {
     )
 }
 
-/** Recommended new songs, one source block (0.1.19 第 1 项：每块
- * LazyHorizontalGrid Fixed(3)——3 行、每列 3 首、右滑出更多列；0.1.18
- * 是 Fixed(6) 混源一网格）。一列是一整行宽的 SongRow（屏宽减左右 24dp
- * 边距）；来源 icon 无背景（SourceIcon，品牌色 tint）放在歌名文字之后
- * （SongRow titleTrailing 槽），边长 = 歌名行高（titleMedium lineHeight，
- * 与歌名等高）；尾部只留圆形播放钮。 */
+/** Recommended new songs, one source block (0.1.19 第 1 项分源；
+ * 0.1.20 第 3 项每块 3 行 → 5 行（Fixed(5)、高 220dp → 372dp）。一列
+ * 是一整行宽的 SongRow（屏宽减左右 24dp 边距）；来源 icon 无背景
+ * （SourceIcon，品牌色 tint）放在歌名文字之后（SongRow titleTrailing
+ * 槽），边长 = 歌名行高（titleMedium lineHeight，与歌名等高）；尾部
+ * 只留圆形播放钮。 */
 @Composable
 private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
     // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（按行所在
@@ -474,8 +524,8 @@ private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Lon
         24
     }
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(3),
-        modifier = Modifier.fillMaxWidth().height(220.dp),
+        rows = GridCells.Fixed(5),
+        modifier = Modifier.fillMaxWidth().height(372.dp),
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -655,6 +705,92 @@ private fun RecentCard(song: Song, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 本地模式生成卡（0.1.20 第 5 项）：与每日推荐卡同版式（200/260），
+ * 无封面图——用主题色渐变兜底，左下标题 + 说明。
+ */
+@Composable
+private fun LocalGeneratedCard(title: String, caption: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().aspectRatio(200f / 260f),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.surfaceContainer,
+                        ),
+                    ),
+                ),
+            )
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 回顾歌单卡（0.1.20 第 6 项）：与每日推荐卡同版式（200/260）：封面
+ * = 莫奈色板 3 色动态渐变（Retrospective.gradientColors 按月确定）；
+ * 左上角月份文案 M'YY——Inter Regular、headlineMedium 放大、30%
+ * 黑色阴影（防被浅色渐变吞掉）；左下小字是当月 top 歌手（与每日
+ * 推荐卡的歌手行同位）。
+ */
+@Composable
+private fun RetrospectiveCard(monthKey: Int, songs: List<Song>, onClick: () -> Unit) {
+    val colors = com.tokimusic.app.player.Retrospective.gradientColors(monthKey)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.height(195.dp).aspectRatio(200f / 260f),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.linearGradient(colors),
+                ),
+            )
+            Text(
+                com.tokimusic.app.player.Retrospective.monthLabel(monthKey),
+                Modifier.align(Alignment.TopStart).padding(16.dp),
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontFamily = com.tokimusic.app.ui.theme.InterFamily,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.3f),
+                        offset = androidx.compose.ui.geometry.Offset(0f, 2f),
+                        blurRadius = 8f,
+                    ),
+                ),
+                color = Color.White,
+            )
+            Text(
+                artistLine(songs),
+                Modifier.align(Alignment.BottomStart).padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
