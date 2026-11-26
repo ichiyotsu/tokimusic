@@ -83,4 +83,27 @@ class YrcParserTest {
     @Test fun lineProgressEmptyLineIsZero() {
         assertEquals(0f, YrcParser.lineProgress(LyricLine(1000, 1000, emptyList()), 1500), 0.001f)
     }
+    // 0.1.20 第 14 项：词 duration 含尾部静默（灌水到整个空隙）时封顶——
+    // 扫动不晚于下一词开始完成，行尾词长尾封顶到行结束，不再匀速慢爬。
+    @Test fun effectiveDurationCapsInflatedWordAtNextWordStart() {
+        val line = LyricLine(1000, 3000, listOf(LyricWord(1000, 3000, "ab"), LyricWord(2500, 500, "cd")))
+        assertEquals(1500L, YrcParser.effectiveWordDurationMs(line, 0))
+        assertEquals(500L, YrcParser.effectiveWordDurationMs(line, 1))
+    }
+    @Test fun lineProgressInflatedDurationDoesNotCrawlAcrossGap() {
+        // 词 1 自带 duration 3000（包住 1500 的空隙），实际 1500 就该唱完：
+        // 1750 时词 1 已半（旧算法只有 0.25 的行进度），2500 下一词开始时词 1 满格。
+        val line = LyricLine(1000, 3000, listOf(LyricWord(1000, 3000, "ab"), LyricWord(2500, 500, "cd")))
+        assertEquals(0.25f, YrcParser.lineProgress(line, 1750), 0.001f)
+        assertEquals(0.5f, YrcParser.lineProgress(line, 2500), 0.001f)
+        assertEquals(0.75f, YrcParser.lineProgress(line, 2750), 0.001f)
+    }
+    @Test fun lineProgressLastWordTailCapsAtLineEnd() {
+        // 行尾词自带 duration 4000、越过行尾（行 1000–3000）伸进行间空隙：
+        // 封顶到行结束 1500，行尾时刻整行满格（旧算法只有 0.6875）。
+        val line = LyricLine(1000, 2000, listOf(LyricWord(1000, 500, "ab"), LyricWord(1500, 4000, "cd")))
+        assertEquals(1500L, YrcParser.effectiveWordDurationMs(line, 1))
+        assertEquals(0.75f, YrcParser.lineProgress(line, 2250), 0.001f)
+        assertEquals(1f, YrcParser.lineProgress(line, 3000), 0.001f)
+    }
 }

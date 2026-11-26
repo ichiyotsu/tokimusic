@@ -50,19 +50,42 @@ object YrcParser {
     private fun Long?.orZero() = this ?: 0L
     /** Index of the active line at [positionMs], or -1 before the first line. */
     fun activeLineIndex(lines: List<LyricLine>, positionMs: Long): Int = lines.indexOfLast { it.startMs <= positionMs }
+    /**
+     * 一个词的实际扫动时长（0.1.20 第 14 项）：YRC 词条的 durationMs 常含尾部
+     * 静默（延伸到下一词、甚至越过行尾伸进行间空隙），按它线性铺满会在空隙里
+     * 慢爬、跟不上演唱。封顶规则：非行尾词取 min(自带 duration, 到下一词开始
+     * 的间隔)，扫动完成时刻不晚于下一词开始；行尾词取 min(自带 duration,
+     * 行结束 - 词开始)。间隔/行尾不可用（≤0）时回落自带 duration；
+     * duration≤0 的词原样返回（仍走二值翻色）。
+     */
+    fun effectiveWordDurationMs(line: LyricLine, index: Int): Long {
+        val word = line.words[index]
+        if (word.durationMs <= 0L) return word.durationMs
+        val cap = if (index + 1 < line.words.size) {
+            line.words[index + 1].startMs - word.startMs
+        } else {
+            line.endMs - word.startMs
+        }
+        return if (cap > 0L) minOf(word.durationMs, cap) else word.durationMs
+    }
     /** 0f..1f progress of one word at [positionMs] — drives per-word primary fill. */
-    fun wordProgress(word: LyricWord, positionMs: Long): Float = when {
-        word.durationMs <= 0L -> if (positionMs >= word.startMs) 1f else 0f
-        positionMs <= word.startMs -> 0f; positionMs >= word.startMs + word.durationMs -> 1f
-        else -> (positionMs - word.startMs).toFloat() / word.durationMs
+    fun wordProgress(word: LyricWord, positionMs: Long): Float = wordProgress(word, positionMs, word.durationMs)
+    /** 同上，但扫动时长用 [effectiveDurationMs]（见 effectiveWordDurationMs 的封顶）。 */
+    fun wordProgress(word: LyricWord, positionMs: Long, effectiveDurationMs: Long): Float = when {
+        effectiveDurationMs <= 0L -> if (positionMs >= word.startMs) 1f else 0f
+        positionMs <= word.startMs -> 0f; positionMs >= word.startMs + effectiveDurationMs -> 1f
+        else -> (positionMs - word.startMs).toFloat() / effectiveDurationMs
     }
     /**
      * 0f..1f progress of a whole line at [positionMs] — drives the continuous
      * sung-mask width (第五轮第 18 项）。Time-weighted by the word timeline:
      * each word contributes wordProgress × its char count, so gaps between
-     * words hold the boundary still and long words sweep slowly; a
-     * durationMs<=0 word flips binary (same as wordProgress). Line start
-     * is 0, line end (all words sung) is 1.
+     * words hold the boundary still; a durationMs<=0 word flips binary
+     * (same as wordProgress). Line start is 0, line end (all words sung) is 1.
+     *
+     * 0.1.20 第 14 项：每词的扫动时长先过 effectiveWordDurationMs 封顶
+     * （不晚于下一词开始、行尾词不越过行结束），词自带 duration 含尾部
+     * 静默时不再把填充拉长到整个空隙里慢爬；唱完即满格、空隙期保持完成态。
      *
      * 第六轮第 30 项（B 方案，已确认）：没有一个词带真实时长时（LRC 行），
      * 用行级线性扫过——(pos - 行首) / 行长，而不是到行首瞬间翻满。
@@ -75,7 +98,9 @@ object YrcParser {
         }
         val totalChars = line.words.sumOf { it.text.length }
         if (totalChars <= 0) return 0f
-        val sungChars = line.words.sumOf { wordProgress(it, positionMs).toDouble() * it.text.length }
+        val sungChars = line.words.indices.sumOf {
+            wordProgress(line.words[it], positionMs, effectiveWordDurationMs(line, it)).toDouble() * line.words[it].text.length
+        }
         return (sungChars / totalChars).toFloat().coerceIn(0f, 1f)
     }
 }
