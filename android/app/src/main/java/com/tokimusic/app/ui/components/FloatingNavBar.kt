@@ -15,10 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,14 +45,16 @@ import com.tokimusic.app.ui.theme.TokiChromeStroke
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
 /**
- * 底部悬浮胶囊 tab（纯图标无文字）。0.1.20 第 11 项：搜索成为第三个
- * 一级页进胶囊（主页 / 资料库 / 搜索），原胶囊旁的独立搜索圆钮删除；
- * 同一列表也驱动 rail，两处不会漂移。
+ * 底部悬浮胶囊 tab（纯图标无文字）。0.1.21 第 1 项：恢复独立搜索
+ * 圆钮——搜索不在 tab 里，走胶囊旁的 TokiSideActionButton（打开
+ * 0.1.20 的独立搜索页 Dest.Search）；0.1.20 第 11 项曾把搜索并进
+ * 胶囊第三 tab 并删掉圆钮，本轮按用户要求恢复 0.1.19 形态。胶囊
+ * 回到主页 / 资料库 2 tab；同一列表也驱动 rail，rail 的搜索同样
+ * 是条目之后的独立项，两处不会漂移。
  */
 val navEntries = listOf(
     NavBarEntry(Dest.Home, Icons.Outlined.Home, Icons.Rounded.Home, R.string.nav_home),
     NavBarEntry(Dest.Library, Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic, R.string.nav_library),
-    NavBarEntry(Dest.Search, Icons.Outlined.Search, Icons.Rounded.Search, R.string.nav_search),
 )
 
 /**

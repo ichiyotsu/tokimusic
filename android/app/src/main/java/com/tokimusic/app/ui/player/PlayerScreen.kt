@@ -186,7 +186,10 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                 // Row 纵向 padding 9dp → 6dp（横向仍 9dp），总高仍 70dp
                 //（6+56+6+2）；下一首钮 offset x -6dp 左移（与播放钮间距
                 // 10dp → 4dp 视觉），封面/歌名区不动。
-                AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                // 0.1.21 第 3 项：封面再往右挪一点——offset x +4dp（仅
+                // 视觉位移，不动 Row 布局与歌名/按钮位置）；封面竖直中
+                // 线随之从 34dp 移到 38dp，进度条两端跟着改（见下）。
+                AsyncImage(song.picUrl, song.name, Modifier.size(50.dp).offset(x = 4.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     // 0.1.17 第 5 项：歌手名颜色 #d9d9d9。
@@ -236,9 +239,12 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
             // 中线（也正好是胶囊左半圆的弧心 x≈35dp 处，条从胶囊全高
             // 位置起步）；end 9dp 与 Row 右侧 padding 一致，100% 停在
             // 内容内侧右缘。条高 2dp 与颜色不动，外层 Box 的 clip 兜底。
+            // 0.1.21 第 2+3 项：封面 offset +4dp 后中线移到 38dp，start
+            // 跟到 38dp；end 按用户要求与 0% 等距缩进，同为 38dp（不再
+            // 用 Row 右侧 padding 的 9dp）。
             LinearProgressIndicator(
                 progress = { if (song.durationMs > 0) (pos.toFloat() / song.durationMs).coerceIn(0f, 1f) else 0f },
-                Modifier.fillMaxWidth().padding(start = 34.dp, end = 9.dp).height(2.dp),
+                Modifier.fillMaxWidth().padding(start = 38.dp, end = 38.dp).height(2.dp),
                 color = coverColors?.onCoverText() ?: ProgressIndicatorDefaults.linearColor,
                 trackColor = coverColors?.onCoverText()?.copy(alpha = 0.3f) ?: ProgressIndicatorDefaults.linearTrackColor,
             )
