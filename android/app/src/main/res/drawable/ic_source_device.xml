@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- MingCute device-line (MIT) — Device source icon for the local-page source option cards, same linear set as ic_source_netease / ic_source_qq. Badge background is LocalBadgeBackground (#a9a8d8), icon tinted with it at use. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M17 4a2 2 0 0 1 1.995 1.85L19 6v2h1a2 2 0 0 1 1.995 1.85L22 10v9a2 2 0 0 1-1.85 1.995L20 21h-4a2 2 0 0 1-1.647-.866L14.268 20H4a2 2 0 0 1-1.995-1.85L2 18V6a2 2 0 0 1 1.85-1.995L4 4zm3 6h-4v9h4zm-3-4H4v12h10v-8a2 2 0 0 1 2-2h1z" />
+</vector>

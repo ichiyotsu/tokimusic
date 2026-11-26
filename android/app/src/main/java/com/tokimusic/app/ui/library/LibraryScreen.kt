@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -68,6 +70,9 @@ import com.tokimusic.app.ui.LOCAL_DOWNLOAD_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID
 import com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.LocalBadgeBackground
+import com.tokimusic.app.ui.components.NeteaseBadgeBackground
+import com.tokimusic.app.ui.components.QqBadgeBackground
 import com.tokimusic.app.ui.components.bounceTranslation
 import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.TokiCardRow
@@ -741,14 +746,9 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         for (bucket in listOf(LocalBucket.NETEASE, LocalBucket.QQ, LocalBucket.DOWNLOAD)) {
             item {
                 Column {
-                    TokiCardRow(
-                        when (bucket) {
-                            LocalBucket.NETEASE -> Icons.Rounded.QueueMusic
-                            LocalBucket.QQ -> Icons.Rounded.MusicNote
-                            LocalBucket.DOWNLOAD -> Icons.Rounded.FolderOpen
-                        },
-                        bucket.displayName(),
-                        "已导入 ${tracksOf(bucket).size} 首 · 点按扫描导入",
+                    LocalBucketImportRow(
+                        bucket,
+                        tracksOf(bucket).size,
                     ) { startBucketRead(bucket) }
                     val treePicked = remember(treeVersion, bucket) { vm.localTree(bucket) }
                     Text(
@@ -845,6 +845,57 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                 }
             }
         }
+    }
+}
+
+/**
+ * 三桶导入选项卡（第 4 条图标澄清收尾）：图标用来源线性图标——
+ * NeteaseMusic / QQMusic 是仓库既有的 MingCute 矢量
+ * （ic_source_netease / ic_source_qq），Device 用同套 MingCute
+ * device-line（ic_source_device），品牌色 tint，与设置页来源行、
+ * SourceIcon 的口径一致。布局与 TokiCardRow 对齐（横向 24dp、
+ * 20dp 圆角 surfaceContainer、最小高 64dp、图标 24dp），只是
+ * TokiCardRow 只收 ImageVector、放不下矢量资源，才单独成行。
+ */
+@Composable
+private fun LocalBucketImportRow(
+    bucket: LocalBucket,
+    importedCount: Int,
+    onClick: () -> Unit,
+) {
+    val iconRes = when (bucket) {
+        LocalBucket.NETEASE -> R.drawable.ic_source_netease
+        LocalBucket.QQ -> R.drawable.ic_source_qq
+        LocalBucket.DOWNLOAD -> R.drawable.ic_source_device
+    }
+    val tint = when (bucket) {
+        LocalBucket.NETEASE -> NeteaseBadgeBackground
+        LocalBucket.QQ -> QqBadgeBackground
+        LocalBucket.DOWNLOAD -> LocalBadgeBackground
+    }
+    Row(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(iconRes), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(bucket.displayName(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "已导入 $importedCount 首 · 点按扫描导入",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
