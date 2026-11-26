@@ -102,7 +102,10 @@ object TokiGlassParams {
         )
     }
 
-    fun fallback(dark: Boolean): Color = Color.Black.copy(alpha = if (dark) 0.45f else 0.30f)
+    // 0.1.21 第 7 项：浅色回退改白色 72%（原来黑 30% 是深色时代的值，
+    // 浅色模式下会把标题片/底栏糊成一块灰黑）。深色黑 45% 不变。
+    fun fallback(dark: Boolean): Color =
+        if (dark) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.72f)
 }
 
 internal fun tokiBlurStyle(dark: Boolean, fade: HazeProgressive? = null, strong: Boolean = false): HazeBlurStyle = HazeBlurStyle {

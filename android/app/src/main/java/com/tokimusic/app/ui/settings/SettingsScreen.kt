@@ -1089,17 +1089,26 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     theme: ThemePreferences,
     onTheme: (ThemePreferences) -> Unit,
 ) {
-    // 外观开关已删（第二轮第 4 项）：应用永久固定深色，主题 / 动态取色 /
-    // 种子色控件随之删除；个性化只剩减少动效与玻璃模糊。
-    // 0.1.17 第 8 项：莫奈配色已删（见下），个性化只剩两张卡。
+    // 外观开关已删（第二轮第 4 项）：主题 / 动态取色 / 种子色控件
+    // 随之删除。0.1.17 第 8 项：莫奈配色已删。
     // 0.1.21 第 4 项：玻璃模糊开关删除，玻璃关的实色预设一并删除——
-    // 外观固定玻璃，个性化只剩「减少动效」一张卡。
+    // 外观固定玻璃。第 7 项：新增浅色模式开关（默认关 = 深色）。
+    // 个性化现为两张卡一组：浅色模式（First）+ 减少动效（Last），
+    // 组内 4dp 细缝与其它二级页同款。
     item {
-        // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-        SettingsSubCard(SegmentPosition.Single) {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
+            SettingsSubCard(SegmentPosition.First) {
+                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("浅色模式", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(checked = theme.lightMode, onCheckedChange = { onTheme(theme.copy(lightMode = it)) })
+                }
+            }
+            SettingsSubCard(SegmentPosition.Last) {
+                Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
+                }
             }
         }
     }

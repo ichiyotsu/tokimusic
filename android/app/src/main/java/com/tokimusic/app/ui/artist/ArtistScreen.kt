@@ -55,7 +55,7 @@ import com.tokimusic.app.ui.components.DetailSongRow
 import com.tokimusic.app.ui.components.DetailTitle
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.tokiPageColor
 import com.tokimusic.app.ui.theme.rememberCoverColors
 
 private enum class ArtistSection { Songs, Albums }
@@ -175,14 +175,14 @@ fun ArtistScreen(
     // 折叠封面 + 标题块 + 底部淡出 + 悬浮标题联动）；歌曲行改
     // DetailSongRow——小圆角 4dp → 8dp、行上下内边距 2dp → 4dp（间距
     // 翻倍）；行底色 onCoverButtonBg()、大圆角 20dp、页边 16dp 不变。
-    // 渐变末端与底部淡出仍是纯黑（歌单页用封面底色，按页传参不统一）。
+    // 渐变末端与底部淡出走页面底色 tokiPageColor()（0.1.21 第 7 项：深色黑/浅色白）。
     DetailScaffold(
         coverUrl = a?.picUrl ?: "",
         coverName = a?.name ?: "",
         coverColors = coverColors,
-        gradientBottom = TokiBlack,
+        gradientBottom = tokiPageColor(),
         coverFadeTo = coverColors.top,
-        bottomFadeTo = TokiBlack,
+        bottomFadeTo = tokiPageColor(),
         bottomFadeHeight = 32.dp,
         bottomPadding = bottomPadding,
         onHeaderVisible = onHeaderVisible,
@@ -193,8 +193,8 @@ fun ArtistScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("歌手加载失败", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
+                Text("歌手加载失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
             }
         },

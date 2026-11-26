@@ -103,4 +103,51 @@ object YrcParser {
         }
         return (sungChars / totalChars).toFloat().coerceIn(0f, 1f)
     }
+    /**
+     * 每个字的扫动时间窗（0.1.21 第 5 项）：返回与行文本逐字对应的
+     * [startMs, endMs) 列表（顺序 = words 顺序拼接）。
+     *
+     * 现状（本项之前）：lineProgress 把每词的进度按字数加权成一个全行
+     * 分数，渲染层再按「字数比例 × 段像素宽」线性换算成扫动边界——
+     * 段内像素是匀速的，宽字窄字被同一个字数比例摊平，多字词内部
+     * 没有逐字时间。本项改法：进度完全由每个字自己的时间窗驱动——
+     * 每词先过 effectiveWordDurationMs 封顶（第 14 项规则保留），再把
+     * 封顶后的窗口按字数均分给词内每个字（YRC 的最小时间单位是词，
+     * 没有更细的逐字时间源；均分后每字结束仍不晚于下一字开始）；
+     * duration≤0 的词窗口塌缩为 [start, start]，到点二值翻满。
+     *
+     * LRC 行（所有词 duration≤0）返回空表——渲染层继续走 lineProgress
+     * 的行级回退，行为不变。
+     */
+    fun charWindows(line: LyricLine): List<Pair<Long, Long>> {
+        if (line.words.isEmpty() || line.words.all { it.durationMs <= 0L }) return emptyList()
+        val out = ArrayList<Pair<Long, Long>>(line.words.sumOf { it.text.length })
+        line.words.forEachIndexed { index, word ->
+            val n = word.text.length
+            if (n <= 0) return@forEachIndexed
+            val eff = effectiveWordDurationMs(line, index)
+            if (eff <= 0L) {
+                repeat(n) { out += word.startMs to word.startMs }
+            } else {
+                for (i in 0 until n) {
+                    out += (word.startMs + eff * i / n) to (word.startMs + eff * (i + 1) / n)
+                }
+            }
+        }
+        return out
+    }
+    /**
+     * 每个字在 [positionMs] 的填充进度（0f..1f），与 [charWindows] 同序同长。
+     * LRC 行返回空表（见 charWindows）。唱得快的字窗口短、扫得快；拖长的
+     * 字按自己的时长扫——不再有全行统一速度的假设。
+     */
+    fun charProgresses(line: LyricLine, positionMs: Long): List<Float> =
+        charWindows(line).map { (start, end) ->
+            when {
+                end <= start -> if (positionMs >= start) 1f else 0f
+                positionMs <= start -> 0f
+                positionMs >= end -> 1f
+                else -> (positionMs - start).toFloat() / (end - start)
+            }
+        }
 }

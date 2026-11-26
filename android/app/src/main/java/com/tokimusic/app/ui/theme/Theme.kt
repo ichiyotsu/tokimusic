@@ -16,8 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 /**
  * Material 3 Expressive theme.
  *
- * Colors: TokiMusic 固定深色取色方案（见 [tokiMusicColorScheme]）——
- * 应用唯一外观，锁定深色。
+ * Colors: TokiMusic 取色方案（见 [tokiMusicColorScheme]）——深色为
+ * 默认；0.1.21 第 7 项起可在个性化切换浅色（[tokiMusicLightColorScheme]）。
  * Motion: expressive by default, standard when reduce-motion is on.
  * Shapes and the type scale sizes are Material defaults.
  * Latin is Inter, Chinese is Source Han Sans. All text is Bold
@@ -29,6 +29,8 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 
 data class ThemePreferences(
     val reduceMotion: Boolean = false,
+    // 0.1.21 第 7 项：浅色模式（默认关 = 深色，外观与之前一字不变）。
+    val lightMode: Boolean = false,
     // 0.1.21 第 4 项：backdropBlur 字段已删——玻璃模糊开关与实色
     // 预设一并删除，外观固定玻璃，TokiMusicApp 统一传固定值 true。
 )
@@ -54,13 +56,15 @@ private fun Typography.withTokiType(family: FontFamily): Typography {
 @Composable
 fun TokiMusicTheme(
     reduceMotion: Boolean = false,
+    lightMode: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // 固定深色（LocalDarkTheme 供 Glass.kt 的玻璃 helper 用）。
-    val dark = true
+    // 深色默认；lightMode 时整套换浅色方案（LocalDarkTheme 供 Glass.kt
+    // 的玻璃 helper 与 tokiPageColor / tokiPillColor 等成对取色用）。
+    val dark = !lightMode
     // Touch the capability object before any Haze node is created.
     TokiBlurCapability.canSampleInWindow
-    val colorScheme = tokiMusicColorScheme()
+    val colorScheme = if (dark) tokiMusicColorScheme() else tokiMusicLightColorScheme()
     // MaterialExpressiveTheme does not provide LocalContentColor: bare Text()
     // would default to black and vanish on dark backgrounds. Provide the
     // theme's onBackground here, as TokiStudio 0.1.10-aligned apps do.

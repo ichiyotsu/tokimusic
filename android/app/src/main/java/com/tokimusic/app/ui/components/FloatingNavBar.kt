@@ -38,8 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.tokimusic.app.R
 import com.tokimusic.app.ui.Dest
 import com.tokimusic.app.ui.pressScale
-import com.tokimusic.app.ui.theme.TokiNavIcon
-import com.tokimusic.app.ui.theme.TokiPill
+import com.tokimusic.app.ui.theme.tokiPillColor
 
 data class NavBarEntry(val dest: Dest, val icon: ImageVector, val selectedIcon: ImageVector, val label: Int)
 
@@ -167,10 +166,12 @@ private fun NavItem(entry: NavBarEntry, selected: Boolean, onSelect: (Dest) -> U
     val haptic = LocalHapticFeedback.current
     val scheme = MaterialTheme.colorScheme
     val label = stringResource(entry.label)
-    val pillColor = TokiPill
-    // 0.1.19 第 1 项：选中与未选中 icon 同为白色 TokiNavIcon
-    //（0.1.18 是浅紫 #D0A9E8）；选中态靠 pill + 实心 icon 形状区分。
-    val iconTint = TokiNavIcon
+    val pillColor = tokiPillColor()
+    // 0.1.19 第 1 项：选中与未选中 icon 同色（0.1.18 是浅紫 #D0A9E8）；
+    // 选中态靠 pill + 实心 icon 形状区分。0.1.21 第 7 项：icon 色走
+    // colorScheme.onSurface——深色方案 onSurface = 白（与原 TokiNavIcon
+    // 一字不变），浅色方案 = 墨色，白底栏上不再白 icon 白底。
+    val iconTint = scheme.onSurface
     TokiLongPressLabel(label) {
         Box(
             modifier = Modifier

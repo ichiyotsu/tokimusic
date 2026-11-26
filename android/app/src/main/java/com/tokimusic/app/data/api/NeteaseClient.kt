@@ -337,7 +337,7 @@ class NeteaseClient(
         val ar = o.optJSONArray("ar") ?: o.optJSONArray("artists") ?: JSONArray()
         val artists = (0 until ar.length()).map { Artist(ar.getJSONObject(it).optLong("id"), ar.getJSONObject(it).optString("name")) }
         val al = o.optJSONObject("al") ?: o.optJSONObject("album")
-        return Song(o.optLong("id"), o.optString("name"), artists, al?.optString("name") ?: "", al?.optString("picUrl") ?: "", o.optLong("dt", o.optLong("duration")), o.optInt("fee"))
+        return Song(o.optLong("id"), o.optString("name"), artists, al?.optString("name") ?: "", al?.optString("picUrl") ?: "", o.optLong("dt", o.optLong("duration")), o.optInt("fee"), publishTime = o.optLong("publishTime", 0))
     }
     private fun parsePlaylist(o: JSONObject): Playlist {
         val creator = o.optJSONObject("creator")

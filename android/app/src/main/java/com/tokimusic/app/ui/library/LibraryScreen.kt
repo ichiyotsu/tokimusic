@@ -67,7 +67,7 @@ import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.tokiPageColor
 
 // Round 3 item 2: lifted to TokiMusicApp (with playlistId) so second-level
 // pages get the floating OverlayTitleHeader; was private + internal state.
@@ -368,12 +368,12 @@ fun LibraryScreen(
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(tokiPageColor(), Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, tokiPageColor())),
             ),
         )
     }

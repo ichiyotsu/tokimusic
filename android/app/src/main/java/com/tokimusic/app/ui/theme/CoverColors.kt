@@ -91,8 +91,15 @@ fun Color.relativeLuminance(): Double {
  * 与底景一致，在固定深色的 tab 页上则跟着歌曲封面色调走、与身后
  * 列表内容只是近似（详见 0.1.19 NOTES.md 第 5 项）。
  */
-fun miniPlayerGlassVeil(top: Color, bottom: Color): Color {
-    val l = (top.relativeLuminance() + bottom.relativeLuminance()) / 2.0
+fun miniPlayerGlassVeil(top: Color, bottom: Color, lightMode: Boolean = false): Color {
+    var l = (top.relativeLuminance() + bottom.relativeLuminance()) / 2.0
+    // 0.1.21 第 7 项：浅色模式下 MiniPlayer 身后是白色页面——封面再暗，
+    // 底景也是亮的。把有效亮度抬到 ≥0.85，veil 落到深灰 #2C2C2E /
+    // alpha≈0.35 一端：白色玻璃上压一层灰，栏体与白页分得开，栏上
+    // 的深色文字（浅色 onSurface）也压得住。若不抬，深封面会算出
+    // 白色 α0.25 的 veil，白上加白只剩描边、栏体几乎消失。深色模式
+    // （lightMode=false）公式与之前一字不变。
+    if (lightMode) l = maxOf(l, 0.85)
     val f = ((l - 0.04) / (0.65 - 0.04)).coerceIn(0.0, 1.0).toFloat()
     val base = lerp(Color.White, Color(0xFF2C2C2E), f)
     return base.copy(alpha = 0.25f + (0.35f - 0.25f) * f)

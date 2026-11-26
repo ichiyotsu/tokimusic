@@ -51,7 +51,7 @@ import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.formatTotalDurationMs
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.tokiPageColor
 import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.rememberCoverColors
@@ -107,7 +107,7 @@ fun AlbumDetailScreen(
     LaunchedEffect(showFloatingTitle) { onHeaderVisible(showFloatingTitle) }
     val totalMs = tracks.sumOf { it.durationMs }
     val count = if (tracks.isNotEmpty()) tracks.size else album.trackCount
-    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, TokiBlack)))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, tokiPageColor())))) {
         val coverHeight = maxHeight * 0.25f
         Column(Modifier.fillMaxSize()) {
             // 封面占视口 1/4、完整显示，下缘淡出到封面渐变的上端色。
@@ -231,7 +231,7 @@ fun AlbumDetailScreen(
                     Box(
                         Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, TokiBlack),
+                                listOf(Color.Transparent, tokiPageColor()),
                             ),
                         ),
                     )

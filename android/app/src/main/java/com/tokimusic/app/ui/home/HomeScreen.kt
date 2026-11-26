@@ -79,7 +79,7 @@ import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.SourceIcon
 import com.tokimusic.app.ui.components.resolveArtistTap
-import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.tokiPageColor
 import com.tokimusic.app.ui.theme.tokiGlassFade
 
 /**
@@ -473,12 +473,12 @@ fun HomeScreen(
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
-                Brush.verticalGradient(listOf(TokiBlack, Color.Transparent)),
+                Brush.verticalGradient(listOf(tokiPageColor(), Color.Transparent)),
             ),
         )
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.BottomCenter).background(
-                Brush.verticalGradient(listOf(Color.Transparent, TokiBlack)),
+                Brush.verticalGradient(listOf(Color.Transparent, tokiPageColor())),
             ),
         )
     }

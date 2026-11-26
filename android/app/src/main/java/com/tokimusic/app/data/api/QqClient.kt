@@ -82,6 +82,22 @@ sealed interface QqPhoneAuthResult {
 
 /** Login CGI 业务码 → 中文说明（L-1124 _validate_result；0 与未列出的码返回 null，
  * 调用方用 null 表示“成功”或“用通用文案 + 码号兜底”）。 */
+/**
+ * QQ 歌曲的 time_public（"yyyy-MM-dd"，源端真实发行日期）→ epoch ms
+ * （0.1.21 第 8 项，纯函数，可单测）。空/格式不对一律 0——UI 拿 0
+ * 就只显示来源、不显示日期，绝不编造。按 UTC 零点解析，
+ * formatPublishDate 按 Asia/Shanghai 格式化（+8h 仍是同一天），
+ * 显示日期与源端写的日期一致。
+ */
+internal fun qqTimePublicToMs(s: String?): Long {
+    val t = s?.trim().orEmpty()
+    if (t.isEmpty()) return 0L
+    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+    fmt.isLenient = false
+    fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return runCatching { fmt.parse(t)?.time ?: 0L }.getOrDefault(0L)
+}
+
 internal fun qqLoginCodeMessage(code: Int): String? = when (code) {
     0 -> null
     1000, 104401, 104400 -> "登录鉴权已过期"
@@ -611,6 +627,7 @@ class QqClient(
             durationMs = obj.optInt("interval", 0) * 1000L,
             source = MusicSource.QQ,
             sourceId = mid,
+            publishTime = qqTimePublicToMs(obj.optString("time_public", "")),
         )
     }
 

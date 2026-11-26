@@ -1,10 +1,13 @@
 package com.tokimusic.app.ui.player
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
@@ -216,10 +219,21 @@ import kotlin.math.roundToInt
     LaunchedEffect(isDragged) { if (isDragged) userBrowsing = true }
     LaunchedEffect(active, viewportH, userBrowsing, springRunning) {
         if (active >= 0 && viewportH > 0 && !userBrowsing && !springRunning) {
-            // 注意：Compose 1.12 的 animateScrollToItem 没有 animationSpec
-            // 参数（计划里的 tween(450) 传不进去），用默认 spring；“跳”的
-            // 感觉主要来自浏览时被强行拉回，由下面的暂停跟随解决。
-            listState.animateScrollToItem(active, scrollOffset = -anchorPx)
+            // 0.1.21 第 6 项：跟随滚动改平滑——当前行已在视口内时用
+            // animateScrollBy 按像素差走 450ms 缓动（MD3 emphasized
+            // 曲线），不再 animateScrollToItem 先跳后滚的硬切感；目标
+            // 位置与原规则一致（当前行顶端落在 20% 锚点）。当前行不在
+            // 视口内（切歌/大幅跳行）仍走 animateScrollToItem 直接定位。
+            // 只在跟随态执行：userBrowsing 时本 effect 整体不跑（上）。
+            val visible = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
+            if (visible != null) {
+                val delta = (visible.offset - anchorPx).toFloat()
+                if (delta != 0f) {
+                    listState.animateScrollBy(delta, tween(450, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)))
+                }
+            } else {
+                listState.animateScrollToItem(active, scrollOffset = -anchorPx)
+            }
         }
     }
     Box(modifier.fillMaxSize()) {
@@ -361,6 +375,35 @@ fun visualLineProgresses(sungChars: Float, segments: List<VisualLineSegment>): L
         ((sungChars - seg.startChar) / len).coerceIn(0f, 1f)
     }
 
+/**
+ * 一段视觉行的进度（0.1.21 第 5 项，字数口径，纯函数）：段内每个字的
+ * 进度（YrcParser.charProgresses）的平均——扫动边界按字走，不再把整行
+ * 摊成一个字数比例。无像素量测时的回退口径。
+ */
+fun segmentCharProgress(charProgresses: List<Float>, segment: VisualLineSegment): Float {
+    val len = (segment.endChar - segment.startChar).coerceAtLeast(1)
+    var sum = 0f
+    for (i in segment.startChar until segment.endChar) sum += charProgresses.getOrElse(i) { 0f }
+    return (sum / len).coerceIn(0f, 1f)
+}
+
+/**
+ * 一段视觉行的进度（0.1.21 第 5 项，像素口径，纯函数）：扫动边界 =
+ * Σ（每字进度 × 该字像素宽）/ 段总宽。边界落在「正在唱的字」内部的
+ * 正确比例处：快字宽窄都按自己的窗口走完，拖长音的字边界在字内
+ * 缓慢推进——与字数口径的区别在宽窄悬殊的字混排时最明显。
+ */
+fun segmentPixelProgress(charProgresses: List<Float>, charWidthsPx: List<Float>, segment: VisualLineSegment): Float {
+    var edge = 0f
+    var total = 0f
+    for (i in segment.startChar until segment.endChar) {
+        val w = charWidthsPx.getOrElse(i) { 0f }
+        edge += charProgresses.getOrElse(i) { 0f } * w
+        total += w
+    }
+    return if (total <= 0f) segmentCharProgress(charProgresses, segment) else (edge / total).coerceIn(0f, 1f)
+}
+
 /** 单行歌词：只有当前行订阅位置状态（50ms tick 只重组这一行）。 */
 @Composable
 private fun LyricLineRow(
@@ -448,9 +491,6 @@ private fun LyricLineRow(
                 val activeStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp)
                 BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     val widthPx = with(density) { maxWidth.toPx() }
-                    // 第六轮第 16 项：弹簧期间进度保持 0，落定后才开始扫过。
-                    // 0.1.12：话筒关时进度恒 1f——整行实色，不逐字扫过。
-                    val progress = if (freezeProgress) 0f else if (!karaokeHighlight) 1f else YrcParser.lineProgress(line, pos)
                     // 第六轮第 31 项：折行按视觉行分段扫过——用 TextMeasurer
                     // 按 28sp 样式量出每段的字符范围，每段独立算进度、独立
                     // 画双层；不折行时只有一段，与原来完全一致。翻译/罗马音
@@ -462,9 +502,11 @@ private fun LyricLineRow(
                     // 扫完了（视觉上快约 2 倍）。现在每段用实测的文本宽
                     // （TextLayoutResult.getLineRight - getLineLeft）做渐变宽，扫过边界
                     // 落在文本末端；同一量测顺带给出各段字符范围。
-                    val segmentsWithWidths: List<Pair<VisualLineSegment, Float>> = remember(line.text, widthPx, fontFamily) {
+                    // 0.1.21 第 5 项：量测结果一并留住（measured.second），
+                    // 逐字像素宽从它取（见下面 progresses）。
+                    val measured: Pair<List<Pair<VisualLineSegment, Float>>, TextLayoutResult?> = remember(line.text, widthPx, fontFamily) {
                         if (widthPx <= 0f || line.text.isEmpty()) {
-                            listOf(VisualLineSegment(0, line.text.length) to widthPx)
+                            listOf(VisualLineSegment(0, line.text.length) to widthPx) to null
                         } else {
                             val result = measurer.measure(
                                 text = line.text,
@@ -476,13 +518,40 @@ private fun LyricLineRow(
                             val mapped: List<Pair<VisualLineSegment, Float>> = (0 until result.lineCount).map { k ->
                                 VisualLineSegment(result.getLineStart(k), result.getLineEnd(k)) to (result.getLineRight(k) - result.getLineLeft(k))
                             }.filter { it.first.endChar > it.first.startChar }
-                            if (mapped.isEmpty()) listOf(VisualLineSegment(0, line.text.length) to widthPx) else mapped
+                            (if (mapped.isEmpty()) listOf(VisualLineSegment(0, line.text.length) to widthPx) else mapped) to result
                         }
                     }
+                    val segmentsWithWidths = measured.first
                     val segments = segmentsWithWidths.map { it.first }
                     val segmentWidths = segmentsWithWidths.map { it.second }
-                    val sungChars = progress * line.text.length
-                    val progresses = visualLineProgresses(sungChars, segments)
+                    // 0.1.21 第 5 项：逐字进度——每个字的填充由它自己的
+                    // 时间窗驱动（YrcParser.charProgresses：每词先过封顶、
+                    // 多字词按字均分窗口），段进度 = Σ（字进度 × 字像素宽）
+                    // / 段宽（segmentPixelProgress），扫动边界落在正在唱的
+                    // 字内部的正确比例处；不再走 lineProgress 的「字数比例
+                    // × 段宽」线性换算（宽窄字被同一比例摊平）。无量测时
+                    // 退字数口径（segmentCharProgress）；LRC 行 charProgresses
+                    // 为空，继续 lineProgress 行级回退，行为不变。
+                    // 第六轮第 16 项：弹簧期间进度保持 0；0.1.12：话筒关时
+                    // 整行实色——这两态仍走 visualLineProgresses 的 0/满格。
+                    val progresses: List<Float> = when {
+                        freezeProgress -> visualLineProgresses(0f, segments)
+                        !karaokeHighlight -> visualLineProgresses(line.text.length.toFloat(), segments)
+                        else -> {
+                            val charProgs = YrcParser.charProgresses(line, pos)
+                            val layout = measured.second
+                            when {
+                                charProgs.isEmpty() -> visualLineProgresses(YrcParser.lineProgress(line, pos) * line.text.length, segments)
+                                layout == null -> segments.map { seg -> segmentCharProgress(charProgs, seg) }
+                                else -> {
+                                    val charWidthsPx = (0 until line.text.length).map { ci ->
+                                        (layout.getHorizontalPosition(ci + 1, true) - layout.getHorizontalPosition(ci, true)).coerceAtLeast(0f)
+                                    }
+                                    segments.map { seg -> segmentPixelProgress(charProgs, charWidthsPx, seg) }
+                                }
+                            }
+                        }
+                    }
                     // 第 27 项的文本实宽取最长视觉行的宽。
                     val onSegmentLayout: (TextLayoutResult) -> Unit = { textWidthPx = maxOf(textWidthPx, it.size.width) }
                     androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {

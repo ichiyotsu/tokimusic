@@ -124,6 +124,7 @@ import com.tokimusic.app.player.rememberCastActive
 import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.SourceBadge
 import com.tokimusic.app.ui.components.fadingEdges
 import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
@@ -134,7 +135,6 @@ import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.TokiScrollChipBackdrop
-import com.tokimusic.app.ui.theme.TokiBlack
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -993,7 +993,25 @@ private fun MoreSheet(
                     )
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            // 0.1.21 第 8 项：来源 + 发行时间行（在更多栏上方）。来源标
+            // 与全应用同款 SourceBadge；发行时间取 Song.publishTime
+            //（网易云 publishTime / QQ time_public，都是源端真实字段），
+            // 为 0（源端没给）时只显示来源标、不显示日期，绝不编造。
+            // 文本走主题色（onSurfaceVariant），浅色模式同样成立。
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SourceBadge(song.source)
+                if (song.publishTime > 0) {
+                    Text(
+                        formatPublishDate(song.publishTime),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             // 第六轮第 28 项：歌词 / 队列已恢复到底部按钮行，这里去重，只留
             // 投放 / 喜欢 / 下一首播放；投放图标沿用投放中实心 / 未投放空心
             // 的状态含义。
@@ -1003,17 +1021,22 @@ private fun MoreSheet(
             // 0.1.15 第 5 项：歌词设置放进更多页（与设置 → 歌词同一开关，
             // 改完立即生效）；第 6 项：逐字时序偏移滑杆。
             // 0.1.17 第 1 项：“歌词”小标题去掉（开关本身保留）。
-            Spacer(Modifier.height(12.dp))
+            // 0.1.21 第 8 项：原标题行后与设定组前的两处 Spacer(12) 删除
+            // ——行距统一由行高 + Column 的 spacedBy(4) 决定（见 MoreAction
+            // / MoreSwitch 的等高改法），不再有组间大间隔。
             // 0.1.17 第 6 项：四个设定行各加一个 icon，与上面 MoreAction
             // 的行对齐（Icon + 16dp 间隔 + label）。
             MoreSwitch(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
             MoreSwitch(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
             MoreSwitch(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
-            // 0.1.17 第 6 项：时序行也加 Timer icon，与三行对齐；纵向
-            // padding 8dp → 4dp——switch→switch 的文字间隔是 4 + 4 + 4
-            // = 12dp，switch→时序原来是 4 + 4 + 8 = 16dp，改后两段一致。
+            // 0.1.17 第 6 项：时序行也加 Timer icon，与三行对齐。
+            // 0.1.21 第 8 项：本行与 MoreAction / MoreSwitch 统一为
+            // 52dp 定高（改前三组行高各不同：动作行 48、开关行约 40、
+            // 时序行约 32，pitch 52/44/36 三种密度，组间还有额外
+            // 12dp Spacer——即用户看到的间距不等）。改后全部行高 52、
+            // pitch 一律 56（52 + spacedBy 4）。
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
@@ -1047,10 +1070,26 @@ private fun MoreSheet(
 fun formatTimingOffset(offsetMs: Int): String =
     if (offsetMs == 0) "0ms" else "${if (offsetMs > 0) "+" else ""}$offsetMs" + "ms"
 
+/**
+ * 发行时间的显示值（0.1.21 第 8 项，纯函数，JVM 单测覆盖）：
+ * "yyyy年M月d日"。按 Asia/Shanghai 格式化——网易云 publishTime 是
+ * 北京时间零点的 epoch、QQ time_public 按 UTC 零点解析（见
+ * qqTimePublicToMs），两种来源在本时区下都落回源端写的那一天；
+ * ≤0（源端没给）返回空串，UI 不显示日期。
+ */
+fun formatPublishDate(epochMs: Long): String {
+    if (epochMs <= 0) return ""
+    val fmt = java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.US)
+    fmt.timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
+    return fmt.format(java.util.Date(epochMs))
+}
+
 @Composable
 private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCheckedChange(!checked) }.padding(horizontal = 12.dp, vertical = 4.dp),
+        // 0.1.21 第 8 项：与 MoreAction 统一 52dp 定高（原上下 padding
+        // 4dp、行高约 40dp，与动作行的 48dp 不等距）。
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCheckedChange(!checked) }.height(52.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -1063,7 +1102,9 @@ private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onChe
 @Composable
 private fun MoreAction(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
+        // 0.1.21 第 8 项：52dp 定高，与 MoreSwitch / 时序行统一行高、
+        // 统一 pitch（原上下 padding 12dp、行高 48dp）。
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).height(52.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {

@@ -106,4 +106,47 @@ class YrcParserTest {
         assertEquals(0.75f, YrcParser.lineProgress(line, 2250), 0.001f)
         assertEquals(1f, YrcParser.lineProgress(line, 3000), 0.001f)
     }
+    // 0.1.21 第 5 项：逐字窗口——每个字的填充由自己的时间窗驱动。
+    @Test fun charWindowsFastSlowMix() {
+        // 快词 2 字挤在 200ms、慢字 1 字拖 2000ms：窗口逐字独立。
+        val line = LyricLine(1000, 2200, listOf(LyricWord(1000, 200, "快快"), LyricWord(1200, 2000, "慢")))
+        assertEquals(
+            listOf(1000L to 1100L, 1100L to 1200L, 1200L to 3200L),
+            YrcParser.charWindows(line),
+        )
+        // 1150：快词第一字满、第二字半、慢字未开始——快字扫得快。
+        assertEquals(listOf(1f, 0.5f, 0f), YrcParser.charProgresses(line, 1150))
+        // 2200：慢字按自己的 2000ms 窗口走到一半（不是全行匀速）。
+        assertEquals(listOf(1f, 1f, 0.5f), YrcParser.charProgresses(line, 2200))
+    }
+    @Test fun charWindowsHeldNoteCappedByNextWord() {
+        // 拖长音自带 3000ms 但下一字 2000 就开始：封顶规则保留，
+        // 窗口 [1000,2000)，1500 时半（不按 3000 慢爬）。
+        val line = LyricLine(1000, 3000, listOf(LyricWord(1000, 3000, "长"), LyricWord(2000, 500, "下")))
+        assertEquals(listOf(1000L to 2000L, 2000L to 2500L), YrcParser.charWindows(line))
+        assertEquals(0.5f, YrcParser.charProgresses(line, 1500)[0], 0.001f)
+        assertEquals(1f, YrcParser.charProgresses(line, 2000)[0], 0.001f)
+    }
+    @Test fun charWindowsMultiCharWordSplitsEvenly() {
+        // 多字词没有逐字时间：900ms 窗口按字均分三份。
+        val line = LyricLine(1000, 900, listOf(LyricWord(1000, 900, "三字词")))
+        assertEquals(
+            listOf(1000L to 1300L, 1300L to 1600L, 1600L to 1900L),
+            YrcParser.charWindows(line),
+        )
+        assertEquals(listOf(1f, 0.5f, 0f), YrcParser.charProgresses(line, 1450))
+    }
+    @Test fun charWindowsZeroDurationWordFlipsBinary() {
+        // 混排里 duration=0 的词窗口塌缩为一点，到点翻满。
+        val line = LyricLine(1000, 1500, listOf(LyricWord(1000, 0, "顿"), LyricWord(1500, 1000, "唱")))
+        assertEquals(listOf(1000L to 1000L, 1500L to 2500L), YrcParser.charWindows(line))
+        assertEquals(0f, YrcParser.charProgresses(line, 999)[0], 0.001f)
+        assertEquals(1f, YrcParser.charProgresses(line, 1000)[0], 0.001f)
+    }
+    @Test fun charWindowsLrcLineIsEmpty() {
+        // LRC 行（词全无时长）返回空表，渲染层走行级回退。
+        val lines = YrcParser.parse(null, "[00:01.00]hello\n[00:03.50]world")
+        assertEquals(emptyList<Pair<Long, Long>>(), YrcParser.charWindows(lines[0]))
+        assertEquals(emptyList<Float>(), YrcParser.charProgresses(lines[0], 2000))
+    }
 }

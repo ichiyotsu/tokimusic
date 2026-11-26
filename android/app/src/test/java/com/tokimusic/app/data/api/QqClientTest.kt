@@ -1206,4 +1206,28 @@ class QqClientTest {
         assertTrue(mergeRecommendPages(listOf(emptyList(), emptyList()), target = 30).isEmpty())
         assertTrue(mergeRecommendPages(emptyList(), target = 30).isEmpty())
     }
+
+    // 0.1.21 第 8 项：QQ time_public（源端真实发行日期）解析——
+    // 有就转 epoch ms，没有/格式错一律 0（UI 只显示来源、不编造日期）。
+    @Test
+    fun qqTimePublicParsesRealDates() {
+        // 2021-03-05T00:00:00Z。
+        assertEquals(1614902400000L, qqTimePublicToMs("2021-03-05"))
+        assertEquals(0L, qqTimePublicToMs(""))
+        assertEquals(0L, qqTimePublicToMs(null))
+        assertEquals(0L, qqTimePublicToMs("not-a-date"))
+        assertEquals(0L, qqTimePublicToMs("2021-13-40"))
+    }
+
+    @Test
+    fun qqSongParsesTimePublicIntoPublishTime() {
+        val song = client.parseQqSong(
+            JSONObject("""{"songmid":"abc123","songname":"歌","singer":[{"id":1,"name":"手"}],"album":{"mid":"m1","name":"辑"},"interval":200,"time_public":"2020-11-26"}"""),
+        )
+        assertEquals(1606348800000L, song?.publishTime)
+        val noDate = client.parseQqSong(
+            JSONObject("""{"songmid":"abc124","songname":"歌","singer":[],"album":{"mid":"m1","name":"辑"},"interval":200}"""),
+        )
+        assertEquals(0L, noDate?.publishTime)
+    }
 }

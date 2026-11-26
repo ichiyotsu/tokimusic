@@ -186,12 +186,14 @@ fun DetailPlayControls(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
-            Modifier.height(56.dp).clip(RoundedCornerShape(percent = 50)).background(Color.White)
+            // 0.1.21 第 7 项：播放钮走 inverseSurface 对（深色 = 白底黑标，
+            // 与原写死值一字不变；浅色 = 墨底白标，白页上不再白钮消失）。
+            Modifier.height(56.dp).clip(RoundedCornerShape(percent = 50)).background(MaterialTheme.colorScheme.inverseSurface)
                 .clickable { onPlayAll() }
                 .padding(horizontal = 20.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.PlayArrow, "播放全部", tint = Color.Black, modifier = Modifier.size(28.dp))
+            Icon(Icons.Rounded.PlayArrow, "播放全部", tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(28.dp))
         }
         Box(
             Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(modeButtonBg)

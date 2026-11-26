@@ -106,7 +106,7 @@ import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
 import com.tokimusic.app.ui.theme.miniPlayerGlassVeil
 import com.tokimusic.app.ui.theme.tokiGlassFade
-import com.tokimusic.app.ui.theme.TokiBlack
+import com.tokimusic.app.ui.theme.tokiPageColor
 import com.tokimusic.app.ui.theme.tokiPageBackground
 import com.tokimusic.app.ui.theme.tokiSpace
 import com.tokimusic.app.BuildConfig
@@ -180,12 +180,14 @@ fun TokiMusicApp(
         mutableStateOf(
             ThemePreferences(
                 reduceMotion = vm.store.reduceMotion,
+                lightMode = vm.store.lightMode,
             ),
         )
     }
     val updateTheme: (ThemePreferences) -> Unit = { next ->
         theme = next
         vm.store.reduceMotion = next.reduceMotion
+        vm.store.lightMode = next.lightMode
     }
     // 0.1.21 第 4 项：玻璃模糊开关与玻璃关的实色预设（原 TokiUI 莫奈
     // 悬浮底栏那套）一并删除——外观只剩玻璃一条路径，组件不再收
@@ -193,6 +195,7 @@ fun TokiMusicApp(
 
     TokiMusicTheme(
         reduceMotion = theme.reduceMotion,
+        lightMode = theme.lightMode,
     ) {
         var dest by remember { mutableStateOf(Dest.Home) }
         var playlistId by remember { mutableStateOf<Long?>(null) }
@@ -312,17 +315,20 @@ fun TokiMusicApp(
         // 0.1.19 第 5 项：模糊之上叠一层动态底（miniPlayerGlassVeil，
         // 按封面亮度调，纯黑背景提亮、纯白背景加深），免得纯模糊在
         // 纯黑背景上看不见。0.1.21 第 4 项：玻璃关的实色回退已删。
+        // 0.1.21 第 7 项：浅色模式下 veil 按浅色场景算（见
+        // miniPlayerGlassVeil 的 lightMode 参数）。
         val miniPlayerGlass = Modifier.tokiContentGlassMiniPlayer(
             hazeState,
-            miniPlayerGlassVeil(playerCoverColors.top, playerCoverColors.bottom),
+            miniPlayerGlassVeil(playerCoverColors.top, playerCoverColors.bottom, lightMode = theme.lightMode),
         )
         val playerView = LocalView.current
-        LaunchedEffect(showPlayer, playerCoverColors) {
+        LaunchedEffect(showPlayer, playerCoverColors, theme.lightMode) {
             val window = (playerView.context as? Activity)?.window ?: return@LaunchedEffect
             // 播放器打开时按封面亮度切图标深浅（亮封面深色图标）；
-            // 关闭后恢复——应用固定深色，状态栏图标为浅色。
+            // 关闭后跟随应用明暗：深色 → 浅色图标、浅色（0.1.21 第 7
+            // 项）→ 深色图标。
             WindowInsetsControllerCompat(window, playerView).isAppearanceLightStatusBars =
-                showPlayer && playerSong != null && playerCoverColors.isLight()
+                if (showPlayer) (playerSong != null && playerCoverColors.isLight()) else theme.lightMode
         }
         val pageTitle = when {
             showPlayer -> "正在播放"
@@ -494,11 +500,11 @@ fun TokiMusicApp(
                                     titleAlpha = headerAlpha,
                                     titleOffsetY = headerOffsetY,
                                     // 第五轮第 25 项：详情页（歌单/歌手/专辑）滚动后，悬浮标题
-                                    // chip 加不透明底（页面底色 TokiBlack）——封面渐变
+                                    // chip 加不透明底（页面底色 tokiPageColor()）——封面渐变
                                     // 的上端色会透过半透明磨砂让顶栏看起来还留着封面；
                                     // tab 页不传（标题常显，磨砂是设计的一部分）。
                                     // chip 本身随 titleAlpha 淡入，进页时看不到这层底。
-                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) TokiBlack else null,
+                                    titleSolidColor = if (albumId != null || artistId != null || playlistId != null) tokiPageColor() else null,
                                     // 0.1.15 第 3 项：主页 / 资料库左上角的源切换
                                     // 入口已删——源开关只在设置里调。
                                     leading = null,
