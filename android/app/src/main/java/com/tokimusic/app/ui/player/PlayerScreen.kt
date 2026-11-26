@@ -124,7 +124,10 @@ import com.tokimusic.app.player.rememberCastActive
 import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
-import com.tokimusic.app.ui.components.SourceBadge
+import com.tokimusic.app.ui.components.SourceIcon
+import com.tokimusic.app.ui.theme.LocalDarkTheme
+import com.tokimusic.app.ui.theme.moreSheetGlassVeil
+import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
 import com.tokimusic.app.ui.components.fadingEdges
 import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.TokiLongPressLabel
@@ -699,6 +702,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
     if (showMore) MoreSheet(
         song = song,
         vm = vm,
+        hazeState = hazeState,
+        coverColors = coverColors,
         liked = liked,
         castActive = castActive,
         onToggleLike = { vm.toggleLike(song.id); showMore = false },
@@ -975,6 +980,8 @@ private fun EqualizerBars(active: Boolean) {
 private fun MoreSheet(
     song: Song,
     vm: AppViewModel,
+    hazeState: HazeState,
+    coverColors: CoverColors,
     liked: Boolean,
     castActive: Boolean,
     onToggleLike: () -> Unit,
@@ -985,43 +992,59 @@ private fun MoreSheet(
 ) {
     // 第六轮第 25 项：与设置弹窗同款 skipPartiallyExpanded = true，内容
     // 加长时也不会先停在 50% 半展开锚点（内容短时无视觉变化）。
+    // 本轮第 9 条：面板底改毛玻璃——模糊与 MiniPlayer 同款
+    //（tokiContentGlassMiniPlayer：85dp 强模糊、不上色、噪点 0.02），
+    // 底色取播放器主题色（封面 CoverColors）按深浅模式分深浅
+    //（moreSheetGlassVeil）。容器色透明、圆角与 M3 默认展开形同为
+    // 顶 28dp；玻璃要盖住拖柄区，sheet 自带拖柄关掉、内容里自绘
+    // 一个同规格的（32×4dp、onSurfaceVariant 40%）。
+    val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color.Transparent,
+        shape = sheetShape,
+        dragHandle = null,
     ) {
+        Box(
+            Modifier.fillMaxWidth().clip(sheetShape).tokiContentGlassMiniPlayer(
+                hazeState,
+                moreSheetGlassVeil(coverColors.top, coverColors.bottom, lightMode = !LocalDarkTheme.current),
+            ),
+        ) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(32.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    // 0.1.17 第 6 项：时长放歌手名后面（“歌手名 · 时长”），
-                    // 专辑退出这行；独立的时长行删掉。时长为 0 时只有歌手名。
-                    Text(
-                        listOf(song.artistText, if (song.durationMs > 0) formatDuration(song.durationMs) else "").filter { it.isNotBlank() }.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            // 0.1.21 第 8 项：来源 + 发行时间行（在更多栏上方）。来源标
-            // 与全应用同款 SourceBadge；发行时间取 Song.publishTime
-            //（网易云 publishTime / QQ time_public，都是源端真实字段），
-            // 为 0（源端没给）时只显示来源标、不显示日期，绝不编造。
-            // 文本走主题色（onSurfaceVariant），浅色模式同样成立。
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SourceBadge(song.source)
-                if (song.publishTime > 0) {
-                    Text(
-                        formatPublishDate(song.publishTime),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // 0.1.17 第 6 项：时长放歌手名后面（“歌手名 · 时长”）。
+                    // 本轮第 8 条（用户截图反馈）：0.1.21 第 8 项那行独立的
+                    //「来源徽标 + 发行日期」并入本行——行首是裸来源图标
+                    //（无品牌色底圆，字形按本行文字色 onSurfaceVariant
+                    // 着色），文本成「歌手 · 时长 · 发行日期」；发行时间
+                    // 取 Song.publishTime（源端真实字段），为 0 时不显示
+                    // 这一段，绝不编造。头部回到标题 + 本行两行结构。
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SourceIcon(song.source, size = 16, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            listOf(
+                                song.artistText,
+                                if (song.durationMs > 0) formatDuration(song.durationMs) else "",
+                                if (song.publishTime > 0) formatPublishDate(song.publishTime) else "",
+                            ).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             // 第六轮第 28 项：歌词 / 队列已恢复到底部按钮行，这里去重，只留
@@ -1074,6 +1097,7 @@ private fun MoreSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
+        }
         }
     }
 }

@@ -65,8 +65,11 @@ import com.tokimusic.app.ui.theme.CoverColors
  *   surfaceContainer，歌手页之前就是 onCoverButtonBg()。
  *
  * 不统一的（按页传参）：渐变末端色与底部淡出色（歌单页用封面底色、
- * 歌手页用纯黑）、封面下缘淡出色、标题取色（歌单页按 titleFraction、
- * 歌手页直接 onCoverText()）、错误态文字色（歌手页白色、歌单页主题默认）。
+ * 歌手页用纯黑）、标题取色（歌单页按 titleFraction、歌手页直接
+ * onCoverText()）、错误态文字色（歌手页白色、歌单页主题默认）。
+ * 本轮第 10 条起封面下缘淡出色不再按页传参：由脚手架按整页渐变在
+ * 封面底边处的真实颜色统一计算（detailGradientColorAt），消除封面
+ * 与下方内容之间的硬分割线。
  */
 @Composable
 fun DetailScaffold(
@@ -74,7 +77,6 @@ fun DetailScaffold(
     coverName: String,
     coverColors: CoverColors,
     gradientBottom: Color,
-    coverFadeTo: Color,
     bottomFadeTo: Color,
     bottomFadeHeight: Dp,
     bottomPadding: Dp,
@@ -93,6 +95,11 @@ fun DetailScaffold(
         ),
     ) {
         val coverHeight = maxHeight * COLLAPSING_COVER_FRACTION
+        // 本轮第 10 条：封面下缘淡出终点 = 整页渐变在封面底边高度
+        //（COLLAPSING_COVER_FRACTION）处的真实颜色，两页统一。
+        val coverFadeTo = com.tokimusic.app.ui.theme.detailGradientColorAt(
+            coverColors.top, coverColors.bottom, gradientBottom, COLLAPSING_COVER_FRACTION,
+        )
         // 第六轮第 3/5 项：标题块中心约在封面底边下方 82dp 处，标题取色按
         // 该高度的渐变色算（歌单页用；歌手页不用 titleFraction）。
         val titleFraction = (coverHeight + 82.dp) / maxHeight

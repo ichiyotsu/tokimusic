@@ -681,10 +681,11 @@ private fun RecentCard(song: Song, onClick: () -> Unit) {
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.height(8.dp))
-        Text(song.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(song.name, style = MaterialTheme.typography.bodyMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
             song.artistText,
             style = MaterialTheme.typography.bodySmall,
+            fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

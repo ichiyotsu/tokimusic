@@ -189,9 +189,9 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
         coverName = pl.name,
         coverColors = coverColors,
         gradientBottom = coverColors.bottom,
-        // 第六轮第 3 项：封面底部淡出目标色取封面底边处的页面背景真实色
-        // colorAt(1/3)，不再取最亮的 top——否则底边会露出一道台阶。
-        coverFadeTo = coverColors.colorAt(COLLAPSING_COVER_FRACTION),
+        // 封面下缘淡出色本轮第 10 条起由脚手架统一计算（整页渐变在
+        // 封面底边处的真实色）——第六轮第 3 项传的 colorAt(1/3) 与
+        // 三段渐变的实际底边色对不上，底边仍有台阶（截图反馈）。
         bottomFadeTo = coverColors.bottom,
         bottomFadeHeight = 32.dp,
         bottomPadding = bottomPadding,
@@ -215,6 +215,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 Text(
                     pl.creatorName,
                     style = MaterialTheme.typography.titleSmall,
+                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(pl.creatorName),
                     color = coverColors.onCoverTextDimAt(titleFraction),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -258,6 +259,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 Text(
                     pl.description,
                     style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(pl.description),
                     color = coverColors.onCoverTextDimAt(titleFraction),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

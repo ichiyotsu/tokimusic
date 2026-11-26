@@ -72,10 +72,12 @@ fun SongActionsSheet(
             AsyncImage(song.picUrl, song.name, Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(song.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val actionArtistLine = song.artists.joinToString(" / ") { it.name }
                 Text(
-                    song.artists.joinToString(" / ") { it.name },
+                    actionArtistLine,
                     style = MaterialTheme.typography.bodySmall,
+                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(actionArtistLine),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -122,7 +124,7 @@ fun SongActionsSheet(
                             AsyncImage(pl.coverUrl, pl.name, Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(pl.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(pl.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(pl.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text("${pl.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }

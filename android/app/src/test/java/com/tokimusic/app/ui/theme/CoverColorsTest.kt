@@ -158,6 +158,39 @@ class CoverColorsTest {
     }
 
     @Test
+    fun detailGradientColorAtMatchesThreeStopGradient() {
+        // 本轮第 10 条：三段渐变（0 top / 0.5 bottom / 1 gradientBottom）
+        // 在各高度的真实色——封面下缘淡出终点取它，消除硬分割线。
+        val top = androidx.compose.ui.graphics.Color(0xFF804020)
+        val bottom = androidx.compose.ui.graphics.Color(0xFF202040)
+        val end = androidx.compose.ui.graphics.Color.Black
+        assertEquals(top, detailGradientColorAt(top, bottom, end, 0f))
+        assertEquals(bottom, detailGradientColorAt(top, bottom, end, 0.5f))
+        assertEquals(end, detailGradientColorAt(top, bottom, end, 1f))
+        assertEquals(androidx.compose.ui.graphics.lerp(top, bottom, 2f / 3f), detailGradientColorAt(top, bottom, end, 1f / 3f))
+        assertEquals(androidx.compose.ui.graphics.lerp(bottom, end, 0.5f), detailGradientColorAt(top, bottom, end, 0.75f))
+    }
+
+    @Test
+    fun moreSheetVeilComesFromCoverColorsAndFollowsMode() {
+        // 本轮第 9 条：更多面板底色取播放器主题色（封面渐变中点），
+        // 深色模式压深、浅色模式提亮，alpha 同为 0.78。
+        val top = androidx.compose.ui.graphics.Color(0xFF8A4A22)
+        val bottom = androidx.compose.ui.graphics.Color(0xFF3A2010)
+        val dark = moreSheetGlassVeil(top, bottom, lightMode = false)
+        val light = moreSheetGlassVeil(top, bottom, lightMode = true)
+        assertEquals(0.78f, dark.alpha, 0.001f)
+        assertEquals(0.78f, light.alpha, 0.001f)
+        // 深色版整体比渐变中点暗、浅色版整体比中点亮。
+        val mid = androidx.compose.ui.graphics.lerp(top, bottom, 0.5f)
+        assertTrue(dark.red < mid.red && dark.green < mid.green)
+        assertTrue(light.red > mid.red && light.green > mid.green)
+        // 色相仍来自封面（暖棕：red > green > blue 两版都成立）。
+        assertTrue(dark.red > dark.green && dark.green > dark.blue)
+        assertTrue(light.red > light.green && light.green > light.blue)
+    }
+
+    @Test
     fun totalDurationKeepsMinutesPastOneHour() {
         // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))

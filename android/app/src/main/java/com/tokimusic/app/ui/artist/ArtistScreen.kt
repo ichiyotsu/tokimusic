@@ -200,7 +200,7 @@ fun ArtistScreen(
         coverName = a?.name ?: "",
         coverColors = coverColors,
         gradientBottom = tokiPageColor(),
-        coverFadeTo = coverColors.top,
+        // 封面下缘淡出色本轮第 10 条起由脚手架统一计算，不再传 top。
         bottomFadeTo = tokiPageColor(),
         bottomFadeHeight = 32.dp,
         bottomPadding = bottomPadding,
@@ -404,10 +404,12 @@ private fun AlbumCard(album: Album, textColor: Color, dimColor: Color, onClick: 
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.height(8.dp))
-        Text(album.name, style = MaterialTheme.typography.bodyMedium, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(album.name, style = MaterialTheme.typography.bodyMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(album.name), color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val albumCardSubtitle = if (album.trackCount > 0) "${album.trackCount} 首" else album.artistText
         Text(
-            if (album.trackCount > 0) "${album.trackCount} 首" else album.artistText,
+            albumCardSubtitle,
             style = MaterialTheme.typography.bodySmall,
+            fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(albumCardSubtitle),
             color = dimColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

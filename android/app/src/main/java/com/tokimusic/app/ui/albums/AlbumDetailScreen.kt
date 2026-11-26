@@ -116,13 +116,22 @@ fun AlbumDetailScreen(
     BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(coverColors.top, coverColors.bottom, tokiPageColor())))) {
         val coverHeight = maxHeight * 0.25f
         Column(Modifier.fillMaxSize()) {
-            // 封面占视口 1/4、完整显示，下缘淡出到封面渐变的上端色。
+            // 封面占视口 1/4、完整显示。本轮第 10 条（与歌单/歌手页同
+            // 手法）：下缘向页面背景渐隐融合——淡出集中在封面下部，
+            // 终点取整页渐变在封面底边（0.25）处的真实颜色，不再传
+            // top（与底边页面色对不上、留硬分割线）。
             Box(Modifier.fillMaxWidth().height(coverHeight)) {
                 AsyncImage(album.coverUrl, album.name, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                 Box(
                     Modifier.matchParentSize().background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, coverColors.top),
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.55f to Color.Transparent,
+                                1f to com.tokimusic.app.ui.theme.detailGradientColorAt(
+                                    coverColors.top, coverColors.bottom, tokiPageColor(), 0.25f,
+                                ),
+                            ),
                         ),
                     ),
                 )
@@ -179,6 +188,7 @@ fun AlbumDetailScreen(
                                     album.name,
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(album.name),
                                     color = coverColors.onCoverText(),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,

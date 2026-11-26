@@ -105,6 +105,45 @@ fun miniPlayerGlassVeil(top: Color, bottom: Color, lightMode: Boolean = false): 
     return base.copy(alpha = 0.25f + (0.35f - 0.25f) * f)
 }
 
+/**
+ * 详情页整页渐变在高度比例 [fraction] 处的实际颜色（本轮第 10 条，
+ * 纯函数，可单测）。详情页（歌单/歌手共用 DetailScaffold、专辑页
+ * 自有头部）的整页背景都是三段竖直渐变：0 → [top]、0.5 → [bottom]、
+ * 1 → [gradientBottom]（Brush 默认等距 stops）。封面下缘的淡出终点
+ * 必须取这个值、与底边处的页面色严丝合缝——此前歌单页传
+ * colorAt(1/3)、歌手页与专辑页传 top，都不是底边处的真实页面色，
+ * 封面图与下方内容之间留下一条硬分割线（用户截图反馈）。
+ */
+fun detailGradientColorAt(top: Color, bottom: Color, gradientBottom: Color, fraction: Float): Color {
+    val f = fraction.coerceIn(0f, 1f)
+    return if (f <= 0.5f) {
+        lerp(top, bottom, f / 0.5f)
+    } else {
+        lerp(bottom, gradientBottom, (f - 0.5f) / 0.5f)
+    }
+}
+
+/**
+ * 播放页「更多」面板的玻璃底色（本轮第 9 条，纯函数，可单测）。
+ *
+ * 口径（用户定稿）：模糊本体与 MiniPlayer 同款（85dp，见
+ * tokiContentGlassMiniPlayer）；底色不用 MiniPlayer 的亮度动态底，
+ * 改为**取色自播放器主题色**——即播放页按封面取的那套 CoverColors
+ * 渐变（top/bottom 中点色），再按深/浅模式分深浅：深色模式向黑
+ * 压深、浅色模式向白提亮，alpha 同取 0.78（底色主导、仍留两成
+ * 模糊透出，保毛玻璃质感）。面板内文字仍走应用主题色：深色模式
+ * 浅字落在压深的封面底上、浅色模式深字落在提亮的封面底上，都
+ * 可读。
+ */
+fun moreSheetGlassVeil(top: Color, bottom: Color, lightMode: Boolean): Color {
+    val base = lerp(top, bottom, 0.5f)
+    return if (lightMode) {
+        lerp(base, Color.White, 0.62f).copy(alpha = 0.78f)
+    } else {
+        lerp(base, Color.Black, 0.45f).copy(alpha = 0.78f)
+    }
+}
+
 val CoverColorsFallback: CoverColors = CoverColors(TokiWarmTop, TokiWarmBottom)
 
 /**

@@ -286,7 +286,7 @@ fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifi
  * 行高相等；来源用品牌色 tint 区分（与徽标底色同色）。
  */
 @Composable
-fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier) {
+fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifier, tint: Color? = null) {
     val iconRes = when (source) {
         MusicSource.NETEASE -> R.drawable.ic_source_netease
         MusicSource.QQ -> R.drawable.ic_source_qq
@@ -299,7 +299,9 @@ fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifie
             MusicSource.QQ -> "QQMusic"
             MusicSource.LOCAL -> "Device"
         },
-        tint = sourceBadgeBackground(source),
+        // 默认品牌色（与徽标底色同色）；调用方可传 tint 覆盖——播放页
+        // 更多面板头部按用户要求与相邻文字同色（本轮第 8 条）。
+        tint = tint ?: sourceBadgeBackground(source),
         modifier = modifier.size(size.dp),
     )
 }

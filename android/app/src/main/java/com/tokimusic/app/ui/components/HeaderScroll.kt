@@ -28,7 +28,11 @@ const val COLLAPSING_COVER_FRACTION = 1f / 3f
 
 /**
  * 封面作为 LazyColumn 第 0 项：满宽、固定高度（视口的 1/3）、图片裁剪
- * 铺满，下缘淡出到封面渐变的上端色（与标题块衔接）。
+ * 铺满。本轮第 10 条：下缘向页面背景渐隐融合——淡出集中在封面下部
+ * 约 45%（上部保持图片原样），终点色 [fadeTo] 必须是整页渐变在封面
+ * 底边高度处的真实颜色（detailGradientColorAt），与底边下方页面色
+ * 严丝合缝、不留硬分割线。此前是全程线性淡出且终点色传错（歌单
+ * colorAt(1/3) / 歌手 top），底边处一步台阶、线很明显。
  */
 fun LazyListScope.collapsingCoverItem(coverUrl: String, name: String, height: Dp, fadeTo: Color) {
     item {
@@ -37,7 +41,11 @@ fun LazyListScope.collapsingCoverItem(coverUrl: String, name: String, height: Dp
             Box(
                 Modifier.matchParentSize().background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, fadeTo),
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.55f to Color.Transparent,
+                            1f to fadeTo,
+                        ),
                     ),
                 ),
             )
