@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PriorityHigh
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -935,6 +937,17 @@ fun TokiMusicApp(
         }
         // 第三轮第 15 项：启动自动检查发现的新版提醒（与设置页手动检查共用 UpdatePrompt）。
         if (pendingUpdate != null) UpdatePrompt(pendingUpdate!!, currentVersion = vm.versionName) { pendingUpdate = null }
+        // 本轮（0127）第 20 条：封禁闸门状态。命中远程名单时强制关掉
+        // 设置页/播放器页——它们是 Dialog 窗口、渲染在主窗口之上，
+        // 不关会从闸门页上层漏出来；闸门页本身在下面作为主题内容
+        // 的最后一层盖住整个应用。
+        val accessBlocked by vm.accessBlocked.collectAsState()
+        LaunchedEffect(accessBlocked) {
+            if (accessBlocked) {
+                showSettings = false
+                showPlayer = false
+            }
+        }
         // 第五轮第 15 项：更新完首次启动的优化二次确认（清理在 IO 协程里跑，
         // 按钮在清理期间禁用；清理完才记 versionCode，中途被杀下次再问）。
         if (optimizeSnapshot != null) {
@@ -954,6 +967,48 @@ fun TokiMusicApp(
                 },
                 onDecline = dismissOptimize,
                 onDismiss = dismissOptimize,
+            )
+        }
+        // 本轮（0127）第 20 条：闸门页必须是主题内容的最后一层。
+        if (accessBlocked) AccessBlockedPage()
+    }
+}
+
+/**
+ * 本轮（0127）第 20 条：封禁闸门页。命中远程名单时全屏盖住应用：
+ * 不透明背景 + 吞掉一切触摸，应用在它之外不可用。文案克制，
+ * 只说明受限事实（ID 绑定的是设备，故写「此设备」）。
+ */
+@Composable
+private fun AccessBlockedPage() {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(interactionSource = interaction, indication = null) { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 32.dp),
+        ) {
+            Icon(
+                Icons.Rounded.Block,
+                contentDescription = null,
+                modifier = Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "使用受限",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "此设备已被限制使用 TokiMusic。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

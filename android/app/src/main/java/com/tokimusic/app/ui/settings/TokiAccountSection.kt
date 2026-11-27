@@ -84,6 +84,36 @@ private fun TokiAccountPage(vm: AppViewModel) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Toki ID 卡（本轮 0127 第 20 条）：设备级 ID，首次启动即
+        // 存在、常驻展示；只读（只有展示 + 复制），用户不能编辑——
+        // 唯一改写通道是 owner 通过远程配置 overrides 下发。
+        val tokiId by vm.tokiId.collectAsState()
+        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+        TokiSettingsCard(position = SegmentPosition.Single, horizontalMargin = 0.dp) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Toki ID", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        tokiId ?: "—",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = {
+                            tokiId?.let {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(it))
+                                vm.showMessage("Toki ID 已复制")
+                            }
+                        },
+                    ) { Text("复制") }
+                }
+                Text(
+                    "这台设备的 TokiMusic 标识，随设备固定，无法修改。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         // Google 绑定卡
         TokiSettingsCard(position = SegmentPosition.Single, horizontalMargin = 0.dp) {
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

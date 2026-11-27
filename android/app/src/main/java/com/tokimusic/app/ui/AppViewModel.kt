@@ -4,6 +4,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tokimusic.app.BuildConfig
 import com.tokimusic.app.TokiMusicApplication
+import com.tokimusic.app.access.BLOCKLIST_TTL_MS
+import com.tokimusic.app.access.BLOCKLIST_URL
+import com.tokimusic.app.access.TokiId
+import com.tokimusic.app.access.effectiveTokiId
+import com.tokimusic.app.access.isBlocked
+import com.tokimusic.app.access.matchingIdentitySet
+import com.tokimusic.app.access.normalizedIdentities
+import com.tokimusic.app.access.parseBlocklist
+import com.tokimusic.app.access.parseOverrides
+import java.net.HttpURLConnection
+import java.net.URL
 import com.tokimusic.app.data.api.ApiErrorKind
 import com.tokimusic.app.data.api.ApiException
 import com.tokimusic.app.data.api.LyricPayload
@@ -101,6 +112,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // GetLoginUserInfo 的资料拉取——资料拉取失败时源开关仍可用，
     // 登录成功后立即显示已登录态。
     private val _qqLoggedIn = MutableStateFlow(store.qqMusicId.isNotBlank()); val qqLoggedIn: StateFlow<Boolean> = _qqLoggedIn
+    // 本轮（0127）第 20 条：Toki ID 生效值（由设备 SSAID 派生、
+    // 可被远程 override 改写，见 access/TokiAccess.kt；首次启动
+    // 即非空）与封禁闸门状态（命中 GitHub 名单时为 true，UI 盖
+    // 闸门页）。
+    private val _tokiId = MutableStateFlow<String?>(null); val tokiId: StateFlow<String?> = _tokiId
+    private val _accessBlocked = MutableStateFlow(false); val accessBlocked: StateFlow<Boolean> = _accessBlocked
     // 第六轮第 19 项：源启用开关——设置里的开关与主页/资料库下拉菜单翻
     // 同一个标志（StateFlow 供界面订阅；store 是持久层）。
     private val _neteaseEnabled = MutableStateFlow(store.neteaseEnabled); val neteaseEnabled: StateFlow<Boolean> = _neteaseEnabled
@@ -787,6 +804,89 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var deviceTokiId: String? = null
+
+    /**
+     * 本机 Toki ID（本轮 0127 第 20 条）：SSAID 派生（同设备 + 同
+     * 签名跨重装恒同）；SSAID 取不到时用落盘的随机回退 ID（生成
+     * 一次、长期用）。进程内缓存，只算一次。
+     */
+    private fun resolveDeviceTokiId(): String {
+        deviceTokiId?.let { return it }
+        val ssaid = runCatching {
+            android.provider.Settings.Secure.getString(
+                getApplication<Application>().contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            )
+        }.getOrNull()
+        val id = if (!ssaid.isNullOrBlank()) {
+            TokiId.deriveFromDevice(ssaid)
+        } else {
+            val existing = store.tokiIdFallback
+            if (existing.isNotBlank()) {
+                existing
+            } else {
+                val rng = java.security.SecureRandom()
+                TokiId.randomFallback { bound -> rng.nextInt(bound) }
+                    .also { store.tokiIdFallback = it }
+            }
+        }
+        deviceTokiId = id
+        return id
+    }
+
+    /**
+     * 本轮（0127）第 20 条：Toki ID 生效值 + 远程配置校验。
+     * - 派生 ID 来自设备 SSAID（见 resolveDeviceTokiId）；远程
+     *   配置的 overrides 命中任一本地身份时，生效 ID 改为 owner
+     *   签发值（_tokiId 暴露生效值，展示/口径都用它；App 内只读，
+     *   用户无编辑入口）。
+     * - 封禁判定用 matchingIdentitySet（派生 + 生效 + 平台 ID），
+     *   override 不会让被封身份溜走。
+     * - 配置：先用本地缓存算一次（即时）；缓存超过 24h（或从未
+     *   拉过）再拉 GitHub 上的 access/blocklist.json 重算。全程
+     *   fail open：拉取/解析失败绝不封人、不用覆盖。
+     * 调用点：init、loadSession 末尾、refreshQqSession 末尾、
+     * logout / qqLogout——一切平台身份可能变化之处（设备 ID 本身
+     * 不随登录变化，但身份集会）。
+     */
+    fun refreshAccessControl() {
+        viewModelScope.launch {
+            val derived = resolveDeviceTokiId()
+            val neUid = _profile.value?.uid?.takeIf { it > 0 }?.toString()
+            val qqUin = store.qqMusicId.takeIf { it.isNotBlank() }
+            fun applyConfig(json: String) {
+                val baseIdentities = normalizedIdentities(derived, neUid, qqUin)
+                val effective = effectiveTokiId(derived, baseIdentities, parseOverrides(json))
+                _tokiId.value = effective
+                _accessBlocked.value = isBlocked(
+                    matchingIdentitySet(derived, effective, neUid, qqUin),
+                    parseBlocklist(json),
+                )
+            }
+            applyConfig(store.blocklistJson)
+            val now = System.currentTimeMillis()
+            if (now - store.blocklistFetchMs >= BLOCKLIST_TTL_MS) {
+                val fetched = withContext(Dispatchers.IO) { fetchBlocklistJson() }
+                if (fetched != null) {
+                    store.blocklistJson = fetched
+                    store.blocklistFetchMs = now
+                    applyConfig(fetched)
+                }
+            }
+        }
+    }
+
+    /** 名单拉取（fail open：任何失败返回 null，调用方保持缓存判定）。 */
+    private fun fetchBlocklistJson(): String? = runCatching {
+        val conn = URL(BLOCKLIST_URL).openConnection() as HttpURLConnection
+        conn.connectTimeout = 8_000
+        conn.readTimeout = 10_000
+        conn.setRequestProperty("User-Agent", "TokiMusic")
+        if (conn.responseCode != 200) return@runCatching null
+        conn.inputStream.bufferedReader().use { it.readText() }
+    }.getOrNull()
+
     /** 回顾歌单详情（虚拟 id → 月份）：PlaylistsScreen 的详情分支用。 */
     fun retrospectiveDetail(monthKey: Int): Pair<Playlist, List<Song>>? {
         val songs = _home.value.retrospectives.firstOrNull { it.first == monthKey }?.second ?: return null
@@ -1223,6 +1323,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 refreshRetrospectives()
             }
         }
+        // 本轮（0127）第 20 条：启动先按已存登录态算一次 Toki ID +
+        // 名单校验（会话校验完成后 loadSession / refreshQqSession
+        // 末尾还会各重算一次，覆盖异步登录态）。
+        refreshAccessControl()
         // 0.1.17 第 12 / 13 项：实时歌词推送 + 听歌上报累计（同一 500ms 循环）。
         startPlaybackSideEffects()
     }
@@ -1330,6 +1434,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 0.1.21：本地模式下不校验 QQ 会话（零联网）；登录态只看凭证。
         if (isLocalModeNow()) {
             _qqLoggedIn.value = store.qqMusicId.isNotBlank()
+            // 本轮（0127）第 20 条：QQ 登录态（凭证）已定，重算一次。
+            refreshAccessControl()
             return@launch
         }
         val p = runCatching { qqClient.getLoginUserInfo() }.getOrNull()
@@ -1341,6 +1447,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             _qqProfile.value = p; _qqAuthState.value = AuthState.LoggedIn
         }
+        // 本轮（0127）第 20 条：QQ 登录态已定，重算 Toki ID + 名单。
+        refreshAccessControl()
     }
 
     private suspend fun loadSession() {
@@ -1407,6 +1515,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loadHome()
         // 0.1.20 第 6 项：回顾歌单随启动刷新一次（纯本地数据，不依赖登录）。
         refreshRetrospectives()
+        // 本轮（0127）第 20 条：网易云登录态已定，重算 Toki ID + 名单。
+        refreshAccessControl()
     }
 
     private suspend fun loadHome(refresh: Boolean = false): Boolean {
@@ -2165,6 +2275,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _subscribedPlaylistIds.value = _subscribedPlaylistIds.value.filterNot { it.startsWith("QQ:") }.toSet()
         store.qqEnabled = false; _qqEnabled.value = false
         refreshHome()
+        // 本轮（0127）第 20 条：QQ 身份已退出，身份集缩小，重算封禁
+        // 判定（Toki ID 是设备级的、不变；只是少了 QQ 后备身份）。
+        refreshAccessControl()
     }
     fun logout() {
         api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
@@ -2175,6 +2288,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 大排查 S7：退出后排行榜（公开区，不用登录）也要重拉——之前
         // 只清掉不重拉，退出登录后主页排行榜区一直空白，直到切源/重启。
         _toplist.value = emptyList(); toplistLoaded = false; loadToplist(force = true)
+        // 本轮（0127）第 20 条：网易云身份已退出，身份集缩小，重算
+        // 封禁判定（Toki ID 是设备级的、不变；只是少了网易云后备
+        // 身份）。
+        refreshAccessControl()
     }
 
     /** 喜爱歌曲：喜欢的 id 列表 + /song/detail 分批取详情（一次最多 100 个 id）。 */
