@@ -126,10 +126,12 @@ fun HomeScreen(
     val home by vm.home.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
+    val youtubeEnabled by vm.youtubeEnabled.collectAsState()
     // 0.1.21：算法推荐分区与开关已撤除（画像改为常开基础设施，在
     // VM 的 loadHome 里直接重排推荐流），主页不再有独立推荐区。
     val localTracks by vm.localTracks.collectAsState()
-    val bothEnabled = neteaseEnabled && qqEnabled
+    // 本轮（0124）第 19 项：徽标显示条件从「双源都开」放宽为「≥2 个在线源开启」。
+    val bothEnabled = listOf(neteaseEnabled, qqEnabled, youtubeEnabled).count { it } >= 2
     var entered by remember { mutableStateOf(false) }
     // 0.1.18 第 6 项：进场淡入走 effects spec（之前手写 tween(300)）。
     val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "homeEnter")

@@ -78,7 +78,9 @@ fun SearchPage(
     val home by vm.home.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
-    val bothEnabled = neteaseEnabled && qqEnabled
+    val youtubeEnabled by vm.youtubeEnabled.collectAsState()
+    // 本轮（0124）第 19 项：≥2 个在线源开启时才需要源徽标区分。
+    val bothEnabled = listOf(neteaseEnabled, qqEnabled, youtubeEnabled).count { it } >= 2
     val searchSource by vm.searchSource.collectAsState()
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(SearchFilter.Songs) }
@@ -275,6 +277,18 @@ private fun EmptyResultHint() {
 @Composable
 fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Unit) {
     val tint = sourceBadgeBackground(source)
+    val iconRes = when (source) {
+        MusicSource.NETEASE -> R.drawable.ic_source_netease
+        MusicSource.QQ -> R.drawable.ic_source_qq
+        MusicSource.YOUTUBEMUSIC -> R.drawable.ic_source_youtube
+        MusicSource.LOCAL -> R.drawable.ic_local_music
+    }
+    val label = when (source) {
+        MusicSource.NETEASE -> "NeteaseMusic"
+        MusicSource.QQ -> "QQMusic"
+        MusicSource.YOUTUBEMUSIC -> "YouTubeMusic"
+        MusicSource.LOCAL -> "Device"
+    }
     Box(
         Modifier.size(40.dp).clip(CircleShape)
             .background(if (selected) tint else MaterialTheme.colorScheme.surfaceContainer)
@@ -282,8 +296,8 @@ fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Un
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painterResource(if (source == MusicSource.NETEASE) R.drawable.ic_source_netease else R.drawable.ic_source_qq),
-            contentDescription = if (source == MusicSource.NETEASE) "用 NeteaseMusic 搜索" else "用 QQMusic 搜索",
+            painterResource(iconRes),
+            contentDescription = "用 $label 搜索",
             tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
             modifier = Modifier.size(24.dp),
         )

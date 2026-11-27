@@ -87,7 +87,7 @@ fun toggleFollowedIds(ids: Set<Long>, id: Long): Set<Long> =
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val container = app as TokiMusicApplication
-    val api = container.api; val qqClient = container.qqClient; val store = container.store; val player = container.player
+    val api = container.api; val qqClient = container.qqClient; val ytClient = container.ytClient; val store = container.store; val player = container.player
     val versionName: String = BuildConfig.VERSION_NAME // real version, never hardcoded in UI
     private val _home = MutableStateFlow(HomeUiState()); val home: StateFlow<HomeUiState> = _home
     private val _profile = MutableStateFlow<UserProfile?>(null); val profile: StateFlow<UserProfile?> = _profile
@@ -103,10 +103,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // 同一个标志（StateFlow 供界面订阅；store 是持久层）。
     private val _neteaseEnabled = MutableStateFlow(store.neteaseEnabled); val neteaseEnabled: StateFlow<Boolean> = _neteaseEnabled
     private val _qqEnabled = MutableStateFlow(store.qqEnabled); val qqEnabled: StateFlow<Boolean> = _qqEnabled
+    // 本轮（0124）第 19 项：YouTubeMusic 源开关（默认开）。
+    private val _youtubeEnabled = MutableStateFlow(store.youtubeEnabled); val youtubeEnabled: StateFlow<Boolean> = _youtubeEnabled
     fun setSourceEnabled(source: MusicSource, enabled: Boolean) {
         when (source) {
             MusicSource.NETEASE -> { store.neteaseEnabled = enabled; _neteaseEnabled.value = enabled }
             MusicSource.QQ -> { store.qqEnabled = enabled; _qqEnabled.value = enabled }
+            MusicSource.YOUTUBEMUSIC -> { store.youtubeEnabled = enabled; _youtubeEnabled.value = enabled }
             // LOCAL is not a toggle — the local player is always there when both network sources are off.
             MusicSource.LOCAL -> return
         }
@@ -197,16 +200,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 关源/本地模式下这首歌被挡住的原因文案；可播时返回 null（列表置灰 + 不可点播用）。 */
     fun songBlockedLabel(song: Song): String? = songBlockedReason(
         song, _neteaseEnabled.value, _qqEnabled.value, isSongLocallyAvailable(song),
+        youtubeEnabled = _youtubeEnabled.value,
     )
 
     /** 某源是否被关闭（LOCAL 不是可关的源，恒 false）。 */
     fun isSourceDisabled(source: MusicSource): Boolean = when (source) {
         MusicSource.NETEASE -> !_neteaseEnabled.value
         MusicSource.QQ -> !_qqEnabled.value
+        MusicSource.YOUTUBEMUSIC -> !_youtubeEnabled.value
         MusicSource.LOCAL -> false
     }
 
-    private fun isLocalModeNow(): Boolean = isLocalMode(_neteaseEnabled.value, _qqEnabled.value)
+    private fun isLocalModeNow(): Boolean = isLocalMode(_neteaseEnabled.value, _qqEnabled.value, _youtubeEnabled.value)
 
     /** 在线封面覆盖表（本轮）：uri → 源端封面 URL。本地歌单详情在线
      * 回落补到的封面记在这里，资料库本地页/Device 列表共用（见
@@ -642,6 +647,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "QQ" -> {
                 if (track.originId.isBlank() || isSourceDisabled(MusicSource.QQ)) empty
                 else runCatching { qqClient.lyric(track.originId) }.getOrDefault(empty)
+            }
+            "YOUTUBEMUSIC" -> {
+                if (track.originId.isBlank() || isSourceDisabled(MusicSource.YOUTUBEMUSIC)) empty
+                else runCatching { ytClient.lyric(track.originId) }.getOrDefault(empty)
             }
             else -> empty
         }
@@ -1162,7 +1171,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 isPullRefreshing = false,
                 error = failed,
                 loggedIn = profile != null,
-                localMode = !neEnabled && !qqEnabledNow,
+                localMode = !neEnabled && !qqEnabledNow && !_youtubeEnabled.value,
                 playlists = pls ?: emptyList(), newSongs = news ?: emptyList(),
                 qqToplist = qqTopD.await() ?: emptyList(),
                 qqPlaylists = qqPlsD.await() ?: emptyList(),
@@ -1285,6 +1294,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun downloadUrlFor(song: Song): String? = when (song.source) {
         MusicSource.NETEASE -> runCatching { api.songUrl(song.id).url }.getOrNull()?.takeIf { it.isNotBlank() }
         MusicSource.QQ -> (runCatching { qqClient.songUrl(song.sourceId, store.audioQuality) }.getOrNull() as? QqSongUrlResult.Url)?.url
+        MusicSource.YOUTUBEMUSIC -> (runCatching { ytClient.songUrl(song.sourceId) }.getOrNull() as? com.tokimusic.app.data.api.YtSongUrlResult.Url)?.url
         MusicSource.LOCAL -> null
     }
 
@@ -1297,7 +1307,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun downloadPlaylist(playlist: Playlist, tracks: List<Song>) {
         val source = playlist.source
-        if (source != MusicSource.NETEASE && source != MusicSource.QQ) return
+        if (source != MusicSource.NETEASE && source != MusicSource.QQ && source != MusicSource.YOUTUBEMUSIC) return
         if (tracks.isEmpty()) {
             _userMessage.value = "歌单暂无可下载曲目"
             return
@@ -1414,6 +1424,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val lyricText = when (song.source) {
                 MusicSource.NETEASE -> runCatching { api.lyric(song.id) }.getOrNull()?.let { it.lrc ?: it.yrc }
                 MusicSource.QQ -> runCatching { qqClient.lyric(song.sourceId) }.getOrNull()?.lrc
+                MusicSource.YOUTUBEMUSIC -> runCatching { ytClient.lyric(song.sourceId) }.getOrNull()?.lrc
                 else -> null
             }
             if (!lyricText.isNullOrBlank()) {
@@ -1468,10 +1479,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchLyricResults = emptyList(), searching = false); return }
+        val enabledSources = listOfNotNull(
+            if (_neteaseEnabled.value) MusicSource.NETEASE else null,
+            if (_qqEnabled.value) MusicSource.QQ else null,
+            if (_youtubeEnabled.value) MusicSource.YOUTUBEMUSIC else null,
+        )
         val src = when {
-            _neteaseEnabled.value && !_qqEnabled.value -> MusicSource.NETEASE
-            _qqEnabled.value && !_neteaseEnabled.value -> MusicSource.QQ
-            else -> source ?: _searchSource.value
+            enabledSources.size == 1 -> enabledSources.single()
+            else -> (source ?: _searchSource.value).takeIf { it in enabledSources } ?: enabledSources.first()
         }
         _searchSource.value = src
         store.lastSearchSource = src.name
@@ -1497,6 +1512,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val lyricSongs = runCatching { api.search(keywords, type = 1006) }.getOrDefault(emptyList())
                     // 大排查 S1：同上，清掉 QQ 歌手残留。
                     _home.value = _home.value.copy(searchResults = songs, searchArtists = artists, searchQqArtists = emptyList(), searchPlaylists = playlists, searchLyricResults = lyricSongs, searching = false)
+                }
+                MusicSource.YOUTUBEMUSIC -> {
+                    // 本轮（0124）第 19 项：YT 只有歌曲搜索（无歌手/歌单/
+                    // 歌词搜索接口形态），其余分区清空（同 S1 口径）。
+                    val songs = runCatching { ytClient.searchSongs(keywords) }.getOrDefault(emptyList())
+                    _home.value = _home.value.copy(searchResults = songs, searchArtists = emptyList(), searchQqArtists = emptyList(), searchPlaylists = emptyList(), searchLyricResults = emptyList(), searching = false)
                 }
                 // LOCAL: the search box is disabled in local mode (§2.6.3) —
                 // the VM keeps no local-search branch; local songs are browsed from Home.
@@ -1571,6 +1592,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _userMessage.value = "无法获取播放地址，请重试"; null
             }
         }
+        if (song.source == MusicSource.YOUTUBEMUSIC) {
+            // 本轮（0124）第 19 项：YT 取址（VISIONOS 直链，无登录）；
+            // 失败按不可用上报原文状态，绝不伪造。
+            return when (val r = runCatching { ytClient.songUrl(song.sourceId) }.getOrElse {
+                com.tokimusic.app.data.api.YtSongUrlResult.Unavailable(it.message ?: "网络错误")
+            }) {
+                is com.tokimusic.app.data.api.YtSongUrlResult.Url -> r.url
+                is com.tokimusic.app.data.api.YtSongUrlResult.Unavailable -> {
+                    _userMessage.value = "YouTubeMusic 暂无播放地址（${r.reason}）"; null
+                }
+            }
+        }
         val result = try {
             api.songUrl(song.id)
         } catch (e: ApiException) {
@@ -1608,6 +1641,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return when (song.source) {
             MusicSource.QQ -> (runCatching { qqClient.songUrl(song.sourceId, store.audioQuality) }.getOrNull() as? QqSongUrlResult.Url)?.url
             MusicSource.NETEASE -> runCatching { api.songUrl(song.id).url }.getOrNull()
+            MusicSource.YOUTUBEMUSIC -> (runCatching { ytClient.songUrl(song.sourceId) }.getOrNull() as? com.tokimusic.app.data.api.YtSongUrlResult.Url)?.url
             MusicSource.LOCAL -> song.sourceId.takeIf { it.isNotBlank() }
         }
     }
@@ -1664,11 +1698,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // the item-30 fallback uses for YRC-less songs.
                 MusicSource.QQ -> qqClient.lyric(song.sourceId)
                 MusicSource.NETEASE -> api.lyric(song.id)
+                // 本轮（0124）第 19 项：YT 歌词只有纯文本（无时间轴），
+                // payload 的 lrc 字段装的是全文纯文本，下面单独走
+                // parsePlainText 降级解析。
+                MusicSource.YOUTUBEMUSIC -> ytClient.lyric(song.sourceId)
                 // 本地歌：本地歌词文件优先，其次按登记的源身份在线
                 // 回落（本地模式不回落），见 localLyricPayload。
                 MusicSource.LOCAL -> localLyricPayload(song)
             }
-            YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
+            if (song.source == MusicSource.YOUTUBEMUSIC) {
+                YrcParser.parsePlainText(p.lrc, song.durationMs)
+            } else {
+                YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
+            }
         }.getOrDefault(emptyList())
     }
     fun startQrLogin() {
@@ -1911,8 +1953,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
  * 时长未知（durationMs ≤ 0）时阈值按 240 秒算。
  */
 /** 本地模式判定（纯函数，单测覆盖）：两源全关 = 本地模式。 */
-internal fun isLocalMode(neteaseEnabled: Boolean, qqEnabled: Boolean): Boolean =
-    !neteaseEnabled && !qqEnabled
+internal fun isLocalMode(neteaseEnabled: Boolean, qqEnabled: Boolean, youtubeEnabled: Boolean = false): Boolean =
+    !neteaseEnabled && !qqEnabled && !youtubeEnabled
 
 /**
  * 关源播放门控（纯函数，单测覆盖）：歌的源被关闭（含两源全关的本地
@@ -1925,15 +1967,17 @@ internal fun songBlockedReason(
     neteaseEnabled: Boolean,
     qqEnabled: Boolean,
     locallyAvailable: Boolean,
+    youtubeEnabled: Boolean = false,
 ): String? {
     if (locallyAvailable) return null
     val disabled = when (song.source) {
         MusicSource.NETEASE -> !neteaseEnabled
         MusicSource.QQ -> !qqEnabled
+        MusicSource.YOUTUBEMUSIC -> !youtubeEnabled
         MusicSource.LOCAL -> false
     }
     if (!disabled) return null
-    return if (isLocalMode(neteaseEnabled, qqEnabled)) "本地模式暂不可用" else "源已关闭暂不可用"
+    return if (isLocalMode(neteaseEnabled, qqEnabled, youtubeEnabled)) "本地模式暂不可用" else "源已关闭暂不可用"
 }
 
 internal fun scrobbleReportSeconds(playedMs: Long, durationMs: Long, reported: Boolean, ended: Boolean): Int? {

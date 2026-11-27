@@ -47,6 +47,24 @@ object YrcParser {
         }
         return out.sortedBy { it.startMs }.mapIndexed { i, l -> l.copy(durationMs = if (i + 1 < out.size) out[i + 1].startMs - l.startMs else 4_000) }
     }
+
+    /**
+     * 无时间轴纯文本歌词（本轮 0124 第 19 项，YouTube Music 歌词专用）：
+     * 源端只给全文纯文本、没有任何时间信息。按 LRC 行级降级口径展示：
+     * 每行一个整词（无逐字时间、不编造逐字轴），行起始时刻按曲目时长
+     * 均分——只是行级推进的名义时刻，与 LRC 回退同级；时长未知时按
+     * 每行 4 秒的名义间隔。空行剔除。
+     */
+    fun parsePlainText(raw: String?, durationMs: Long): List<LyricLine> {
+        val texts = raw?.lineSequence()?.map { it.trim() }?.filter { it.isNotEmpty() }?.toList().orEmpty()
+        if (texts.isEmpty()) return emptyList()
+        val total = if (durationMs > 0) durationMs else texts.size * 4_000L
+        val step = maxOf(total / texts.size, 1L)
+        return texts.mapIndexed { i, text ->
+            val start = i * step
+            LyricLine(start, step, listOf(LyricWord(start, step, text)))
+        }
+    }
     private fun Long?.orZero() = this ?: 0L
     /** Index of the active line at [positionMs], or -1 before the first line. */
     fun activeLineIndex(lines: List<LyricLine>, positionMs: Long): Int = lines.indexOfLast { it.startMs <= positionMs }

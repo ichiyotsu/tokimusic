@@ -12,7 +12,7 @@ interface ApiSettings {
 }
 
 /** Persists the login cookie and the anonymous device id. (Swap SharedPreferences for EncryptedSharedPreferences before release.) */
-class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.QqSettings {
+class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.QqSettings, com.tokimusic.app.data.api.YtVisitorStore {
     private val prefs = context.getSharedPreferences("tokimusic_settings", Context.MODE_PRIVATE)
     override var cookie: String get() = prefs.getString("cookie", "") ?: ""
         set(v) { prefs.edit().putString("cookie", v).apply() }
@@ -211,6 +211,12 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putBoolean("netease_enabled", v).apply() }
     override var qqEnabled: Boolean get() = prefs.getBoolean("qq_enabled", false)
         set(v) { prefs.edit().putBoolean("qq_enabled", v).apply() }
+    /** YouTubeMusic 源开关（本轮 0124 第 19 项）：默认开，与网易云同口径。 */
+    var youtubeEnabled: Boolean get() = prefs.getBoolean("youtube_enabled", true)
+        set(v) { prefs.edit().putBoolean("youtube_enabled", v).apply() }
+    /** YouTube 匿名 visitorData 缓存（本轮 0124 第 19 项）：InnerTube 播放前置会话令牌，非登录凭据；过期由客户端刷新。 */
+    override var ytVisitorData: String get() = prefs.getString("yt_visitor_data", "") ?: ""
+        set(v) { prefs.edit().putString("yt_visitor_data", v).apply() }
     /** 上次播放队列（第六轮第二批第 2 项）：JSON 数组，元素 {id,name,artist,album,pic,duration,source,sourceId}；冷启动恢复队列不自动播放，MiniPlayer 显示最后一首。 */
     var lastQueueJson: String get() = prefs.getString("last_queue_json", "") ?: ""
         set(v) { prefs.edit().putString("last_queue_json", v).apply() }

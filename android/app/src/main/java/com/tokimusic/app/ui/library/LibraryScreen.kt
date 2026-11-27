@@ -148,6 +148,7 @@ fun LibraryScreen(
     val qqLibrary by vm.qqLibrary.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
+    val youtubeEnabled by vm.youtubeEnabled.collectAsState()
     val qqLoggedIn by vm.qqLoggedIn.collectAsState()
     val localStats by vm.localStats.collectAsState()
     // 0.1.13 第 23 项：按源开关解析实际显示的统计源；两源都开时
@@ -183,7 +184,7 @@ fun LibraryScreen(
     // AppViewModel.songBlockedLabel 与各分区函数的 blockedLabel）。
     // 0.1.20 第 9 项修的是「本地模式仍连接 QQ」——连接层已由 VM 的
     // 会话/加载门控收口，展示层不再靠隐藏兜底。
-    val localMode = !neteaseEnabled && !qqEnabled
+    val localMode = !neteaseEnabled && !qqEnabled && !youtubeEnabled
     // 0.1.20 第 4 项：分区标题追踪（与主页 HomeScreen 同款机制：标题
     // 上沿越过顶栏下沿即接管悬浮标题；hazeSource 的条件接法在
     // TokiMusicApp 侧，与主页共用同一套，不重蹈无条件接源的覆辙）。

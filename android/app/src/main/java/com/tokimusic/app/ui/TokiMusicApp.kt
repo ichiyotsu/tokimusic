@@ -303,6 +303,7 @@ fun TokiMusicApp(
         // 第六轮第 1 项：源启用开关（主页左上角下拉入口只在双源都启用时出现）。
         val neteaseEnabled by vm.neteaseEnabled.collectAsState()
         val qqEnabled by vm.qqEnabled.collectAsState()
+        val youtubeEnabled by vm.youtubeEnabled.collectAsState()
         val hazeState = rememberHazeState()
         // 加强档磨砂（第二轮第 1 项）：导航胶囊 + 悬浮标题共用。
         val barGlass = tokiContentChromeStrong(hazeState)
@@ -563,24 +564,35 @@ fun TokiMusicApp(
                                             }
                                         }
                                         // 0.1.20 第 11 项：搜索页顶栏右侧放源
-                                        // 选择器（双源都开时才出现；单源时搜索
-                                        // 自动钳制到该源，不需要选择器）。切换
-                                        // 按新源重跑最近一次查询。
-                                        dest == Dest.Search && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen && neteaseEnabled && qqEnabled -> {
+                                        // 选择器（≥2 个在线源开启时才出现；单源
+                                        // 时搜索自动钳制到该源，不需要选择器）。
+                                        // 切换按新源重跑最近一次查询。本轮
+                                        // （0124）第 19 项：扩到三源。
+                                        dest == Dest.Search && playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen && listOf(neteaseEnabled, qqEnabled, youtubeEnabled).count { it } >= 2 -> {
                                             {
                                                 val searchSource by vm.searchSource.collectAsState()
                                                 Row(
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
-                                                    com.tokimusic.app.ui.search.SearchSourceButton(
-                                                        MusicSource.NETEASE,
-                                                        searchSource == MusicSource.NETEASE,
-                                                    ) { vm.search(vm.lastSearchKeywords, MusicSource.NETEASE) }
-                                                    com.tokimusic.app.ui.search.SearchSourceButton(
-                                                        MusicSource.QQ,
-                                                        searchSource == MusicSource.QQ,
-                                                    ) { vm.search(vm.lastSearchKeywords, MusicSource.QQ) }
+                                                    if (neteaseEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.NETEASE,
+                                                            searchSource == MusicSource.NETEASE,
+                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.NETEASE) }
+                                                    }
+                                                    if (qqEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.QQ,
+                                                            searchSource == MusicSource.QQ,
+                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.QQ) }
+                                                    }
+                                                    if (youtubeEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.YOUTUBEMUSIC,
+                                                            searchSource == MusicSource.YOUTUBEMUSIC,
+                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.YOUTUBEMUSIC) }
+                                                    }
                                                 }
                                             }
                                         }

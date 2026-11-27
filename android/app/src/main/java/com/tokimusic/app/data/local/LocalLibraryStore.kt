@@ -121,6 +121,14 @@ class LocalLibraryStore(context: Context) {
                     }?.let { return it }
                 }
             }
+            MusicSource.YOUTUBEMUSIC -> {
+                // 本轮（0124）第 19 项：YT 与 QQ 同形——videoId 精确命中。
+                if (song.sourceId.isNotBlank()) {
+                    tracks.firstOrNull {
+                        it.originSource == "YOUTUBEMUSIC" && it.originId == song.sourceId
+                    }?.let { return it }
+                }
+            }
             MusicSource.LOCAL -> return null
         }
         val wantTitle = normalize(song.name)
@@ -178,6 +186,7 @@ internal fun isLocallyAvailable(song: Song, keys: Set<String>): Boolean {
     when (song.source) {
         MusicSource.NETEASE -> if ("id:NETEASE:${song.id}" in keys) return true
         MusicSource.QQ -> if (song.sourceId.isNotBlank() && "id:QQ:${song.sourceId}" in keys) return true
+        MusicSource.YOUTUBEMUSIC -> if (song.sourceId.isNotBlank() && "id:YOUTUBEMUSIC:${song.sourceId}" in keys) return true
         MusicSource.LOCAL -> return true
     }
     val title = normalizeKeyText(song.name)

@@ -286,12 +286,15 @@ fun resolveArtistTap(
  */
 val NeteaseBadgeBackground: Color = Color(0xFFFF5757)
 val QqBadgeBackground: Color = Color(0xFF879101)
+/** YouTube 品牌红（本轮 0124 第 19 项，用户口径 #FF0000）。 */
+val YtBadgeBackground: Color = Color(0xFFFF0000)
 val LocalBadgeBackground: Color = Color(0xFFA9A8D8)
 
 /** 来源的图标底色（纯函数，可单测）：网易云 / QQ 用上面的品牌底色，本地用固定色。 */
 fun sourceBadgeBackground(source: MusicSource): Color = when (source) {
     MusicSource.NETEASE -> NeteaseBadgeBackground
     MusicSource.QQ -> QqBadgeBackground
+    MusicSource.YOUTUBEMUSIC -> YtBadgeBackground
     MusicSource.LOCAL -> LocalBadgeBackground
 }
 
@@ -300,6 +303,7 @@ fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifi
     val iconRes = when (source) {
         MusicSource.NETEASE -> R.drawable.ic_source_netease
         MusicSource.QQ -> R.drawable.ic_source_qq
+        MusicSource.YOUTUBEMUSIC -> R.drawable.ic_source_youtube
         MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Box(
@@ -311,6 +315,7 @@ fun SourceBadge(source: MusicSource, size: Int = 20, modifier: Modifier = Modifi
             contentDescription = when (source) {
                 MusicSource.NETEASE -> "NeteaseMusic"
                 MusicSource.QQ -> "QQMusic"
+                MusicSource.YOUTUBEMUSIC -> "YouTubeMusic"
                 MusicSource.LOCAL -> "Device"
             },
             tint = Color.White,
@@ -329,6 +334,7 @@ fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifie
     val iconRes = when (source) {
         MusicSource.NETEASE -> R.drawable.ic_source_netease
         MusicSource.QQ -> R.drawable.ic_source_qq
+        MusicSource.YOUTUBEMUSIC -> R.drawable.ic_source_youtube
         MusicSource.LOCAL -> R.drawable.ic_local_music
     }
     Icon(
@@ -336,6 +342,7 @@ fun SourceIcon(source: MusicSource, size: Int = 20, modifier: Modifier = Modifie
         contentDescription = when (source) {
             MusicSource.NETEASE -> "NeteaseMusic"
             MusicSource.QQ -> "QQMusic"
+            MusicSource.YOUTUBEMUSIC -> "YouTubeMusic"
             MusicSource.LOCAL -> "Device"
         },
         // 默认品牌色（与徽标底色同色）；调用方可传 tint 覆盖——播放页

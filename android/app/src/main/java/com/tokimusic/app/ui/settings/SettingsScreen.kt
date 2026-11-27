@@ -321,6 +321,7 @@ fun SettingsSheet(
     val qqProfile by vm.qqProfile.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
     val qqEnabled by vm.qqEnabled.collectAsState()
+    val youtubeEnabled by vm.youtubeEnabled.collectAsState()
     // 0.1.13 第 4 项：QQ 是否登录只看凭证（见 AppViewModel.qqLoggedIn）。
     val qqLoggedIn by vm.qqLoggedIn.collectAsState()
     // 0.1.13 第 18 项：自定义头像 / 显示名 / ID。
@@ -464,7 +465,7 @@ fun SettingsSheet(
                 when (targetSub) {
                     null -> mainSections(
                         vm, theme, onTheme, profile, authState, qqProfile,
-                        neteaseEnabled, qqEnabled, qqLoggedIn,
+                        neteaseEnabled, qqEnabled, youtubeEnabled, qqLoggedIn,
                         customAvatarPath, customDisplayName, customUserId,
                         { showLogin = it },
                         { showQqLogin = it }, { sourceConfirm = it },
@@ -527,8 +528,9 @@ fun SettingsSheet(
                             is SourceConfirm.Logout -> when (confirm.source) {
                                 MusicSource.NETEASE -> vm.logout()
                                 MusicSource.QQ -> vm.qqLogout()
-                                // LOCAL has no login to log out of (no confirm dialog offers it).
+                                // LOCAL / YouTubeMusic have no login to log out of (no confirm dialog offers it).
                                 MusicSource.LOCAL -> Unit
+                                MusicSource.YOUTUBEMUSIC -> Unit
                             }
                         }
                         sourceConfirm = null
@@ -556,6 +558,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
     qqProfile: com.tokimusic.app.data.api.QqProfile?,
     neteaseEnabled: Boolean,
     qqEnabled: Boolean,
+    youtubeEnabled: Boolean,
     qqLoggedIn: Boolean,
     customAvatarPath: String,
     customDisplayName: String,
@@ -782,7 +785,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.QQ, it)) },
                 onLogout = { onRequestConfirm(SourceConfirm.Logout(MusicSource.QQ)) },
                 onLogin = { onShowQqLogin(true) },
-                // 0.1.15 第 21 项：两源行同组（末项）。
+                // 0.1.15 第 21 项：同组分段（本轮三源：QQ 改中项）。
+                position = SegmentPosition.Middle,
+            )
+            // 本轮（0124）第 19 项：YouTubeMusic 源行——无账号体系
+            // （无需登录、无退出），只有启用开关，默认开。
+            SourceRow(
+                name = "YouTubeMusic",
+                iconRes = R.drawable.ic_source_youtube,
+                iconTint = com.tokimusic.app.ui.components.YtBadgeBackground,
+                accountText = "无需登录",
+                loggedIn = false,
+                enabled = youtubeEnabled,
+                onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.YOUTUBEMUSIC, it)) },
+                onLogout = {},
+                onLogin = {},
+                requiresLogin = false,
                 position = SegmentPosition.Last,
             )
         }
@@ -1698,8 +1716,11 @@ private fun SourceRow(
     onToggle: (Boolean) -> Unit,
     onLogout: () -> Unit,
     onLogin: () -> Unit,
-    // 0.1.15 第 21 项：两源行同组分段圆角（NeteaseMusic 首项、QQMusic 末项）。
+    // 0.1.15 第 21 项：源行同组分段圆角（NeteaseMusic 首项、QQMusic 中项、YouTubeMusic 末项）。
     position: SegmentPosition = SegmentPosition.Single,
+    // 本轮（0124）第 19 项：无账号的源（YouTubeMusic）为 false——不显示
+    // 登录/退出，开关恒可用，账号行文案由调用方给（如「无需登录」）。
+    requiresLogin: Boolean = true,
 ) {
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -1725,7 +1746,7 @@ private fun SourceRow(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            if (loggedIn) {
+            if (loggedIn && requiresLogin) {
                 // 0.1.21：退出改图标钮（登出语义图标，无障碍标签保留
                 // 「退出登录」），并与开关左右对调——退出在左、开关在
                 // 最右。退出仍走 SourceConfirmDialog 二次确认。
@@ -1733,8 +1754,8 @@ private fun SourceRow(
                     Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = "退出登录", tint = TokiLogoutRed)
                 }
             }
-            Switch(checked = enabled, onCheckedChange = onToggle, enabled = loggedIn)
-            if (!loggedIn) {
+            Switch(checked = enabled, onCheckedChange = onToggle, enabled = !requiresLogin || loggedIn)
+            if (!loggedIn && requiresLogin) {
                 TextButton(onClick = onLogin) { Text("登录") }
             }
         }
@@ -1746,9 +1767,14 @@ private fun SourceRow(
 private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     // 0.1.13 第 18 项：源名改名（网易云音乐 → NeteaseMusic、
     // QQ音乐 → QQMusic）。
-    val sourceName = when (confirm) {
-        is SourceConfirm.Toggle -> if (confirm.source == MusicSource.NETEASE) "NeteaseMusic" else "QQMusic"
-        is SourceConfirm.Logout -> if (confirm.source == MusicSource.NETEASE) "NeteaseMusic" else "QQMusic"
+    val sourceName = when (val s = when (confirm) {
+        is SourceConfirm.Toggle -> confirm.source
+        is SourceConfirm.Logout -> confirm.source
+    }) {
+        MusicSource.NETEASE -> "NeteaseMusic"
+        MusicSource.QQ -> "QQMusic"
+        MusicSource.YOUTUBEMUSIC -> "YouTubeMusic"
+        MusicSource.LOCAL -> "Device"
     }
     val (title, text, isLogout) = when (confirm) {
         is SourceConfirm.Toggle -> if (confirm.enable) {

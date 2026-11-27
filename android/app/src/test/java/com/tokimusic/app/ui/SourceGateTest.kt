@@ -53,4 +53,21 @@ class SourceGateTest {
         assertNull(songBlockedReason(song(MusicSource.QQ), true, true, locallyAvailable = false))
         assertNull(songBlockedReason(song(MusicSource.NETEASE), true, true, locallyAvailable = false))
     }
+
+    @Test
+    fun youtubeMusicGate() {
+        // 本轮（0124）第 19 项：YT 是第三在线源——三源全关才是本地模式；
+        // YT 单独关闭时其歌曲按「源已关闭」挡，开启时不挡。
+        assertTrue(isLocalMode(neteaseEnabled = false, qqEnabled = false, youtubeEnabled = false))
+        assertFalse(isLocalMode(neteaseEnabled = false, qqEnabled = false, youtubeEnabled = true))
+        assertEquals(
+            "源已关闭暂不可用",
+            songBlockedReason(song(MusicSource.YOUTUBEMUSIC), true, true, false, youtubeEnabled = false),
+        )
+        assertEquals(
+            "本地模式暂不可用",
+            songBlockedReason(song(MusicSource.YOUTUBEMUSIC), false, false, false, youtubeEnabled = false),
+        )
+        assertNull(songBlockedReason(song(MusicSource.YOUTUBEMUSIC), false, false, false, youtubeEnabled = true))
+    }
 }

@@ -1,6 +1,6 @@
 package com.tokimusic.app.data.model
 /** Music source (sixth round, item 19/20 + QQ playback + local player): the two login sources, plus LOCAL (device files, no network). */
-enum class MusicSource { NETEASE, QQ, LOCAL }
+enum class MusicSource { NETEASE, QQ, YOUTUBEMUSIC, LOCAL }
 
 /** Stable 64-bit id for a QQ song: QQ songmids are strings, but the app keys songs by Long id (queue, mediaId, url cache). FNV-1a 64 over "qq:$songmid" — deterministic across restarts, collision odds negligible; QQ songs never go through NetEase id-based APIs, so a synthetic id is safe. */
 fun qqSongId(songmid: String): Long {
@@ -8,6 +8,16 @@ fun qqSongId(songmid: String): Long {
     for (b in "qq:$songmid".toByteArray(Charsets.UTF_8)) {
         h = h xor (b.toLong() and 0xFF)
         h *= 1099511628211L // FNV-1a 64 prime
+    }
+    return h
+}
+
+/** YouTube Music 歌曲的稳定合成 id（本轮 0124 第 19 项）：与 [qqSongId] 同族 FNV-1a 64，前缀 "yt:" 隔离命名空间；videoId 本身存 Song.sourceId。 */
+fun ytSongId(videoId: String): Long {
+    var h = -3750763034362895579L
+    for (b in "yt:$videoId".toByteArray(Charsets.UTF_8)) {
+        h = h xor (b.toLong() and 0xFF)
+        h *= 1099511628211L
     }
     return h
 }
