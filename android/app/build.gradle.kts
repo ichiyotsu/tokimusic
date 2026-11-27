@@ -52,8 +52,8 @@ android {
         // TokiUI Android target is Android 16+ (minSdk 36), same as TokiStudio.
         minSdk = 36
         targetSdk = 36
-        versionCode = 24
-        versionName = "0.2.0-beta1"
+        versionCode = 25
+        versionName = "0.1.23"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 本轮（0124）第 18 项：Google 登录用的 Web OAuth 客户端 ID，
         // 唯一配置点——gradle 属性 TOKIMUSIC_GOOGLE_WEB_CLIENT_ID 或
