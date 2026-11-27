@@ -486,6 +486,11 @@ fun defaultCustomId(firstLoginMs: Long, uid: Long, zone: java.time.ZoneId = java
  * 本身真机验。
  * 0.1.18 第 11 项：[top] / [bottom] 可单独开关上下淡出（默认全开，
  * 与之前一致）——队列页停在顶部时关掉顶部淡出，第一行不无故变淡。
+ * 本轮（0127）第 14 条：水平方向补 [left] / [right] 同款开关（默认
+ * 全开）——关键前提是本修饰符必须挂在「显示区域」容器上：渐变按
+ * draw 作用域的 size（容器宽）锚定，才是区域遮罩；挂在被跑马灯按
+ * 全文宽测量的文本上，size 是全文宽，淡边会锚在字形两端（旧歌名
+ * 实现的 bug）。
  */
 fun Modifier.fadingEdges(
     horizontal: Boolean = false,
@@ -493,6 +498,11 @@ fun Modifier.fadingEdges(
     edge: Dp = 32.dp,
     top: Boolean = true,
     bottom: Boolean = true,
+    // 本轮（0127）第 14 条：水平方向同样可单独开关左右（默认全开，与
+    // 之前一致）——歌名跑马灯的区域遮罩按滚动位置决定：未滚时只淡
+    // 右缘、滚过后左缘也淡、滚到尾右缘不再淡。
+    left: Boolean = true,
+    right: Boolean = true,
 ): Modifier = this.drawWithContent {
     drawIntoCanvas { canvas ->
         canvas.saveLayer(Rect(Offset.Zero, size), Paint())
@@ -517,14 +527,22 @@ fun Modifier.fadingEdges(
                 blendMode = BlendMode.DstIn,
             )
         }
-        if (horizontal && e > 0f && size.width > 2 * e) {
+        if (horizontal && e > 0f && (left || right) && size.width > (if (left) e else 0f) + (if (right) e else 0f)) {
+            val stops = ArrayList<Pair<Float, Color>>(4)
+            if (left) {
+                stops.add(0f to Color.Transparent)
+                stops.add(e / size.width to Color.Black)
+            } else {
+                stops.add(0f to Color.Black)
+            }
+            if (right) {
+                stops.add((size.width - e) / size.width to Color.Black)
+                stops.add(1f to Color.Transparent)
+            } else {
+                stops.add(1f to Color.Black)
+            }
             drawRect(
-                brush = Brush.horizontalGradient(
-                    0f to Color.Transparent,
-                    e / size.width to Color.Black,
-                    (size.width - e) / size.width to Color.Black,
-                    1f to Color.Transparent,
-                ),
+                brush = Brush.horizontalGradient(*stops.toTypedArray()),
                 blendMode = BlendMode.DstIn,
             )
         }

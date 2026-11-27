@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -32,6 +34,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -93,6 +96,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -105,6 +109,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -115,6 +120,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.MusicSource
@@ -732,41 +738,95 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
     )
 }
 
+/**
+ * 本轮（0127）第 14 条：歌名跑马灯的左右淡边决策（纯函数，JVM 单测
+ * 覆盖）——淡出是「显示区域」的遮罩，按滚动偏移决定：
+ * - 不溢出（或无可滚距离）：左右都不淡，纯文本；
+ * - 溢出且未滚动（offset = 0）：只淡右缘（内容还在右方）；
+ * - 滚过一段（0 < offset < max）：左右都淡；
+ * - 滚到尾（offset = max，尾字贴齐右缘）：只淡左缘。
+ * 返回 (left, right)。
+ */
+internal fun marqueeEdgeFades(overflow: Boolean, offsetPx: Float, maxOffsetPx: Float): Pair<Boolean, Boolean> {
+    if (!overflow || maxOffsetPx <= 0f) return false to false
+    return (offsetPx > 0f) to (offsetPx < maxOffsetPx)
+}
+
 // 第五轮第 20(b) 项：歌名 / 歌手过长自动轮播——歌名快（60.dp/s）、
 // 歌手慢（30.dp/s，用户确认），初次延迟 1s、每轮间隔 3s；短文本不溢出
 // 时自动静止；只改 SongTitleBlock（封面视图与歌词迷你条同时生效；
 // MoreSheet 的标题行不动）。
+// 本轮（0127）第 14 条：歌名的淡入淡出改「区域遮罩」——旧实现把
+// fadingEdges 挂在 basicMarquee 之后的文本上，渐变按全文宽锚定，
+// 首/尾字本身被淡掉（用户报的 bug）。basicMarquee 不暴露滚动偏移，
+// 遮罩的左右开关无从决定，故歌名改自维护 Animatable 偏移（时序与
+// basicMarquee 完全一致：延迟 1s、60dp/s 匀速、停 3s、跳回循环），
+// fadingEdges 挂在容器 Box 上（size = 区域宽），偏移经
+// marqueeEdgeFades 决定左右淡边；不溢出时不挂遮罩、纯文本。
+// 歌手行不带淡边，保持 basicMarquee 原样。
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor: Color = Color.White, dimColor: Color = Color.White.copy(alpha = 0.7f), onOpenArtist: ((Long) -> Unit)? = null) {
-    // 0.1.14 第 10 条：边缘淡入淡出只在歌名真正溢出时加——之前无条件
-    // 加，3 个字的短歌名（“我可以”）两端也被 24dp 渐隐吃掉，还叠加
-    // fadingEdges 的黑块，看着突兀。basicMarquee 把文本按全宽量，
-    // onTextLayout 的 size.width 就是歌名实宽，与容器实宽（外层
-    // onSizeChanged）比，实宽更大才溢出；fadingEdges 本身不改布局，
-    // 开关切换不会引起重排循环。
     var titleTextWidthPx by remember { mutableIntStateOf(0) }
     var titleBoxWidthPx by remember { mutableIntStateOf(0) }
     val titleOverflow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
+    val maxOffsetPx = (titleTextWidthPx - titleBoxWidthPx).coerceAtLeast(0)
     // 0.1.20 第 1 项：标题恒显示歌名——0.1.18 第 16 项的「实时歌词替换
     // 歌名」已按用户要求撤掉（歌词进系统通知是另一个已搁置的想法，
     // 本轮不做；通知侧的实时歌词开关 0.1.17 第 12 项保持原样）。
     val titleText = song.name
+    val titleScroll = remember { Animatable(0f) }
+    val density = LocalDensity.current
+    LaunchedEffect(titleText, titleOverflow, maxOffsetPx) {
+        titleScroll.snapTo(0f)
+        if (!titleOverflow || maxOffsetPx == 0) return@LaunchedEffect
+        val velocityPxPerSec = with(density) { 60.dp.toPx() }
+        while (true) {
+            delay(1000)
+            val durationMs = (maxOffsetPx / velocityPxPerSec * 1000).toInt().coerceAtLeast(1)
+            titleScroll.animateTo(maxOffsetPx.toFloat(), tween(durationMillis = durationMs, easing = LinearEasing))
+            delay(3000)
+            titleScroll.snapTo(0f)
+        }
+    }
+    // 淡边开关只在跨越 0 / max 边界时变化——derivedStateOf 保证滚动
+    // 动画期间不逐帧重组（偏移本身经 offset lambda 在布局期读取）。
+    // 注意 lambda 内必须直接读原始状态（titleTextWidthPx 等），捕获
+    // 组合期算出的 titleOverflow val 会冻在首次值上。
+    val titleFades by remember {
+        derivedStateOf {
+            val overflowNow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
+            val maxOffsetNow = (titleTextWidthPx - titleBoxWidthPx).coerceAtLeast(0)
+            marqueeEdgeFades(overflowNow, titleScroll.value, maxOffsetNow.toFloat())
+        }
+    }
     Column(modifier) {
-        Text(
-            titleText,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            onTextLayout = { titleTextWidthPx = it.size.width },
-            // 0.1.13 第 16 项：歌名过长时左右边缘淡入淡出（轮播滚动到
-            // 边缘时不硬切）。0.1.14 第 10 条：只在溢出时加。
-            modifier = Modifier.onSizeChanged { titleBoxWidthPx = it.width }
-                .basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 3000, initialDelayMillis = 1000, velocity = 60.dp)
-                .then(if (titleOverflow) Modifier.fadingEdges(horizontal = true, edge = 24.dp) else Modifier),
-        )
+        Box(
+            Modifier.fillMaxWidth()
+                .onSizeChanged { titleBoxWidthPx = it.width }
+                .then(
+                    if (titleOverflow) {
+                        Modifier.fadingEdges(horizontal = true, edge = 24.dp, left = titleFades.first, right = titleFades.second)
+                    } else {
+                        Modifier
+                    },
+                )
+                .clipToBounds(),
+        ) {
+            Text(
+                titleText,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                onTextLayout = { titleTextWidthPx = it.size.width },
+                modifier = Modifier
+                    .wrapContentWidth(align = Alignment.Start, unbounded = true)
+                    .offset { IntOffset(-titleScroll.value.roundToInt(), 0) },
+            )
+        }
         // 第六轮第 36 项：歌手行可点进歌手页（多歌手时进第一个；点按进页、
         // 轮播滚动不触发——basicMarquee 只是视觉滚动，不接手势）。不传
         // onOpenArtist 时是普通文本。
