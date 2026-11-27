@@ -128,7 +128,6 @@ import com.tokimusic.app.player.FLOATING_LYRICS_MIN_TEXT_SP
 import com.tokimusic.app.player.clampFloatingHorizontalFraction
 import com.tokimusic.app.player.clampFloatingTextSizeSp
 import com.tokimusic.app.player.clampFloatingTopFraction
-import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.data.model.MusicSource
@@ -160,7 +159,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("个性化"), Audio("音频"), Lyrics("歌词"), Achievements("成就"), Account("Toki 账号") }
+// 本轮（0127）第 6 条：「个性化」改名「设计」、「Toki 账号」改名「账号」
+// （枚举名保持 Personalize / Account 不动，只改显示名；账号带 beta 徽章，
+// 见一级页入口行与二级页标题行的 BetaBadge）。
+private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("设计"), Audio("音频"), Lyrics("歌词"), Achievements("成就"), Account("账号") }
 
 /**
  * 0.1.13 第 19 项：sheet 顶边 + 两侧描边（1dp，28dp 顶圆角），不要底边——
@@ -316,7 +318,6 @@ fun SettingsSheet(
     BackHandler(enabled = sub != null) { sub = null }
     val profile by vm.profile.collectAsState()
     val authState by vm.authState.collectAsState()
-    val health by vm.health.collectAsState()
     // 第六轮第 1/19 项：QQ 登录态与源启用开关（供 logo 行与确认弹窗用）。
     val qqProfile by vm.qqProfile.collectAsState()
     val neteaseEnabled by vm.neteaseEnabled.collectAsState()
@@ -410,6 +411,11 @@ fun SettingsSheet(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // 本轮（0127）第 6 条：「账号」二级页标题后带 beta 小徽章
+                // （与音乐等级徽章同款，见 BetaBadge）。
+                if (sub == SettingsSub.Account) {
+                    BetaBadge(Modifier.padding(start = 8.dp))
+                }
                 Box(
                     Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainer)
@@ -471,7 +477,7 @@ fun SettingsSheet(
                         { showQqLogin = it }, { sourceConfirm = it },
                         shownGroups,
                     ) { sub = it }
-                    SettingsSub.General -> generalSection(vm, health)
+                    SettingsSub.General -> generalSection(vm)
                     SettingsSub.Storage -> storageSection(vm)
                     SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
                     SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
@@ -834,7 +840,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             SubRow("通用", onClick = { onOpenSub(SettingsSub.General) }, position = SegmentPosition.First)
             // 0.1.21 追加：存储入口（通用下方）——占用总览/缓存清理/三桶占用。
             SubRow("存储", onClick = { onOpenSub(SettingsSub.Storage) }, position = SegmentPosition.Middle)
-            SubRow("个性化", onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
+            SubRow("设计", onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
             SubRow("音频", onClick = { onOpenSub(SettingsSub.Audio) }, position = SegmentPosition.Middle)
             SubRow("歌词", onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
             // 0.1.13 第 12 项：成就页入口（加入天数搬进成就页）。
@@ -842,7 +848,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             // 本轮（0124）第 18 项：「Toki 账号」二级页（Google 绑定 +
             // Drive 同步）——替换 0.1.21 的「管理你的 Toki 账号」占位
             // 入口（原为只弹提示的假入口）。
-            SubRow("Toki 账号", onClick = { onOpenSub(SettingsSub.Account) }, position = SegmentPosition.Last)
+            // 本轮（0127）第 6 条：改名「账号」，行内标题后带 beta 徽章。
+            SubRow("账号", onClick = { onOpenSub(SettingsSub.Account) }, position = SegmentPosition.Last, badge = "beta")
         }
     }
 }
@@ -857,6 +864,9 @@ private fun SubRow(
     title: String,
     onClick: () -> Unit,
     position: SegmentPosition = SegmentPosition.Single,
+    // 本轮（0127）第 6 条：标题后的小徽章（如「账号」的 "beta"），
+    // 非空时在标题正后方渲染；样式与音乐等级徽章同款（见 BetaBadge）。
+    badge: String? = null,
 ) {
     Card(
         onClick = onClick,
@@ -868,9 +878,33 @@ private fun SubRow(
             Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 24.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (badge != null) {
+                BetaBadge(Modifier.padding(start = 8.dp))
+            }
+            Spacer(Modifier.weight(1f))
             Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * 本轮（0127）第 6 条：beta 小徽章——与音乐等级徽章（资料库等级块 /
+ * 悬浮标题栏 titleBadge）同款：surfaceContainerHigh 底、6dp 圆角、
+ * labelSmall、onSurfaceVariant 字。
+ */
+@Composable
+private fun BetaBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier.clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            "beta",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1059,28 +1093,15 @@ suspend fun saveProfileAvatar(context: Context, uri: Uri): String? = withContext
     }.getOrNull()
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: AppViewModel, health: ApiHealth?) {
+private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: AppViewModel) {
     // 0.1.17 第 7 项：通用页备注文本全部移到栏外（音频页范式：卡片外
     // 单独 item 的 bodySmall 说明行）；每行开关一张 Single 卡 + 一条
-    // 栏外备注，不再把说明塞进卡片里。直连网易云的副标题也是备注，
-    // 同样移出栏外。
-    item {
-        SettingsSubCard {
-            SettingsRow(
-                "直连 NeteaseMusic",
-                trailing = { OutlinedButton(onClick = { vm.testConnection() }, Modifier.height(56.dp)) { Text("测试连接") } },
-                horizontalPadding = 0.dp,
-            )
-        }
-    }
-    item {
-        Text(
-            "无需自建 API 服务，打开就能用。",
-            Modifier.padding(horizontal = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    // 栏外备注，不再把说明塞进卡片里。
+    // 本轮（0127）第 8 条：「直连 NeteaseMusic」整行删除——它是从
+    // 自建服务时代留下的连通性自测（测试连接按钮 + apiHealth 探针 +
+    // 已连通/连不上状态行）；Android 自原生直连后没有服务端可选，
+    // 探针与 VM 的 testConnection / health 流、NeteaseApi.apiHealth
+    // 与 ApiHealth 类型一并删除（见 NOTES 第 8 条）。
     // 实时通知开关（默认开）：控制系统媒体通知的展示。播放器现走 MediaSession
     // 接口适配——播放时系统在通知栏 / 锁屏 / 快捷设置显示标准媒体播放器；
     // 不再另发 Progress 通知冒充 Live Update（Android 16 上 MediaStyle
@@ -1105,27 +1126,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    // 0.1.17 第 12 项：实时歌词开关（默认关），在实时通知下方。
-    item {
-        var liveLyrics by remember { mutableStateOf(vm.store.liveLyricsEnabled) }
-        SettingsSubCard {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("实时歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = liveLyrics,
-                    onCheckedChange = { liveLyrics = it; vm.store.liveLyricsEnabled = it },
-                )
-            }
-        }
-    }
-    item {
-        Text(
-            "开启后，播放时通知标题实时显示当前唱到的歌词行；没有歌词时显示歌名。需要先开启实时通知。",
-            Modifier.padding(horizontal = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    // 本轮（0127）第 7 条：实时歌词开关已移到设置 > 歌词（见
+    // lyricsSection），通用页不再有这一行；偏好 key 不变。
     // 0.1.17 第 13 项：听歌记录上报开关（默认开，用户 2026-11-25 定）。
     item {
         var scrobble by remember { mutableStateOf(vm.store.scrobbleEnabled) }
@@ -1185,25 +1187,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    // 0.1.16 第 2 条：健康状态为空时不发 item——之前空 item 仍占
-    // spacedBy，两组之间只剩 8dp；现在没状态就是 12dp 组间距。
-    if (health != null) item {
-        when (val h = health) {
-            is ApiHealth.Connected -> Text(
-                if (h.loggedIn) "已连通 NeteaseMusic，已登录为 ${h.nickname ?: "NeteaseMusic 账号"}" else "已连通 NeteaseMusic，尚未登录",
-                Modifier.padding(horizontal = 4.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            is ApiHealth.Unreachable -> Text(
-                "连不上 NeteaseMusic：${h.reason}",
-                Modifier.padding(horizontal = 4.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-            null -> {}
-        }
-    }
+    // 本轮（0127）第 8 条：原健康状态行（已连通/连不上）随直连自测
+    // 一并删除，health 流已不存在。
     // 0.1.17 第 7 项：启动时检查更新的说明移到栏外（音频页范式），
     // 卡片只留开关行；检查更新 / 关于 / 导出崩溃日志三行是状态类
     // 副标题（当前版本 / 已有 N 份记录），留在行内。
@@ -1493,6 +1478,30 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
                 }
             }
         }
+    }
+    // 本轮（0127）第 7 条：实时歌词开关（0.1.17 第 12 项，默认关）从
+    // 设置 > 通用移入歌词页；偏好 key（live_lyrics_enabled）与行为
+    // 不变，只是位置搬家。开关一张 Single 卡 + 一条栏外备注，与
+    // 通用页原来的排版同款。
+    item {
+        var liveLyrics by remember { mutableStateOf(vm.store.liveLyricsEnabled) }
+        SettingsSubCard {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("实时歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = liveLyrics,
+                    onCheckedChange = { liveLyrics = it; vm.store.liveLyricsEnabled = it },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            "开启后，播放时通知标题实时显示当前唱到的歌词行；没有歌词时显示歌名。需要先开启实时通知。",
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     // 0.1.21 追加：悬浮歌词——开关与全部设置（颜色/大小/位置）都在歌词页。
     item {

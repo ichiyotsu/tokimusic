@@ -45,6 +45,18 @@ fun floatingLyricsTopPx(fraction: Float, screenHeightPx: Int): Int =
 fun clampFloatingHorizontalFraction(v: Float): Float =
     v.coerceIn(-FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION, FLOATING_LYRICS_MAX_HORIZONTAL_FRACTION)
 
+/**
+ * 悬浮窗的宽度模式（本轮 0127 第 13 条，JVM 单测覆盖）：必须
+ * WRAP_CONTENT。根因：之前窗口宽 MATCH_PARENT——窗口被拉满整个
+ * 屏宽，WindowManager 对满宽窗口忽略 LayoutParams.x，文字又在
+ * TextView 里居中，所以水平比例怎么改都纹丝不动（竖向 y 不受影响，
+ * 因为高度是 WRAP_CONTENT）。改成 WRAP_CONTENT 后窗口只包住文字，
+ * 以 CENTER_HORIZONTAL 为原点、x 偏移才真正生效，与设置预览的
+ * 几何（中心为原点、比例 × 屏宽 / 2）一致；文字最大宽由
+ * TextView.maxWidth 钳在屏宽，长句仍省略号截断、不撑出屏幕。
+ */
+const val FLOATING_LYRICS_WINDOW_WIDTH: Int = WindowManager.LayoutParams.WRAP_CONTENT
+
 /** 水平比例 → 窗口 x 偏移像素（纯函数，JVM 单测覆盖）：窗口以居中为原点，偏移 = 钳制后的比例 × 屏宽 / 2。 */
 fun floatingLyricsXOffsetPx(fraction: Float, screenWidthPx: Int): Int =
     (clampFloatingHorizontalFraction(fraction) * screenWidthPx.coerceAtLeast(0) / 2f).toInt()
@@ -63,6 +75,10 @@ fun floatingLyricsXOffsetPx(fraction: Float, screenWidthPx: Int): Int =
  * - 开关关、权限被撤、无当前歌曲、无当前行，任一成立即 removeView，
  *   不留后台残留。颜色/大小/位置只从 SettingsStore 读，只能在
  *   设置 > 歌词里调，本体没有任何交互入口。
+ * - 本轮（0127）第 13 条：水平位置此前完全无效——窗口宽
+ *   MATCH_PARENT 时 LayoutParams.x 被忽略（见
+ *   FLOATING_LYRICS_WINDOW_WIDTH）；改 WRAP_CONTENT 后水平与
+ *   竖向走同一套机制（设置预览拖动 → 比例落盘 → 窗口参数生效）。
  * - 承载：Application 级（TokiMusicApplication 创建并 start），不依赖
  *   Activity 存活；播放服务在跑、AppViewModel 还在推行时才有内容。
  */
@@ -82,6 +98,7 @@ class FloatingLyricsController(
     private var appliedSizeSp: Float? = null
     private var appliedTopPx: Int? = null
     private var appliedXPx: Int? = null
+    private var appliedMaxWidthPx: Int? = null
 
     fun start() {
         scope.launch {
@@ -116,6 +133,13 @@ class FloatingLyricsController(
             appContext.resources.displayMetrics.widthPixels,
         )
         val tv = textView ?: createView().also { textView = it }
+        // 本轮（0127）第 13 条：WRAP_CONTENT 窗口下文字最大宽钳在
+        // 当前屏宽（旋转后跟着更新），长句在屏内截断。
+        val screenWidthPx = appContext.resources.displayMetrics.widthPixels
+        if (appliedMaxWidthPx != screenWidthPx) {
+            tv.maxWidth = screenWidthPx
+            appliedMaxWidthPx = screenWidthPx
+        }
         if (shownText != line) {
             tv.text = line
             shownText = line
@@ -151,6 +175,7 @@ class FloatingLyricsController(
                 appliedSizeSp = null
                 appliedTopPx = null
                 appliedXPx = null
+                appliedMaxWidthPx = null
             }
         } else if (layoutDirty) {
             runCatching { windowManager.updateViewLayout(tv, p) }
@@ -167,6 +192,7 @@ class FloatingLyricsController(
         appliedSizeSp = null
         appliedTopPx = null
         appliedXPx = null
+        appliedMaxWidthPx = null
     }
 
     private fun createView(): TextView {
@@ -180,7 +206,10 @@ class FloatingLyricsController(
             setBackgroundColor(0) // 无背景：只有文字本身
         }
         params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            // 本轮（0127）第 13 条：宽 WRAP_CONTENT（见
+            // FLOATING_LYRICS_WINDOW_WIDTH 的根因注释）——MATCH_PARENT
+            // 时 x 偏移被忽略，水平位置永远居中。
+            FLOATING_LYRICS_WINDOW_WIDTH,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or

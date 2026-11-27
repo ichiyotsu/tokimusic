@@ -6,7 +6,6 @@ import com.tokimusic.app.BuildConfig
 import com.tokimusic.app.TokiMusicApplication
 import com.tokimusic.app.data.api.ApiErrorKind
 import com.tokimusic.app.data.api.ApiException
-import com.tokimusic.app.data.api.ApiHealth
 import com.tokimusic.app.data.api.LyricPayload
 import com.tokimusic.app.data.api.QqClient
 import com.tokimusic.app.data.api.QqClient.QqArtist
@@ -1101,7 +1100,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 本轮（0124）第 15/15b 项：等级快照（资料库等级块与等级详情页共用）。 */
     fun musicLevelSnapshot(): com.tokimusic.app.player.MusicLevelSnapshot =
         player.levelStore.snapshot(System.currentTimeMillis())
-    private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
+    // 本轮（0127）第 8 条：health 流随「直连 NeteaseMusic」自测一并删除。
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
     /** Sixth round, batch 2: UI-triggered user messages (e.g. "QQ 歌手详情暂不支持"). */
@@ -2097,7 +2096,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.qqEnabled = false; _qqEnabled.value = false
         refreshHome()
     }
-    fun testConnection() = viewModelScope.launch { _health.value = api.apiHealth() }
     fun logout() {
         api.clearSession(); _profile.value = null; _authState.value = AuthState.LoggedOut
         _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); _subscribedPlaylistIds.value = emptySet(); viewModelScope.launch { loadHome() }

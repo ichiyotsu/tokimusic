@@ -50,6 +50,14 @@ class FloatingLyricsTest {
     }
 
     @Test
+    fun windowWidthIsWrapContentSoXOffsetApplies() {
+        // 本轮（0127）第 13 条回归：窗口宽必须是 WRAP_CONTENT（-2），
+        // MATCH_PARENT（-1）时 WindowManager 忽略 LayoutParams.x，
+        // 水平位置永远居中（用户报「无法左右拖动」的根因）。
+        assertEquals(-2, FLOATING_LYRICS_WINDOW_WIDTH)
+    }
+
+    @Test
     fun xOffsetScalesWithScreenWidthAndClamps() {
         // 居中为原点：偏移 = 比例 × 屏宽 / 2
         assertEquals(0, floatingLyricsXOffsetPx(0f, 1000))

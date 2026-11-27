@@ -532,11 +532,4 @@ class NeteaseClientTest {
         assertEquals(1, server.requestCount)
         assertEquals("/eapi/song/lyric/v1", server.takeRequest().path)
     }
-
-    @Test
-    fun apiHealthReportsNotLoggedInWhenServiceIsUp() = runBlocking {
-        server.enqueue(json("""{"code":301}"""))
-        val health = client.apiHealth()
-        assertEquals(ApiHealth.Connected(false, null), health)
-    }
 }

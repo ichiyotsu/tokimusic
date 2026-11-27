@@ -9,7 +9,6 @@ interface NeteaseApi {
     suspend fun qrCheck(key: String): QrCheck         // /login/qr/check 800/801/802/803
     suspend fun loginStatus(): UserProfile?           // /login/status (authority) + /user/account; throws ApiException(NotLoggedIn) when expired, Unreachable when offline
     suspend fun refreshLogin()                        // /login/refresh — best effort, failures ignored
-    suspend fun apiHealth(): ApiHealth                // connectivity probe for the setup guide
     fun clearSession()                                // forget the login cookie AND the in-memory session cookies (logout / expiry)
     suspend fun banners(): List<BannerItem>           // /banner
     suspend fun personalized(limit: Int = 12): List<Playlist>   // /personalized

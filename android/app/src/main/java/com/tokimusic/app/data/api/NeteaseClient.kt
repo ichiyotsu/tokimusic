@@ -29,12 +29,6 @@ data class SongUrlResult(val url: String?, val fee: Int = 0, val freeTrialEndSec
     val isTrial: Boolean get() = freeTrialEndSec > 0
 }
 
-/** Connectivity probe result, for the setup guide and test button. */
-sealed interface ApiHealth {
-    data class Unreachable(val reason: String) : ApiHealth
-    data class Connected(val loggedIn: Boolean, val nickname: String? = null) : ApiHealth
-}
-
 /** Direct-connection hosts; tests point both at a MockWebServer. */
 data class NeteaseHosts(
     val music: String = "https://music.163.com",
@@ -404,24 +398,6 @@ class NeteaseClient(
 
     override suspend fun refreshLogin() {
         runCatching { post("/api/login/token/refresh", obj(), Crypto.EAPI) }
-    }
-
-    override suspend fun apiHealth(): ApiHealth {
-        return try {
-            val status = post("/api/w/nuser/account/get", obj(), Crypto.WEAPI).body
-            val loggedIn = status.optInt("code") == 200
-            val nickname = if (loggedIn) runCatching {
-                post("/api/nuser/account/get", obj(), Crypto.WEAPI).body.optJSONObject("profile")?.optString("nickname")
-            }.getOrNull() else null
-            ApiHealth.Connected(loggedIn, nickname?.ifBlank { null })
-        } catch (e: ApiException) {
-            when (e.kind) {
-                ApiErrorKind.NotLoggedIn -> ApiHealth.Connected(false, null)
-                else -> ApiHealth.Unreachable(apiErrorText(e))
-            }
-        } catch (e: Exception) {
-            ApiHealth.Unreachable(e.message ?: "未知错误")
-        }
     }
 
     override suspend fun banners(): List<BannerItem> =
