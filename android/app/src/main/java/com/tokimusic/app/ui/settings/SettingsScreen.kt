@@ -75,7 +75,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -83,7 +82,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -131,8 +129,11 @@ import com.tokimusic.app.player.clampFloatingTopFraction
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.data.model.MusicSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.tokimusic.app.ui.components.Avatar
+import com.tokimusic.app.ui.components.OverlayTitleHeader
 import com.tokimusic.app.ui.components.TokiDialog
+import com.tokimusic.app.ui.components.TokiGlassIconButton
 import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
@@ -164,25 +165,6 @@ import java.io.File
 // 见一级页入口行与二级页标题行的 BetaBadge）。
 private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("设计"), Audio("音频"), Lyrics("歌词"), Achievements("成就"), Account("账号") }
 
-/**
- * 0.1.13 第 19 项：sheet 顶边 + 两侧描边（1dp，28dp 顶圆角），不要底边——
- * 原来的 Modifier.border 会把底边也描出来，在 sheet 底部留一条多余的横线
- * （通用页截图里的线就是它）。drawBehind 只画顶边与两侧，不画底边。
- * 其他弹窗（TokiSheetContainer / MoreSheet）没有 border，没有这条线。
- */
-private fun Modifier.sheetTopOutline(color: Color): Modifier = this.drawBehind {
-    val stroke = 1.dp.toPx()
-    val r = 28.dp.toPx()
-    val path = Path().apply {
-        moveTo(0f, size.height)
-        lineTo(0f, r)
-        arcTo(Rect(0f, 0f, 2 * r, 2 * r), 180f, 90f, false)
-        lineTo(size.width - r, 0f)
-        arcTo(Rect(size.width - 2 * r, 0f, size.width, 2 * r), 270f, 90f, false)
-        lineTo(size.width, size.height)
-    }
-    drawPath(path, color, style = Stroke(stroke))
-}
 
 /**
  * 0.1.13 第 20 项：二级页面的行底卡——与设置主页同款（28dp 圆角、
@@ -248,55 +230,35 @@ private fun settingsGroupEnterModifier(
 }
 
 /**
- * 「我的」弹窗（原名账户与设置，本轮第 1 条改名；第二轮第 4 项）：参考 TokiNote〈我的〉页
- * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——标题 +
- * 36dp 关闭钮；头像卡片 + 两源 logo 行 + 通用 / 个性化 /
- * 音频 / 歌词 / 成就 5 行（0.1.13 第 12 项起加入天数搬进成就页，
- * 第 19 项起退出登录收进各源 logo 行，旧红色退出登录行删除）。
- * 子页在弹窗内切换。外壳自第五轮第 19-4 项起是 MoreSheet 同款原生
- * ModalBottomSheet（默认顶圆角 28dp），见 SettingsSheet 上的注释。
+ * 「我的」页（原「账户与设置」弹窗，本轮 0127 第 10 条改独立覆盖页）。
  *
- * 第三轮第 1 项（用户定 A）：保留底部弹窗，只按 TokiUI 重做内容——
- * 入口行无图标，退出登录是 SettingsRow 形态的红色警示行；关闭钮保持 36dp。
- * 第 8 项：标题行原按外面悬浮模糊标题配方做成磨砂 chip，第六轮第 7 项起
- * 改为纯文字标题 + 纯色圆形关闭钮（模糊只属于整个弹窗容器）；通用 /
- * 个性化 / 音频 / 歌词 / 退出登录五个区域各进 28dp surface 底卡。
- *
- * 个性化里已删掉「外观」开关，应用永久固定深色；
- * 因此主题 / 动态取色 / 种子色控件也一并删除（只剩减少动效与
- * 玻璃模糊两个开关）。0.1.21 第 4 项：玻璃模糊开关也删了（外观
- * 固定玻璃），个性化只剩减少动效。
- *
- * 第五轮第 19-4 项（用户确认“把设置改成这种”）：外壳改成 MoreSheet 同款
- * 原生 ModalBottomSheet（不用 TokiSheetContainer）——默认 28dp 顶圆角、
- * 横向 24dp / 底部 24dp 内边距；内容（磨砂标题行、头像卡、五区底卡）不动。
- * 第六轮第 25 项：加 skipPartiallyExpanded = true，打开即全高（0.88f），
- * 不再先停在 50% 半展开锚点——搜索弹窗（TokiSheetContainer）一直是全开，
- * 设置一半正是缺了这一行。
- * 第六轮第 7 项：容器改极淡磨砂——surfaceContainerLow 85% 透明度 +
- * 1dp 描边（scrim 保持现有，不加深）；标题行去磨砂（纯文字标题 +
- * 纯色圆形关闭钮），内容区上下 24dp 淡出保留（淡出色跟随容器色）。
- * 0.1.11 修复轮（用户反馈“账户与安全页底色不要模糊”）：容器与淡出色
- * 都改回不透明实色，弹窗不再透出背后内容。
- *
- * 本轮第 1 条（用户改口径，覆盖 0.1.11 的决定）：页名改「我的」；
- * 底色改从播放器「更多」面板那一套——有当前歌曲时用主题色 veil
- * （settingsSheetGlassVeil，与 moreSheetGlassVeil 同配方）+
- * MiniPlayer 同级 85dp 玻璃（tokiContentGlassMiniPlayer），
- * 0.1.11 的不透明实色只在无当前歌曲时作回退。玻璃要盖住拖柄区：
- * 与 MoreSheet 同法关掉 sheet 自带拖柄、内容里自绘同规格拖柄
- * （回退态也自绘，两态外观一致）。内容区上下淡出色跟随实际底色
- * （玻璃态 = veil 色、回退态 = surfaceContainerLow）；顶部淡出
- * 仍只在列表离开顶部时画（本轮第 5 条的恢复行为不变）。
+ * 形态沿革（内容口径见各 section 注释，此处只记外壳）：最初是底部
+ * 弹窗（ModalBottomSheet），本轮起改为全屏覆盖页——渲染在应用窗口
+ * 内、盖在当前页面之上（不再是 Dialog 窗口）。背景实时模糊透出
+ * 下层页面：有当前歌曲时沿用主题色 veil（settingsSheetGlassVeil）
+ * + MiniPlayer 同级 85dp 玻璃（tokiContentGlassMiniPlayer，采样
+ * haze 内容源），无当前歌曲时回退 surfaceContainerLow 实色；顶栏
+ * 经 captureForBackdrop 注册为 haze 源，标题与头像一起进模糊。
+ * 标题用全应用统一的悬浮模糊标题（OverlayTitleHeader，strong 档）；
+ * 右上角（与主页头像同一落点）是返回 chip 同款玻璃圆钮作关闭钮
+ * （TokiGlassIconButton + Close）——一级页点它关页、二级页点它回
+ * 一级页（与原弹窗 X 钮口径一致）；系统返回键同口径。打开/关闭的
+ * 过渡动画在调用方（TokiMusicApp 的 AnimatedVisibility）。
+ * 随形态删除：ModalBottomSheet 外壳、自绘拖柄、sheetTopOutline
+ * 描边、独立的 SettingsBackdrop 遮罩层（覆盖页自带全屏模糊背景）。
+ * 内容全部沿用：头像卡 + 源 logo 行 + 各二级页（通用 / 存储 /
+ * 设计 / 音频 / 歌词 / 成就 / 账号）、二级页滑入过渡、各页滚动
+ * 位置分开记忆、内容区上下淡出带（淡出色跟随实际底色、只在可
+ * 滚时画）、登录与源确认弹窗。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SettingsSheet(
+fun SettingsOverlay(
     vm: AppViewModel,
     theme: ThemePreferences,
     onTheme: (ThemePreferences) -> Unit,
     onClose: () -> Unit,
-    // 本轮第 1 条：玻璃底色所需的采样状态与当前歌曲主题色
+    // 玻璃底色所需的采样状态与当前歌曲主题色
     // （coverColors 为 null = 无当前歌曲，底色回退实色）。
     hazeState: HazeState,
     coverColors: CoverColors?,
@@ -312,10 +274,9 @@ fun SettingsSheet(
     // 按 sub 取（null = 一级页），切页时恢复各自的位置；过渡本身
     // 不受影响（新旧内容各拿各的状态）。
     val listStates = remember { mutableMapOf<SettingsSub?, LazyListState>() }
-    // 0.1.15 第 12 项：二级页手势返回先退回一级页（BackHandler 在
-    // sheet 内、sub != null 时启用，优先于 ModalBottomSheet 的
-    // onDismissRequest）；一级页时不启用，手势返回照常关弹窗。
-    BackHandler(enabled = sub != null) { sub = null }
+    // 本轮（0127）第 10 条：覆盖页没有 sheet 的返回关闭可分工，
+    // 返回键统一在这里处理——二级页回一级页、一级页关闭覆盖页。
+    BackHandler { if (sub != null) sub = null else onClose() }
     val profile by vm.profile.collectAsState()
     val authState by vm.authState.collectAsState()
     // 第六轮第 1/19 项：QQ 登录态与源启用开关（供 logo 行与确认弹窗用）。
@@ -333,7 +294,7 @@ fun SettingsSheet(
     var showQqLogin by remember { mutableStateOf(false) }
     // 大排查 S3：音质偏好是 SharedPreferences 直值（不是 Compose
     // 状态），音频页用这份本地 state 驱动单选——直接读偏好点选后不
-    // 触发重组，圆点看起来没动。放这里（SettingsSheet 的组合作用域），
+    // 触发重组，圆点看起来没动。放这里（SettingsOverlay 的组合作用域），
     // 因为 LazyColumn 的 content 构建块不是 @Composable 作用域，
     // audioSection 里不能直接 remember。
     var audioQuality by remember { mutableStateOf(vm.store.audioQuality) }
@@ -345,206 +306,149 @@ fun SettingsSheet(
     // 色（下方 sheetBg）跟随实际底色。
     val glassVeil = settingsSheetGlassVeil(coverColors, lightMode = !LocalDarkTheme.current)
     val sheetBg = glassVeil ?: MaterialTheme.colorScheme.surfaceContainerLow
-    val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    ModalBottomSheet(
-        onDismissRequest = onClose,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        // 玻璃态容器透明（玻璃在内容 Box 上，见下）；回退态维持实色。
-        containerColor = if (glassVeil != null) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = sheetShape,
-        // 自带拖柄关掉：玻璃要盖住拖柄区，内容里自绘同规格拖柄
-        // （MoreSheet 同法；回退态也自绘，两态外观一致）。
-        dragHandle = null,
-        // 0.1.14 第 3 条：遮罩不淡入淡出——原生 scrim 带
-        // ScrimAlphaAnimation，关不掉；这里改透明，静态遮罩由调用方
-        // 在应用窗口里画（见 TokiMusicApp 的 showSettings 处）。
-        scrimColor = Color.Transparent,
-        // 0.1.13 第 19 项：只要顶边 + 两侧描边，不要底边（见 sheetTopOutline）。
-        modifier = Modifier.sheetTopOutline(
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-        ),
-        // 本轮（0124）第 6 项：二级页里按返回键被 sheet 自己的返回关闭
-        // 抢先（ModalBottomSheet 内建 BackHandler 先于内容层注册的
-        // BackHandler 执行），整页被关而不是退回一级。二级页在场时
-        // 禁用 sheet 的返回关闭，返回交给内容层 BackHandler（sub=null）；
-        // 一级页保持返回关闭整页。
-        properties = androidx.compose.material3.ModalBottomSheetProperties(
-            shouldDismissOnBackPress = sub == null,
-        ),
-    ) {
-        // 本轮第 1 条：玻璃态把玻璃挂在内容 Box 上（容器已透明），
-        // 与 MoreSheet 同结构；回退态 Box 无额外修饰、容器实色照旧。
-        Box(
-            Modifier.fillMaxWidth().then(
+
+    val touchSwallow = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            // 覆盖页吞掉空白处触摸，避免漏到下层页面（与受限闸门页同法）。
+            .clickable(interactionSource = touchSwallow, indication = null) { }
+            .then(
                 if (glassVeil != null) {
-                    Modifier.clip(sheetShape).tokiContentGlassMiniPlayer(hazeState, glassVeil)
+                    Modifier.tokiContentGlassMiniPlayer(hazeState, glassVeil)
                 } else {
-                    Modifier
+                    Modifier.background(sheetBg)
                 },
             ),
-        ) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            // 自绘拖柄（32×4dp、onSurfaceVariant 40%，与 MoreSheet /
-            // M3 默认同规格）——sheet 自带拖柄已关（见 ModalBottomSheet 处）。
-            Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(32.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
-            }
-            // 第 8 项（第六轮第 7 项改）：标题不再进磨砂 chip——纯文字标题
-            // （headlineMedium Bold）+ 纯色圆形关闭钮；0.1.11 起弹窗容器
-            // 也是不透明实色，不再透出背后内容。返回键的图标一律是关闭
-            // （X），位置（标题行右侧、36dp）不变；子页里点 X 回主列表，
-            // 主列表点 X 关弹窗。
-            Row(
-                // 本轮（0124）第 8 项：标题行与列表卡片左右对齐——列表
-                // 卡片在 24dp 列内边距之外还有 4dp 自身横向边距（卡片
-                // 实际边缘在 28dp），标题行补同样的 4dp，视觉缩进一致；
-                // 右侧关闭钮同理与卡片右缘对齐。
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 4.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    if (sub == null) "我的" else sub!!.title,
-                    Modifier.weight(1f, fill = false),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // 本轮（0127）第 6 条：「账号」二级页标题后带 beta 小徽章
-                // （与音乐等级徽章同款，见 BetaBadge）。
-                if (sub == SettingsSub.Account) {
-                    BetaBadge(Modifier.padding(start = 8.dp))
-                }
-                Box(
-                    Modifier.padding(start = 12.dp).size(36.dp).clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .clickable { if (sub != null) sub = null else onClose() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        contentDescription = if (sub == null) "关闭" else "返回",
-                        modifier = Modifier.size(24.dp),
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            OverlayTitleHeader(
+                title = if (sub == null) "我的" else sub!!.title,
+                onBack = null,
+                onHeightMeasured = {},
+                hazeState = hazeState,
+                strong = true,
+                // 本轮（0127）第 6 条：「账号」二级页的 beta 徽章进悬浮
+                // 标题（标题文字正后方，与等级页同口径）。
+                titleBadge = if (sub == SettingsSub.Account) "beta" else null,
+                trailing = {
+                    TokiGlassIconButton(
+                        icon = Icons.Rounded.Close,
+                        label = if (sub == null) "关闭" else "返回",
+                        hazeState = hazeState,
+                        onClick = { if (sub != null) sub = null else onClose() },
                     )
-                }
-            }
-            // 第三轮第 14 项：弹窗内容区上下边缘 24dp 淡出（淡出色取
-            // 弹窗实际底色 sheetBg——本轮第 1 条起玻璃态为 veil 色、
-            // 回退态为 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
-            // 0.1.16 第 2 条：二级页切换加过渡动画（进页从右滑入、
-            // 返回从左滑出，与站内二级页同款——见 TokiMusicApp 的
-            // toDetail；时长跟 motionScheme，减少动效时自动用标准
-            // scheme）。淡出层放 AnimatedContent 里面、只在一级页画，
-            // 随一级页一起滑走（0.1.15 第 7① 条规则不变）。
-            val motionScheme = MaterialTheme.motionScheme
-            Box(Modifier.weight(1f)) {
-            AnimatedContent(
-                targetState = sub,
-                transitionSpec = {
-                    if (targetState != null) {
-                        (slideInHorizontally(motionScheme.defaultSpatialSpec()) { it } + fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
-                            (slideOutHorizontally(motionScheme.defaultSpatialSpec()) { -it } + fadeOut(motionScheme.defaultEffectsSpec()))
-                    } else {
-                        (slideInHorizontally(motionScheme.defaultSpatialSpec()) { -it } + fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
-                            (slideOutHorizontally(motionScheme.defaultSpatialSpec()) { it } + fadeOut(motionScheme.defaultEffectsSpec()))
-                    }.using(SizeTransform(clip = false))
                 },
-                label = "settings-sub-page",
-                modifier = Modifier.fillMaxSize(),
-            ) { targetSub ->
-            Box(Modifier.fillMaxSize()) {
-            // 大排查 B3：本页的滚动状态从 sheet 作用域的 map 里取（没有
-            // 就新建一个记进去），进出二级页不再丢位置。
-            val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
-            // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
-                // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
-                // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
-                // 4dp 细缝在组内 Column 里给（见 mainSections 与各
-                // 二级页 section）。标题/说明文字不再自带上下边距。
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                when (targetSub) {
-                    null -> mainSections(
-                        vm, theme, onTheme, profile, authState, qqProfile,
-                        neteaseEnabled, qqEnabled, youtubeEnabled, qqLoggedIn,
-                        customAvatarPath, customDisplayName, customUserId,
-                        { showLogin = it },
-                        { showQqLogin = it }, { sourceConfirm = it },
-                        shownGroups,
-                    ) { sub = it }
-                    SettingsSub.General -> generalSection(vm)
-                    SettingsSub.Storage -> storageSection(vm)
-                    SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
-                    SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
-                    SettingsSub.Lyrics -> lyricsSection(vm)
-                    SettingsSub.Achievements -> achievementsSection(vm, profile)
-                    SettingsSub.Account -> accountSection(vm)
+            )
+            Box(Modifier.weight(1f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+                val motionScheme = MaterialTheme.motionScheme
+                Box(Modifier.fillMaxSize()) {
+                AnimatedContent(
+                    targetState = sub,
+                    transitionSpec = {
+                        if (targetState != null) {
+                            (slideInHorizontally(motionScheme.defaultSpatialSpec()) { it } + fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
+                                (slideOutHorizontally(motionScheme.defaultSpatialSpec()) { -it } + fadeOut(motionScheme.defaultEffectsSpec()))
+                        } else {
+                            (slideInHorizontally(motionScheme.defaultSpatialSpec()) { -it } + fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
+                                (slideOutHorizontally(motionScheme.defaultSpatialSpec()) { it } + fadeOut(motionScheme.defaultEffectsSpec()))
+                        }.using(SizeTransform(clip = false))
+                    },
+                    label = "settings-sub-page",
+                    modifier = Modifier.fillMaxSize(),
+                ) { targetSub ->
+                Box(Modifier.fillMaxSize()) {
+                // 大排查 B3：本页的滚动状态从 sheet 作用域的 map 里取（没有
+                // 就新建一个记进去），进出二级页不再丢位置。
+                val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
+                // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                    // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
+                    // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
+                    // 4dp 细缝在组内 Column 里给（见 mainSections 与各
+                    // 二级页 section）。标题/说明文字不再自带上下边距。
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    when (targetSub) {
+                        null -> mainSections(
+                            vm, theme, onTheme, profile, authState, qqProfile,
+                            neteaseEnabled, qqEnabled, youtubeEnabled, qqLoggedIn,
+                            customAvatarPath, customDisplayName, customUserId,
+                            { showLogin = it },
+                            { showQqLogin = it }, { sourceConfirm = it },
+                            shownGroups,
+                        ) { sub = it }
+                        SettingsSub.General -> generalSection(vm)
+                        SettingsSub.Storage -> storageSection(vm)
+                        SettingsSub.Personalize -> personalizeSection(vm, theme, onTheme)
+                        SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
+                        SettingsSub.Lyrics -> lyricsSection(vm)
+                        SettingsSub.Achievements -> achievementsSection(vm, profile)
+                        SettingsSub.Account -> accountSection(vm)
+                    }
                 }
-            }
-            // 本轮：顶部 24dp 淡出按滚动状态恢复——0.1.21 为修「第一个
-            // 栏自带渐变」把整层删掉后，滚动态下内容顶边是硬切、顶栏
-            // 边缘没有任何模糊/淡出。现在只在列表已离开顶部（能往回
-            // 滚）时画顶部淡出，停在顶部时不画（0.1.21 的修复不回退）；
-            // 一级页与各二级页都适用。
-            val showTopFade by remember { androidx.compose.runtime.derivedStateOf { listState.canScrollBackward } }
-            if (showTopFade) {
-                Box(
-                    Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
-                        Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
-                    ),
-                )
-            }
-            if (targetSub == null) {
-                // 本轮（0124）第 3 项：底部淡出带原先无条件绘制——主页面
-                // 内容不满一屏（不用滚）时，列表底也压着一条 24dp 的
-                // Transparent→sheetBg 渐变带，玻璃模式下 sheetBg 是半透明
-                //  veil 色、带下又透出 85dp 玻璃模糊，视觉上就是页底一条
-                // 「莫名的条」。与顶带同口径：仅当列表还能向下滚
-                // （canScrollForward）时才画，内容到底/不满屏不画。
-                val showBottomFade by remember { derivedStateOf { listState.canScrollForward } }
-                if (showBottomFade) {
+                // 本轮：顶部 24dp 淡出按滚动状态恢复——0.1.21 为修「第一个
+                // 栏自带渐变」把整层删掉后，滚动态下内容顶边是硬切、顶栏
+                // 边缘没有任何模糊/淡出。现在只在列表已离开顶部（能往回
+                // 滚）时画顶部淡出，停在顶部时不画（0.1.21 的修复不回退）；
+                // 一级页与各二级页都适用。
+                val showTopFade by remember { androidx.compose.runtime.derivedStateOf { listState.canScrollBackward } }
+                if (showTopFade) {
                     Box(
-                        Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
-                            Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                        Modifier.fillMaxWidth().height(24.dp).align(Alignment.TopCenter).background(
+                            Brush.verticalGradient(listOf(sheetBg, Color.Transparent)),
                         ),
                     )
                 }
-            }
-            }
-            }
-            }
-            // 0.1.16 第 2 条：登录弹窗移出 LazyColumn——之前是零高度的
-            // list item，spacedBy(12.dp) 下会在列表底多出空隙；
-            // AlertDialog 是独立窗口，放哪里渲染都一样。
-            if (showLogin) LoginDialog(vm) { showLogin = false }
-            if (showQqLogin) QqSmsLoginDialog(vm, onDismiss = { showQqLogin = false })
-            // 第六轮第 19 项：开关 / 退出登录的二次确认弹窗（AlertDialog，
-            // 默认内容边距 24dp 横向，与页边距一致）。
-            sourceConfirm?.let { confirm ->
-                SourceConfirmDialog(
-                    confirm = confirm,
-                    onDismiss = { sourceConfirm = null },
-                    onConfirm = {
-                        when (confirm) {
-                            is SourceConfirm.Toggle -> vm.setSourceEnabled(confirm.source, confirm.enable)
-                            is SourceConfirm.Logout -> when (confirm.source) {
-                                MusicSource.NETEASE -> vm.logout()
-                                MusicSource.QQ -> vm.qqLogout()
-                                // LOCAL / YouTubeMusic have no login to log out of (no confirm dialog offers it).
-                                MusicSource.LOCAL -> Unit
-                                MusicSource.YOUTUBEMUSIC -> Unit
+                if (targetSub == null) {
+                    // 本轮（0124）第 3 项：底部淡出带原先无条件绘制——主页面
+                    // 内容不满一屏（不用滚）时，列表底也压着一条 24dp 的
+                    // Transparent→sheetBg 渐变带，玻璃模式下 sheetBg 是半透明
+                    //  veil 色、带下又透出 85dp 玻璃模糊，视觉上就是页底一条
+                    // 「莫名的条」。与顶带同口径：仅当列表还能向下滚
+                    // （canScrollForward）时才画，内容到底/不满屏不画。
+                    val showBottomFade by remember { derivedStateOf { listState.canScrollForward } }
+                    if (showBottomFade) {
+                        Box(
+                            Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
+                                Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                            ),
+                        )
+                    }
+                }
+                }
+                }
+                }
+                // 0.1.16 第 2 条：登录弹窗移出 LazyColumn——之前是零高度的
+                // list item，spacedBy(12.dp) 下会在列表底多出空隙；
+                // AlertDialog 是独立窗口，放哪里渲染都一样。
+                if (showLogin) LoginDialog(vm) { showLogin = false }
+                if (showQqLogin) QqSmsLoginDialog(vm, onDismiss = { showQqLogin = false })
+                // 第六轮第 19 项：开关 / 退出登录的二次确认弹窗（AlertDialog，
+                // 默认内容边距 24dp 横向，与页边距一致）。
+                sourceConfirm?.let { confirm ->
+                    SourceConfirmDialog(
+                        confirm = confirm,
+                        onDismiss = { sourceConfirm = null },
+                        onConfirm = {
+                            when (confirm) {
+                                is SourceConfirm.Toggle -> vm.setSourceEnabled(confirm.source, confirm.enable)
+                                is SourceConfirm.Logout -> when (confirm.source) {
+                                    MusicSource.NETEASE -> vm.logout()
+                                    MusicSource.QQ -> vm.qqLogout()
+                                    // LOCAL / YouTubeMusic have no login to log out of (no confirm dialog offers it).
+                                    MusicSource.LOCAL -> Unit
+                                    MusicSource.YOUTUBEMUSIC -> Unit
+                                }
                             }
-                        }
-                        sourceConfirm = null
-                    },
-                )
+                            sourceConfirm = null
+                        },
+                    )
+                }
             }
-        }
         }
     }
 }

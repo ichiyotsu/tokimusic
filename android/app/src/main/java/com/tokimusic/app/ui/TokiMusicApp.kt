@@ -95,12 +95,11 @@ import com.tokimusic.app.ui.stats.NeteaseReportScreen
 import com.tokimusic.app.ui.player.MiniPlayer
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
-import com.tokimusic.app.ui.settings.SettingsSheet
+import com.tokimusic.app.ui.settings.SettingsOverlay
 import com.tokimusic.app.ui.theme.ThemePreferences
 import com.tokimusic.app.ui.theme.TokiGlassFade
 import com.tokimusic.app.ui.theme.TokiMusicTheme
 import com.tokimusic.app.ui.theme.TokiBlurCapability
-import com.tokimusic.app.ui.theme.tokiGlass
 import com.tokimusic.app.ui.theme.rememberCoverColors
 import com.tokimusic.app.ui.theme.tokiContentChromeStrong
 import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
@@ -881,40 +880,34 @@ fun TokiMusicApp(
                             )
                         }
                     }
-                    // 0.1.14 第 3 条：设置弹窗的遮罩不淡入淡出——
-                    // 原生 ModalBottomSheet 的 scrim 带
-                    // ScrimAlphaAnimation（M3 1.5.0-beta02 的 AAR
-                    // 实测：sheet 本身不渐变，只有遮罩渐变），API
-                    // 关不掉。改成透明 scrim（见 SettingsSheet）
-                    // + 一层 32% 黑遮罩（与 M3 默认 scrim 同色同透明度）；
-                    // 点遮罩关闭仍走原生 scrim 的手势（Dialog 窗口在上层
-                    // 接手势）。渐进动画见 SettingsBackdrop（0.1.16 第 3 条）。
-                    // 0.1.18 第 17 项：这一层从 Scaffold 的内容 Box 里移到
-                    // Scaffold 之外（同一外层 Box 内、画在 Scaffold 之后）——
-                    // 之前它在内容层里，Scaffold 的 topBar（主页 / 资源库的
-                    // 标题 + 头像）画在它上面，进设置时不进模糊；移到
-                    // Scaffold 之上后，tokiGlass 的 Backdrop 采样把整个
-                    // Scaffold（页面内容 + 顶栏）都算进去，标题和头像
-                    // 一起糊。配方（tokiGlass + 32% 黑）与渐进动画不变，
-                    // 只扩大范围。
-                    SettingsBackdrop(
-                        visible = showSettings,
-                        hazeState = hazeState,
-                    )
+                    // 本轮（0127）第 10 条：「我的」改全屏覆盖页后，
+                    // 原 SettingsBackdrop 遮罩层删除——覆盖页自带全屏
+                    // 实时模糊背景（画在根 Box 里、Scaffold 之后），
+                    // 顶栏仍经 captureForBackdrop 注册为 haze 源，
+                    // 标题与头像一起进覆盖页的模糊（覆盖范围不丢）。
                 }
             }
         }
-        // 底部弹窗（第二轮第 4 项）：设置是 ModalBottomSheet，浮在页面与
-        // 底栏之上；chrome 在弹窗下保持可见。搜索自 0.1.20 第 11 项起是
-        // 独立一级页，不再有搜索弹窗。
-        // 本轮第 1 条：设置页改名「我的」，并把采样状态与当前歌曲
-        // 主题色传进去做玻璃底色（无当前歌曲时传 null，页内回退实色）。
-        if (showSettings) SettingsSheet(
-            vm, theme, updateTheme,
-            onClose = { showSettings = false },
-            hazeState = hazeState,
-            coverColors = if (playerSong != null) playerCoverColors else null,
-        )
+        // 本轮（0127）第 10 条：「我的」是全屏覆盖页（SettingsOverlay），
+        // 画在根 Box 最上层（歌曲操作弹窗等 Dialog 窗口仍在它之上，
+        // 与原 sheet 时代一致）；进出走淡入 + 轻微纵向滑动（spatial/
+        // effects spec 同全应用口径）。采样状态与当前歌曲主题色传进去
+        // 做玻璃底色（无当前歌曲时传 null，页内回退实色）。
+        AnimatedVisibility(
+            visible = showSettings,
+            enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 8 } +
+                fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = slideOutVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 8 } +
+                fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            label = "settings-overlay",
+        ) {
+            SettingsOverlay(
+                vm, theme, updateTheme,
+                onClose = { showSettings = false },
+                hazeState = hazeState,
+                coverColors = if (playerSong != null) playerCoverColors else null,
+            )
+        }
         // 第 6 项：长按歌曲的底部弹窗；“添加”只列我创建的歌单。
         val songActions by vm.songActions.collectAsState()
         val likedIds by vm.likedIds.collectAsState()
@@ -956,37 +949,6 @@ fun TokiMusicApp(
                 onDismiss = dismissOptimize,
             )
         }
-    }
-}
-
-/**
- * 设置背景的模糊 + 压暗层（0.1.16 第 3 条）——单独抽成顶层 composable，
- * 否则在页面 Row 里调 AnimatedVisibility 会撞 RowScope 的 DSL 作用域
- * 限制（编译失败；同款前例见下面的 NavBarSlot）。
- */
-@Composable
-private fun SettingsBackdrop(
-    visible: Boolean,
-    hazeState: HazeState,
-) {
-    // 0.1.16 第 3 条：模糊 + 压暗一起渐进出现 / 渐隐消失（fade 走 effects
-    // spec，与 sheet 滑入匹配）——之前是 if 开关瞬间出现 / 消失。手势不变：
-    // 黑遮罩层仍在 Dialog 窗口之下、不接手势，关闭仍走原生 scrim /
-    // 返回键；玻璃关闭时只渐隐黑遮罩。
-    val scheme = MaterialTheme.motionScheme
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(animationSpec = scheme.defaultEffectsSpec()),
-        exit = fadeOut(animationSpec = scheme.defaultEffectsSpec()),
-        label = "settings-backdrop",
-    ) {
-        // 0.1.15 第 13 项：设置打开时背景加磨砂模糊（与底栏 / 标题同款
-        // tokiGlass 配方），让设置页更突出。模糊层在遮罩之下（先模糊、
-        // 再压暗）。0.1.21 第 4 项：玻璃固定开启，此处只看采样能力。
-        if (TokiBlurCapability.canSampleInWindow) {
-            Box(Modifier.fillMaxSize().tokiGlass(hazeState))
-        }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)))
     }
 }
 
