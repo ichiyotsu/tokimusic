@@ -178,6 +178,31 @@ fun LibraryScreen(
     val allLikedSongs = likedSongs + (qqLibrary?.favSongs ?: emptyList())
     val allPlaylists = myPlaylists + (qqLibrary?.playlists ?: emptyList())
     val allArtists = artists + (qqLibrary?.followedArtists ?: emptyList())
+    // 本轮（0124）第 20 项：分区内容按顶栏切换器选中的源取数（单源，
+    // 与搜索页同规则）。YouTubeMusic 无账号资料库 → 空列表走各分区
+    // 的标准空态；QQ 收藏专辑未同步 → 同样空态。合并列表只留给资料
+    // 库主页卡片的计数/副标题。
+    val librarySource by vm.librarySource.collectAsState()
+    val sectionSource = vm.effectiveLibrarySource()
+    val sectionLikedSongs = when (sectionSource) {
+        MusicSource.QQ -> qqLibrary?.favSongs ?: emptyList()
+        MusicSource.YOUTUBEMUSIC -> emptyList()
+        else -> likedSongs
+    }
+    val sectionPlaylists = when (sectionSource) {
+        MusicSource.QQ -> qqLibrary?.playlists ?: emptyList()
+        MusicSource.YOUTUBEMUSIC -> emptyList()
+        else -> myPlaylists
+    }
+    val sectionArtists = when (sectionSource) {
+        MusicSource.QQ -> qqLibrary?.followedArtists ?: emptyList()
+        MusicSource.YOUTUBEMUSIC -> emptyList()
+        else -> artists
+    }
+    val sectionAlbums = when (sectionSource) {
+        MusicSource.NETEASE -> albums
+        else -> emptyList()
+    }
     // 0.1.21 口径（覆盖 0.1.20 第 9 项的隐藏规则）：资料库正常显示——
     // 歌单与曲目照常全量展示，不因关源/本地模式隐藏；门控只落在播放
     // 上（关源且无本地文件的歌置灰标注、不可点播、不联网取址，见
@@ -221,14 +246,14 @@ fun LibraryScreen(
             // Round 3 item 2: no in-page back row — the floating header
             // (OverlayTitleHeader) carries the back chip + title now.
             when (section) {
-                LibrarySection.Liked -> likedSongsSection(allLikedSongs, { id -> resolveArtistTap(allLikedSongs, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
-                    val playable = allLikedSongs.filter { vm.songBlockedLabel(it) == null }
+                LibrarySection.Liked -> likedSongsSection(sectionLikedSongs, { id -> resolveArtistTap(sectionLikedSongs, id, onOpenArtist, onOpenQqArtist) }, false, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
+                    val playable = sectionLikedSongs.filter { vm.songBlockedLabel(it) == null }
                     val idx = playable.indexOf(song)
                     if (idx >= 0) vm.play(playable, idx, "收藏")
                 }
-                LibrarySection.Playlists -> playlistsSection(allPlaylists, profile?.uid ?: 0, showSourceBadge, onOpenPlaylist)
-                LibrarySection.Artists -> artistsSection(allArtists, onOpenArtist, onOpenQqArtist)
-                LibrarySection.Albums -> albumsSection(albums, onOpenAlbum)
+                LibrarySection.Playlists -> playlistsSection(sectionPlaylists, profile?.uid ?: 0, false, onOpenPlaylist)
+                LibrarySection.Artists -> artistsSection(sectionArtists, onOpenArtist, onOpenQqArtist)
+                LibrarySection.Albums -> albumsSection(sectionAlbums, onOpenAlbum)
                 LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
                     val playable = mine.recent.filter { vm.songBlockedLabel(it) == null }
                     val idx = playable.indexOf(song)

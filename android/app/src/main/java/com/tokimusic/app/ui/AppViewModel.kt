@@ -1459,6 +1459,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .let { if (it == MusicSource.LOCAL) MusicSource.NETEASE else it },
     )
     val searchSource: StateFlow<MusicSource> = _searchSource
+    // 本轮（0124）第 20 项：资料库分区（收藏/歌单/歌手/专辑）的源切换
+    // 状态，与搜索页同款单源选择；YouTubeMusic 无账号资料库，分区显示
+    // 标准空态（不编造内容）。
+    private val _librarySource = MutableStateFlow(MusicSource.NETEASE)
+    val librarySource: StateFlow<MusicSource> = _librarySource
+
+    fun setLibrarySource(source: MusicSource) {
+        _librarySource.value = source
+    }
+
+    /** 记住的源被关掉时钳制到第一个开启的在线源（与搜索页同规则）。 */
+    fun effectiveLibrarySource(): MusicSource {
+        val enabled = listOf(MusicSource.NETEASE, MusicSource.QQ, MusicSource.YOUTUBEMUSIC)
+            .filter { !isSourceDisabled(it) }
+        val current = _librarySource.value
+        return if (current in enabled) current else enabled.firstOrNull() ?: MusicSource.NETEASE
+    }
     /** 最近一次搜索词（0.1.20 第 11 项：顶栏源切换按钮拿它按新源重跑查询）。 */
     var lastSearchKeywords: String = ""
         private set

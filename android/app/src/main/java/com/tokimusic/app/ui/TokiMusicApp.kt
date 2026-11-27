@@ -596,6 +596,44 @@ fun TokiMusicApp(
                                                 }
                                             }
                                         }
+                                        // 本轮（0124）第 20 项：资料库分区
+                                        // （收藏/歌单/歌手/专辑）顶栏右侧源
+                                        // 切换器，与搜索页同组件同规则（≥2
+                                        // 源开启才出现）；本地页不在切换内。
+                                        dest == Dest.Library && playlistId == null && artistId == null && albumId == null &&
+                                            (librarySection == com.tokimusic.app.ui.library.LibrarySection.Liked ||
+                                                librarySection == com.tokimusic.app.ui.library.LibrarySection.Playlists ||
+                                                librarySection == com.tokimusic.app.ui.library.LibrarySection.Artists ||
+                                                librarySection == com.tokimusic.app.ui.library.LibrarySection.Albums) &&
+                                            !statsOpen && !neteaseReportOpen &&
+                                            listOf(neteaseEnabled, qqEnabled, youtubeEnabled).count { it } >= 2 -> {
+                                            {
+                                                val librarySource by vm.librarySource.collectAsState()
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    if (neteaseEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.NETEASE,
+                                                            librarySource == MusicSource.NETEASE,
+                                                        ) { vm.setLibrarySource(MusicSource.NETEASE) }
+                                                    }
+                                                    if (qqEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.QQ,
+                                                            librarySource == MusicSource.QQ,
+                                                        ) { vm.setLibrarySource(MusicSource.QQ) }
+                                                    }
+                                                    if (youtubeEnabled) {
+                                                        com.tokimusic.app.ui.search.SearchSourceButton(
+                                                            MusicSource.YOUTUBEMUSIC,
+                                                            librarySource == MusicSource.YOUTUBEMUSIC,
+                                                        ) { vm.setLibrarySource(MusicSource.YOUTUBEMUSIC) }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         // 本轮：资料库顶栏右侧改回头像（与主页
                                         // 同款同落点）——原 0.1.20/0.1.21 的
                                         // 读取图标分支删除；导入入口收进资料
