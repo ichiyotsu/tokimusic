@@ -128,6 +128,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 源原始顺序的四组推荐列表（loadHome 落盘时存）：关开关时据此
      * 还原、开开关时重排也以它为底，避免在已重排结果上叠排。 */
     private var homeRawRecommend: RawRecommend? = null
+    /**
+     * 本轮（0127）第 19 条：推荐歌单手动刷新计数——每次
+     * loadHome(refresh = true)（下拉刷新 / 重试 / 源开关切换都走
+     * refreshHome）+1，loadHome 据此滚动推荐窗口（见
+     * ui.home.rotateRecommendWindow）。冷启动（refresh = false）
+     * 不动，保持服务端原始序。
+     */
+    private var recommendRotation = 0
     private data class RawRecommend(
         val playlists: List<Playlist>, val newSongs: List<Song>,
         val qqPlaylists: List<Playlist>, val qqNewSongs: List<Song>,
@@ -1401,6 +1409,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun loadHome(refresh: Boolean = false): Boolean {
         if (refresh) {
+            // 本轮（0127）第 19 条：手动刷新推进推荐窗口（见下方 copy）。
+            recommendRotation++
             _home.value = _home.value.copy(isPullRefreshing = true, error = false)
         } else {
             _home.value = _home.value.copy(loading = true, error = false)
@@ -1415,7 +1425,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val neEnabled = _neteaseEnabled.value
         val qqEnabledNow = _qqEnabled.value
         return coroutineScope {
-            val plsD = async { if (neEnabled) runCatching { api.personalized() }.getOrNull() else emptyList() }
+            // 本轮（0127）第 19 条：推荐歌单拉满池（limit 30，原 12），
+            // 可见窗口在下方 copy 时按 recommendRotation 滚动——服务
+            // 端推荐池同一请求恒返回同一有序集，只取前 12 时刷新无感。
+            val plsD = async { if (neEnabled) runCatching { api.personalized(30) }.getOrNull() else emptyList() }
             val newsD = async { if (neEnabled) runCatching { api.newSongs() }.getOrNull() else emptyList() }
             val dailyD = async { if (neEnabled && profile != null) api.dailySongs() else emptyList() }
             // No dedicated radar endpoint exists: the radar mix is built from the
@@ -1435,6 +1448,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val qqRadarD = async { if (qqEnabledNow) runCatching { qqClient.recommendRadar() }.getOrDefault(emptyList()) else emptyList() }
             val pls = plsD.await()
             val news = newsD.await()
+            val qqPls = qqPlsD.await()
             val failed = neEnabled && pls == null && news == null
             _home.value = _home.value.copy(
                 loading = false,
@@ -1442,9 +1456,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 error = failed,
                 loggedIn = profile != null,
                 localMode = !neEnabled && !qqEnabledNow && !_youtubeEnabled.value,
-                playlists = pls ?: emptyList(), newSongs = news ?: emptyList(),
+                // 本轮（0127）第 19 条：网易云取池的第 recommendRotation
+                // 个 12 张窗口；QQ 整表左旋（步长 6），每次刷新起点不同。
+                playlists = com.tokimusic.app.ui.home.rotateRecommendWindow(pls ?: emptyList(), recommendRotation, 12),
+                newSongs = news ?: emptyList(),
                 qqToplist = qqTopD.await() ?: emptyList(),
-                qqPlaylists = qqPlsD.await() ?: emptyList(),
+                qqPlaylists = com.tokimusic.app.ui.home.rotateRecommendList(qqPls ?: emptyList(), recommendRotation, 6),
                 qqNewSongs = qqNewsD.await() ?: emptyList(),
                 qqDaily = qqDailyD.await(),
                 qqRadar = qqRadarD.await(),

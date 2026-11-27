@@ -835,6 +835,34 @@ private fun MemoryCoverCard(
     }
 }
 
+/**
+ * 本轮（0127）第 19 条：推荐歌单的刷新窗口（纯函数，JVM 单测覆盖）。
+ * 根因：网易云 personalized 推荐池由服务端按账号周期性生成，同一
+ * 请求每次返回同一有序池；客户端原先只取池的前 12 个（limit=12），
+ * 所以下拉刷新虽然每次都真发请求，看到的永远是同一组。改为拉满
+ * 池（limit=30）后按手动刷新次数滚动窗口：第 rotation 次刷新取
+ * 第 rotation 个窗口（步长 = window，对池长取模环绕，窗口可跨
+ * 池尾接回池头）；池不大于窗口时原样返回（无更多可刷，如实呈现）。
+ */
+internal fun <T> rotateRecommendWindow(pool: List<T>, rotation: Int, window: Int): List<T> {
+    if (window <= 0 || pool.size <= window) return pool
+    val offset = ((rotation.toLong() * window) % pool.size).toInt()
+    if (offset == 0) return pool.take(window)
+    return (pool.drop(offset) + pool.take(offset)).take(window)
+}
+
+/**
+ * 本轮（0127）第 19 条：整表滚动（QQ 推荐歌单用，纯函数，JVM 单测
+ * 覆盖）——不截断，只按手动刷新次数把列表左旋 rotation × step
+ * 位（对表长取模），每次刷新起点不同、内容全保留。
+ */
+internal fun <T> rotateRecommendList(list: List<T>, rotation: Int, step: Int): List<T> {
+    if (list.size <= 1 || step <= 0) return list
+    val offset = ((rotation.toLong() * step) % list.size).toInt()
+    if (offset == 0) return list
+    return list.drop(offset) + list.take(offset)
+}
+
 /** 0.1.18 第 14 项：两源推荐歌单 round-robin 交错——网易云、QQ 各取一张轮流排，某源取完后剩下的另一源接在后面；来源仍由卡片上的 SourceBadge 区分。纯函数，JVM 单测覆盖。 */
 internal fun interleavePlaylists(first: List<Playlist>, second: List<Playlist>): List<Playlist> {
     if (first.isEmpty()) return second
