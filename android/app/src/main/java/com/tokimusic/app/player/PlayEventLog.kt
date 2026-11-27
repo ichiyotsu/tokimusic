@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.Calendar
 
 /**
@@ -101,6 +103,15 @@ fun startOfCurrentMonthMs(nowMs: Long): Long {
 class PlayEventLog(context: Context) : SQLiteOpenHelper(
     context.applicationContext, DB_NAME, null, DB_VERSION,
 ) {
+    private val _changeCount = MutableStateFlow(0L)
+
+    /**
+     * 播放事件写入计数（本轮 0127 第 18 条）：每次 [insert] 成功后 +1。
+     * VM 订阅它在新事件落库后重算回顾 / 音乐记忆——当月音乐记忆
+     * 因此实时更新，不必等重启或重新登录。
+     */
+    val changeCount: StateFlow<Long> get() = _changeCount
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_EVENTS)
         db.execSQL(CREATE_MONTHLY_SONGS)
@@ -123,6 +134,7 @@ class PlayEventLog(context: Context) : SQLiteOpenHelper(
             put("played_at", event.playedAtMs)
         }
         writableDatabase.insert("play_events", null, values)
+        _changeCount.value += 1
     }
 
     /** 最近 [limit] 条事件（画像构建用；按时间倒序取，构建不依赖顺序）。 */

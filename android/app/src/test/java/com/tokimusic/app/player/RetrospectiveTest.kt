@@ -19,6 +19,14 @@ class RetrospectiveTest {
     private fun event(songId: Long, source: String = "NETEASE", atMs: Long, seconds: Long = 60) =
         PlayEvent(songId = songId, source = source, artistNames = listOf("歌手"), playedSeconds = seconds, playedAtMs = atMs)
 
+    /** 带时分秒毫秒的时间戳（月界截止测试用）。 */
+    private fun msAt(year: Int, month1: Int, day: Int, hour: Int, min: Int, sec: Int, milli: Int): Long {
+        val cal = Calendar.getInstance()
+        cal.set(year, month1 - 1, day, hour, min, sec)
+        cal.set(Calendar.MILLISECOND, milli)
+        return cal.timeInMillis
+    }
+
     @Test
     fun monthKeyLabelAndIdRoundTrip() {
         val key = Retrospective.monthKey(ms(2026, 10, 15))
@@ -112,6 +120,64 @@ class RetrospectiveTest {
         // 记忆歌单 id 与回顾 id 互不误判。
         assertEquals(key, Retrospective.memoryMonthKeyOf(Retrospective.memoryPlaylistId(key)))
         assertNull(Retrospective.memoryMonthKeyOf(Retrospective.playlistId(key)))
+    }
+
+    @Test
+    fun monthBoundaryCutoffBelongsToEndingMonth() {
+        // 本轮（0127）第 18 条：月界截止——月末 23:59:59.999 的事件属
+        // 本月，次月 0 点整的事件属下月，两边互不串。
+        val lastMsOfNov = msAt(2026, 11, 30, 23, 59, 59, 999)
+        val firstMsOfDec = msAt(2026, 12, 1, 0, 0, 0, 0)
+        val novKey = Retrospective.monthKey(lastMsOfNov)
+        val decKey = Retrospective.monthKey(firstMsOfDec)
+        assertTrue(decKey > novKey)
+        val events = listOf(
+            event(1, "NETEASE", lastMsOfNov),
+            event(2, "NETEASE", firstMsOfDec),
+        )
+        val novTop = Retrospective.monthTopCounts(events, emptyList(), novKey)
+        assertEquals(listOf(1L), novTop.map { it.songId })
+        val decTop = Retrospective.monthTopCounts(events, emptyList(), decKey)
+        assertEquals(listOf(2L), decTop.map { it.songId })
+    }
+
+    @Test
+    fun pastMonthIsFrozenAgainstLaterEvents() {
+        // 本轮（0127）第 18 条：过去月份的回顾从事件日志派生——之后
+        // 再多新事件（哪怕同歌在本月狂播）也改不动已冻结月份的榜单；
+        // 当前月不进「回顾」（它由音乐记忆实时承载）。
+        val novEvents = (1L..10L).map { event(it, "NETEASE", ms(2026, 11, 10)) } +
+            event(1, "NETEASE", ms(2026, 11, 11))
+        val nowDec = ms(2026, 12, 15)
+        val before = Retrospective.monthlyTopMerged(novEvents, emptyList(), nowDec)
+        assertEquals(1, before.size)
+        val (novKey, novTop) = before[0]
+        assertEquals(Retrospective.monthKey(ms(2026, 11, 1)), novKey)
+        assertEquals(10, novTop.size)
+        assertEquals(2, novTop.first { it.songId == 1L }.plays)
+
+        val decEvents = (1L..12L).map { event(it, "NETEASE", ms(2026, 12, 3)) } +
+            List(9) { event(1, "NETEASE", ms(2026, 12, 4)) }
+        val after = Retrospective.monthlyTopMerged(novEvents + decEvents, emptyList(), nowDec)
+        assertEquals(1, after.size)
+        assertEquals(novTop, after[0].second)
+    }
+
+    @Test
+    fun currentMonthMemoryCountsIncludeThisMonth() {
+        // 本轮（0127）第 18 条：音乐记忆取当前月——本月内的事件（月初
+        // 与今天）都实时计入，不排除当前月、不设门槛。
+        val nowMs = ms(2026, 11, 27)
+        val key = Retrospective.monthKey(nowMs)
+        val events = listOf(
+            event(7, "QQ", ms(2026, 11, 1)),
+            event(7, "QQ", ms(2026, 11, 27)),
+            event(8, "QQ", ms(2026, 10, 31)),
+        )
+        val top = Retrospective.monthTopCounts(events, emptyList(), key)
+        assertEquals(1, top.size)
+        assertEquals(7L, top[0].songId)
+        assertEquals(2, top[0].plays)
     }
 
     @Test

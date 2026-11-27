@@ -33,7 +33,6 @@ import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
@@ -98,13 +97,14 @@ import com.tokimusic.app.ui.theme.tokiGlassFade
 /**
  * Home, rebuilt from the reference: a large in-content title with the avatar at
  * the top right, a capsule search, tall recommendation cards （每日推荐 / 私人雷达）,
- * a recently-played album row, recommended playlists and new songs. Every
+ * recommended playlists and new songs. Every
  * section is fed by the NetEase API service — no Demo data: login-gated
  * sections ask the user to sign in, and a dead service shows an error + retry.
  * The pinned overlay title is hidden on this page (see TokiMusicApp).
+ * （本轮 0127 第 17 条：主页「最近播放」横排已删除，资料库的最近播放不动。）
  *
  * Sixth round, batch 2: dual-source display + Home rearrangement —
- * order 每日推荐 → 最近播放 → 推荐歌单 3 行 → 推荐新歌（0.1.18
+ * order 每日推荐 → 推荐歌单 3 行 → 推荐新歌（0.1.18
  * 第 13 项：排行榜分区已从主页删除）；推荐歌单 3 行横向网格（网易云 +
  * QQ 同一网格，卡片带源角标）；推荐新歌 0.1.19 第 1 项起分网易云 / QQ
  * 两个板块，每块 3 行横向网格，来源 icon 在歌名之后；下拉刷新
@@ -161,7 +161,7 @@ fun HomeScreen(
         }
     }
     LaunchedEffect(activeSection) { onSectionTitle(activeSection) }
-    val hasContent = home.daily.isNotEmpty() || home.radar.isNotEmpty() || home.recent.isNotEmpty() ||
+    val hasContent = home.daily.isNotEmpty() || home.radar.isNotEmpty() ||
         home.playlists.isNotEmpty() || home.newSongs.isNotEmpty() ||
         home.qqPlaylists.isNotEmpty() || home.qqNewSongs.isNotEmpty() ||
         home.localMode
@@ -364,22 +364,10 @@ fun HomeScreen(
                 }
             }
         }
-        // 本轮（0124）第 22 项：最近播放改读本机 PlayEventLog（VM 已
-        // 换源）——不再要求登录网易云，有本地记录就显示。
-        if (home.recent.isNotEmpty()) {
-            item {
-                Text("最近播放", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    itemsIndexed(home.recent) { index, song ->
-                        RecentCard(song) { vm.play(home.recent, index, "最近播放") }
-                    }
-                }
-            }
-        }
+        // 本轮（0127）第 17 条：主页「最近播放」区已整段删除（原 0124
+        // 第 22 项的本机 PlayEventLog 横排卡）。资料库「歌曲」页的
+        // 最近播放是另一套（MineUiState.recent + 资料库自己的列表），
+        // 不受影响；回顾 / 音乐记忆区（同为 PlayEventLog 数据）保留。
         // Sixth round, batch 2, item 33 (overrides item 8's 2 rows):
         // recommended playlists in a 3-row horizontal grid, each card
         // badged with its source when both are on. 0.1.18 第 14 项：
@@ -458,10 +446,11 @@ fun HomeScreen(
                 }
             }
         }
-        // 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月回顾
-        // 歌单（作者 TokiMusic，生成机制同回顾：PlayEventLog 月度聚合，
-        // VM 的 refreshRetrospectives 一并算出）。无 10 月播放记录时
-        // 显示空态卡（不编造歌曲、不可点）。
+        // 音乐记忆（0124 第 11 项起；0127 第 18 条改生命周期）：
+        // 当前月回顾歌单（作者 TokiMusic，PlayEventLog 按月派生，
+        // VM 的 refreshRetrospectives 算出，新播放事件落库即刷新——
+        // 当月实时更新；跨月后本卡自动换到新月，旧月转入上方「回顾」
+        // 并冻结）。当月无播放记录时显示空态卡（不编造歌曲、不可点）。
         item {
             Text("音乐记忆", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
@@ -723,28 +712,6 @@ private fun RecommendCard(
 private fun artistLine(songs: List<Song>): String {
     val artists = songs.flatMap { it.artists }.map { it.name }.distinct()
     return if (artists.size > 4) artists.take(4).joinToString("，") + "等" else artists.joinToString("，")
-}
-
-@Composable
-private fun RecentCard(song: Song, onClick: () -> Unit) {
-    Column(Modifier.width(112.dp).clickable(onClick = onClick)) {
-        AsyncImage(
-            song.picUrl,
-            song.name,
-            Modifier.size(112.dp).clip(MaterialTheme.shapes.extraLarge),
-            contentScale = ContentScale.Crop,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(song.name, style = MaterialTheme.typography.bodyMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(
-            song.artistText,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
 /**

@@ -44,15 +44,18 @@ enum class AuthState { Unknown, LoggedIn, LoggedOut, Expired, Offline }
 
 /**
  * Home state, fed only by the NetEase API service. No Demo data anywhere: a
- * dead service shows an error + retry, login-gated sections (daily / radar /
- * recent) show a login prompt until the user signs in.
+ * dead service shows an error + retry, login-gated sections (daily / radar)
+ * show a login prompt until the user signs in.
+ * 本轮（0127）第 17 条：主页「最近播放」区已删——HomeUiState 不再带
+ * recent 字段、loadHome 不再算它；资料库「歌曲」的最近播放走
+ * MineUiState.recent（resolveLocalRecent），不受影响。
  */
-data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val recent: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — 0.1.15 第 2 项起可点进 QQ 歌手页）。 */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), val searchSource: MusicSource = MusicSource.NETEASE, /** 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（每日需登录，雷达匿名可用；空时主页不显示对应卡片）。 */ val qqDaily: List<Song> = emptyList(), val qqRadar: List<Song> = emptyList(), /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList(),
+data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, val loggedIn: Boolean = false, val daily: List<Song> = emptyList(), val radar: List<Song> = emptyList(), val playlists: List<Playlist> = emptyList(), val newSongs: List<Song> = emptyList(), val searchResults: List<Song> = emptyList(), val searchPlaylists: List<Playlist> = emptyList(), val searching: Boolean = false, /** Sixth round, batch 2 (dual-source display): QQ sections, loaded in parallel with the NetEase ones; empty when QQ is off. */ val qqToplist: List<Playlist> = emptyList(), val qqPlaylists: List<Playlist> = emptyList(), val qqNewSongs: List<Song> = emptyList(), /** Search: NetEase artists (Artist) vs QQ artists (QqArtist — 0.1.15 第 2 项起可点进 QQ 歌手页）。 */ val searchArtists: List<Artist> = emptyList(), val searchQqArtists: List<QqArtist> = emptyList(), val searchSource: MusicSource = MusicSource.NETEASE, /** 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（每日需登录，雷达匿名可用；空时主页不显示对应卡片）。 */ val qqDaily: List<Song> = emptyList(), val qqRadar: List<Song> = emptyList(), /** Pull-to-refresh state (shares loadHome with cold start). */ val isPullRefreshing: Boolean = false, /** Local player (item 20): both network sources off → only local files. */ val localMode: Boolean = false, val localSongs: List<Song> = emptyList(),
     /** 0.1.20 第 11 项：歌词搜索结果（网易云 cloudsearch type=1006；QQ 无歌词搜索恒空）。 */
     val searchLyricResults: List<Song> = emptyList(),
     /** 0.1.20 第 6 项：回顾歌单——(monthKey, 该月 top 歌已解析列表)，月份倒序。 */
     val retrospectives: List<Pair<Int, List<Song>>> = emptyList(),
-    /** 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月回顾歌单（作者 TokiMusic）；memoryMonthKey 为 0 表示无数据（页面走空态）。 */
+    /** 音乐记忆 = 当前月回顾歌单（0124 第 11 项起，0127 第 18 条改为当前月实时派生；作者 TokiMusic）；memoryMonthKey 为 0 表示当月无数据（页面走空态）。 */
     val memorySongs: List<Song> = emptyList(),
     val memoryMonthKey: Int = 0)
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
@@ -700,29 +703,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var retrospectiveJob: Job? = null
+
     /**
      * 第 6 项：回顾歌单刷新——PlayEventLog 按月聚合（过去月份、每月
      * 不同歌曲 ≥10 才生成），歌曲对象经 SongCacheStore 解析，网易云
      * 缓存缺失的批量走 songDetail 兜底；仍解析不到的跳过（覆盖限制
      * 见 NOTES）。
+     *
+     * 本轮（0127）第 18 条重做「音乐记忆」的生命周期（此前写死
+     * 2026 年 10 月 + 只在启动时刷新一次，用户当月播的歌永远进不
+     * 去、卡片恒空——本条的根因）：
+     * - 音乐记忆 = 当前月：monthTopCounts(当前月键）从事件日志实时
+     *   派生，新事件落库即触发重算（init 里的 changeCount 订阅）。
+     * - 冻结不靠快照：事件按 playedAtMs 的 monthKey 分桶——月末
+     *   23:59 前的事件属本月、次月 0 点起属下月，天然截止；跨月后
+     *   本月键不再是当前月，记忆卡自动换到新月，旧月转入「回顾」
+     *   （monthlyTopMerged 的过去月份派生，事件 + 瘦身聚合无损
+     *   合并，派生结果不再变化 = 冻结）。
+     * - 不设 ≥10 门槛（当月有多少算多少；无数据时 memoryMonthKey
+     *   保持 0，页面走空态，绝不编造歌曲）。
      */
     fun refreshRetrospectives() {
-        viewModelScope.launch {
+        retrospectiveJob?.cancel()
+        retrospectiveJob = viewModelScope.launch {
             val events = withContext(Dispatchers.IO) { player.playEventLog.recentEvents(20_000) }
             // 0.1.21 瘦身后：原始事件 + 月度聚合合并出数（先聚合再剪，
             // 回顾按月数据不丢）；口径见 Retrospective.monthlyTopMerged。
             val aggregates = withContext(Dispatchers.IO) { player.playEventLog.monthlySongAggregates() }
+            val nowMs = System.currentTimeMillis()
             val monthly = com.tokimusic.app.player.Retrospective.monthlyTopMerged(
-                events, aggregates, System.currentTimeMillis(),
+                events, aggregates, nowMs,
             )
-            // 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月的
-            // 指定月份回顾（不设 ≥10 门槛，有多少算多少；无数据时
-            // memoryMonthKey 保持 0，页面走空态，绝不编造歌曲）。
-            val memoryKey = run {
-                val cal = java.util.Calendar.getInstance()
-                cal.set(2026, java.util.Calendar.OCTOBER, 1, 0, 0, 0)
-                com.tokimusic.app.player.Retrospective.monthKey(cal.timeInMillis)
-            }
+            // 音乐记忆指向当前月（0127 第 18 条；原 0124 第 11 项写死
+            // 2026 年 10 月，已废）。
+            val memoryKey = com.tokimusic.app.player.Retrospective.monthKey(nowMs)
             val memoryCounts = com.tokimusic.app.player.Retrospective.monthTopCounts(
                 events, aggregates, memoryKey,
             )
@@ -778,7 +793,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return playlist to songs
     }
 
-    /** 本轮（0124）第 11 项：「10'26 音乐记忆」详情——名字与作者按用户口径（「10'26 音乐记忆」/ TokiMusic），与普通回顾歌单分开。 */
+    /** 音乐记忆详情（当月，0127 第 18 条）——名字与作者按用户口径（如「11'26 音乐记忆」/ TokiMusic），与普通回顾歌单分开。 */
     fun memoryDetail(monthKey: Int): Pair<Playlist, List<Song>>? {
         if (_home.value.memoryMonthKey != monthKey) return null
         val songs = _home.value.memorySongs
@@ -1186,6 +1201,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (ran) store.playLogLastCompactMs = now
         }
+        // 本轮（0127）第 18 条：新播放事件落库 → 重算回顾 / 音乐记忆。
+        // 此前 refreshRetrospectives 只在启动登录校验后跑一次，会话内
+        // 新播的歌永远进不了音乐记忆（且记忆月份写死 2026 年 10 月，
+        // 见 refreshRetrospectives 注释）。collectLatest + 800ms 静置
+        // 合并连发（切歌连发多条事件时只重算最后一次）。
+        viewModelScope.launch {
+            player.playEventLog.changeCount.collectLatest { count ->
+                if (count == 0L) return@collectLatest
+                delay(800)
+                refreshRetrospectives()
+            }
+        }
         // 0.1.17 第 12 / 13 项：实时歌词推送 + 听歌上报累计（同一 500ms 循环）。
         startPlaybackSideEffects()
     }
@@ -1366,7 +1393,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _authState.value = AuthState.Offline
         }
         // The uid is only known after login-status resolves, so the login-gated
-        // home sections (daily / radar / recent) load here, not in init's first pass.
+        // home sections (daily / radar) load here, not in init's first pass.
         loadHome()
         // 0.1.20 第 6 项：回顾歌单随启动刷新一次（纯本地数据，不依赖登录）。
         refreshRetrospectives()
@@ -1397,9 +1424,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val radarD = async {
                 if (neEnabled && profile != null) runCatching { api.userRecord(profile.uid, weekly = true) }.getOrDefault(emptyList()).map { it.song }.take(20) else emptyList()
             }
-            // 本轮（0124）第 22 项：最近播放改读本机 PlayEventLog（全源、
-            // 本地优先），不再读网易云云端记录——未登录也有最近播放。
-            val recentD = async { resolveLocalRecent() }
+            // 本轮（0127）第 17 条：主页最近播放已删，loadHome 不再
+            // 算 recentD；resolveLocalRecent 只剩资料库（loadMine）在用。
             val qqTopD = async { if (qqEnabledNow) runCatching { qqClient.toplist() }.getOrNull() else emptyList() }
             val qqPlsD = async { if (qqEnabledNow) runCatching { qqClient.recommendPlaylists() }.getOrNull() else emptyList() }
             val qqNewsD = async { if (qqEnabledNow) runCatching { qqClient.recommendNewSongs() }.getOrNull() else emptyList() }
@@ -1424,7 +1450,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 qqRadar = qqRadarD.await(),
             )
             _home.value = _home.value.copy(
-                daily = dailyD.await(), radar = radarD.await(), recent = recentD.await(),
+                daily = dailyD.await(), radar = radarD.await(),
             )
             // 推荐四组先存源原始顺序（开关还原 / 重排的底），再按算法
             // 推荐开关决定是否画像重排（本地模式无推荐流，天然跳过）。

@@ -22,6 +22,23 @@ class HomeBlockOrderTest {
     }
 
     @Test
+    fun applyDropsRemovedRecentBlockKey() {
+        // 本轮（0127）第 17 条：主页「最近播放」区删除。注：它从来不是
+        // 四版块（daily/radar/qqdaily/qqforyou）之一，但万一旧存档里
+        // 混有 "recent" 键，apply 的未知 key 过滤必须平滑丢弃、布局
+        // 不坏，其余块顺序与补全规则不变。
+        assertEquals(HomeBlockOrder.DEFAULT, HomeBlockOrder.apply("recent"))
+        assertEquals(
+            listOf("daily", "radar", "qqdaily", "qqforyou"),
+            HomeBlockOrder.apply("recent,daily"),
+        )
+        assertEquals(
+            listOf("radar", "daily", "qqdaily", "qqforyou"),
+            HomeBlockOrder.apply("radar,recent,daily"),
+        )
+    }
+
+    @Test
     fun serializeRoundTrips() {
         val order = listOf("qqdaily", "daily", "qqforyou", "radar")
         assertEquals(order, HomeBlockOrder.apply(HomeBlockOrder.serialize(order)))
