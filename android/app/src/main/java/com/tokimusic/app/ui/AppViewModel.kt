@@ -1158,7 +1158,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // 网络失败就永久空列表（直到退出重登），下次进资料库也不重试。
             runCatching { qqClient.qqLibrary() }
                 .onSuccess { _qqLibrary.value = it; qqLibraryLoaded = true; refreshSubscribedPlaylistIds() }
-                .onFailure { _qqLibrary.value = QqClient.QqLibrary() }
+                // 本轮（0127）第 16 条：失败不覆盖已加载的好数据（重试由
+                // 分区进入/切源时的 loadQqLibrary 调用触发，loaded 保持 false）。
+                .onFailure { if (_qqLibrary.value == null) _qqLibrary.value = QqClient.QqLibrary() }
         }
     }
     private var searchJob: Job? = null
@@ -1767,6 +1769,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var lastSearchKeywords: String = ""
         private set
 
+    /**
+     * 本轮（0127）第 15 条：搜索页顶栏源切换的专用入口。先把源状态
+     * 落定并持久化（钳制到已启用源，与 search() 同规则；无任何源
+     * 启用时先记下选择，启用后生效），已有关键词时再按新源重跑——
+     * 切换不再依赖「关键词非空」这个隐含前提（原先按钮直接调
+     * search(lastKeywords, 源），关键词为空时源状态被空白提前返回吞掉）。
+     */
+    fun setSearchSource(source: MusicSource) {
+        val enabledSources = listOfNotNull(
+            if (_neteaseEnabled.value) MusicSource.NETEASE else null,
+            if (_qqEnabled.value) MusicSource.QQ else null,
+            if (_youtubeEnabled.value) MusicSource.YOUTUBEMUSIC else null,
+        )
+        val src = if (enabledSources.isEmpty()) source
+            else source.takeIf { it in enabledSources } ?: enabledSources.first()
+        _searchSource.value = src
+        store.lastSearchSource = src.name
+        val kw = lastSearchKeywords
+        if (kw.isNotBlank() && !isLocalModeNow()) search(kw, src)
+    }
+
     /** Sixth round, batch 2: search is source-aware (order 歌曲/歌手/歌单); the source is remembered (lastSearchSource). LOCAL searches the scanned on-device files. 0.1.18 第 9 项恢复（0.1.15 第 3 项删掉的），单源时只搜该源——旧版不看开关，这里按任务要求钳制。 */
     fun search(keywords: String, source: MusicSource? = null) {
         lastSearchKeywords = keywords
@@ -1782,7 +1805,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
-        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchLyricResults = emptyList(), searching = false); return }
         val enabledSources = listOfNotNull(
             if (_neteaseEnabled.value) MusicSource.NETEASE else null,
             if (_qqEnabled.value) MusicSource.QQ else null,
@@ -1792,8 +1814,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             enabledSources.size == 1 -> enabledSources.single()
             else -> (source ?: _searchSource.value).takeIf { it in enabledSources } ?: enabledSources.first()
         }
+        // 本轮（0127）第 15 条：源状态必须先于空白查询的提前返回落定——
+        // 原先空白时直接 return，用户「先点源按钮、再打字」的切换被吞：
+        // _searchSource 没变（按钮高亮不动），随后打字仍按旧源搜，看起来
+        // 切换完全无效。现在显式传源时无论关键词是否为空都先记下源。
         _searchSource.value = src
         store.lastSearchSource = src.name
+        if (keywords.isBlank()) { _home.value = _home.value.copy(searchResults = emptyList(), searchPlaylists = emptyList(), searchArtists = emptyList(), searchQqArtists = emptyList(), searchLyricResults = emptyList(), searching = false); return }
         // 本轮（0124）第 13 项：搜索关键词记入口味训练信号（本机）。
         viewModelScope.launch(Dispatchers.IO) { runCatching { tasteSignals.recordSearch(keywords) } }
         searchJob = viewModelScope.launch {

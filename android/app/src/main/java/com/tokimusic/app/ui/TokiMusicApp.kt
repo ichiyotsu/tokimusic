@@ -583,19 +583,19 @@ fun TokiMusicApp(
                                                         com.tokimusic.app.ui.search.SearchSourceButton(
                                                             MusicSource.NETEASE,
                                                             searchSource == MusicSource.NETEASE,
-                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.NETEASE) }
+                                                        ) { vm.setSearchSource(MusicSource.NETEASE) }
                                                     }
                                                     if (qqEnabled) {
                                                         com.tokimusic.app.ui.search.SearchSourceButton(
                                                             MusicSource.QQ,
                                                             searchSource == MusicSource.QQ,
-                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.QQ) }
+                                                        ) { vm.setSearchSource(MusicSource.QQ) }
                                                     }
                                                     if (youtubeEnabled) {
                                                         com.tokimusic.app.ui.search.SearchSourceButton(
                                                             MusicSource.YOUTUBEMUSIC,
                                                             searchSource == MusicSource.YOUTUBEMUSIC,
-                                                        ) { vm.search(vm.lastSearchKeywords, MusicSource.YOUTUBEMUSIC) }
+                                                        ) { vm.setSearchSource(MusicSource.YOUTUBEMUSIC) }
                                                     }
                                                 }
                                             }

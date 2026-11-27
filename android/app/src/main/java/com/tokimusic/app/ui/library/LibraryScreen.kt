@@ -159,16 +159,10 @@ fun LibraryScreen(
     // 0.1.17 第 14 项：QQ 那行改成 tokimusic 行后，BOTH / QQ 档位也显示
     // 本地累计时长，刷新条件放宽到非网易云单源档位。
     LaunchedEffect(effectiveStats) { if (effectiveStats != LibraryStatsSource.NETEASE) vm.refreshLocalStats() }
-    // Loading follows the section; back handling lives in TokiMusicApp (so a
-    // playlist opened from a section still closes the playlist first).
-    LaunchedEffect(section) {
-        when (section) {
-            LibrarySection.Liked -> vm.loadLikedSongs()
-            LibrarySection.Artists -> vm.loadArtists()
-            LibrarySection.Albums -> vm.loadAlbums()
-            else -> {}
-        }
-    }
+    // Loading follows the section (and the section's selected source —
+    // see the LaunchedEffect(section, sectionSource) below, placed after
+    // sectionSource is computed); back handling lives in TokiMusicApp (so
+    // a playlist opened from a section still closes the playlist first).
     // 0.1.15 资料库同步：QQ 登录后拉一次资料库（歌单 / 喜欢的歌曲 /
     // 关注歌手），与网易云列表合并展示；未登录或 euin 拿不到时各路
     // 为空，页面只显示网易云内容。
@@ -202,6 +196,28 @@ fun LibraryScreen(
     val sectionAlbums = when (sectionSource) {
         MusicSource.NETEASE -> albums
         else -> emptyList()
+    }
+    // 本轮（0127）第 16 条 a：分区加载跟随「分区 × 当前源」——原先进入
+    // 分区只按分区加载网易云数据（歌手只 loadArtists），QQ 资料库只靠
+    // LaunchedEffect(qqLoggedIn) 在组合时拉一次，失败/未登录时机不对
+    // 就整场为空且切源不补拉，用户切到 QQ 只看到空态/旧观感。现在进
+    // 分区或在分区内切源都按当前源补拉（VM 侧 loaded 守卫使重复调用
+    // 廉价，失败保持未 loaded、下次进入/切源自动重试）。
+    LaunchedEffect(section, sectionSource) {
+        when (section) {
+            LibrarySection.Liked -> {
+                vm.loadLikedSongs()
+                if (sectionSource == MusicSource.QQ) vm.loadQqLibrary()
+            }
+            LibrarySection.Playlists -> if (sectionSource == MusicSource.QQ) vm.loadQqLibrary()
+            LibrarySection.Artists -> when (sectionSource) {
+                MusicSource.QQ -> vm.loadQqLibrary()
+                MusicSource.YOUTUBEMUSIC -> {}
+                else -> vm.loadArtists()
+            }
+            LibrarySection.Albums -> vm.loadAlbums()
+            else -> {}
+        }
     }
     // 0.1.21 口径（覆盖 0.1.20 第 9 项的隐藏规则）：资料库正常显示——
     // 歌单与曲目照常全量展示，不因关源/本地模式隐藏；门控只落在播放
@@ -252,7 +268,24 @@ fun LibraryScreen(
                     if (idx >= 0) vm.play(playable, idx, "收藏")
                 }
                 LibrarySection.Playlists -> playlistsSection(sectionPlaylists, profile?.uid ?: 0, false, onOpenPlaylist)
-                LibrarySection.Artists -> artistsSection(sectionArtists, onOpenArtist, onOpenQqArtist)
+                LibrarySection.Artists -> artistsSection(
+                    sectionArtists,
+                    onOpenArtist,
+                    onOpenQqArtist,
+                    followDaysLabel = { artist ->
+                        // 本轮（0127）第 16 条 b：关注天数只对 NeteaseMusic
+                        // 显示——数据来自 app 本地记录的关注时间（网易云
+                        // sublist 不提供关注时间戳，0.1.18 第 21 项起本地
+                        // 记录/首见补记）；无记录（0）时不显示，绝不编造。
+                        // QQ/YouTubeMusic 恒不显示。
+                        if (sectionSource == MusicSource.NETEASE) {
+                            val followMs = vm.artistFollowTimeMs(artist.id)
+                            if (followMs > 0L) "已关注 ${com.tokimusic.app.ui.artist.followDays(followMs, System.currentTimeMillis())} 天" else null
+                        } else {
+                            null
+                        }
+                    },
+                )
                 LibrarySection.Albums -> albumsSection(sectionAlbums, onOpenAlbum)
                 LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
                     val playable = mine.recent.filter { vm.songBlockedLabel(it) == null }
@@ -538,7 +571,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artists: List<Artist>, onOpenArtist: (Long) -> Unit, onOpenQqArtist: (String) -> Unit = {}) {
+private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(
+    artists: List<Artist>,
+    onOpenArtist: (Long) -> Unit,
+    onOpenQqArtist: (String) -> Unit = {},
+    followDaysLabel: (Artist) -> String? = { null },
+) {
     if (artists.isEmpty()) {
         item {
             Text(
@@ -549,26 +587,38 @@ private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(artist
             )
         }
     } else {
-        // 0.1.13 第 24 项：歌手列表两列展示——每格 64dp 圆形头像 +
-        // 名字，点进歌手页。
-        items(artists.chunked(2)) { pair ->
+        // 本轮（0127）第 16 条 b：行式改版（取代 0.1.13 第 24 项的两列
+        // 网格）——左头像（48dp），右侧两行：歌手名 + 标识行（网易云
+        // 显示数字 ID、QQ 显示 MID；NeteaseMusic 且有本地关注记录时
+        // 追加「已关注 X 天」，由 followDaysLabel 决定，其他源恒空），
+        // 行右端 chevron 进详情图标。点按路由不变：QQ 按 mid 进 QQ
+        // 歌手页，网易云按 id 进网易云歌手页。
+        items(artists) { artist ->
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                Modifier.fillMaxWidth()
+                    .clickable { if (artist.mid.isNotBlank()) onOpenQqArtist(artist.mid) else onOpenArtist(artist.id) }
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                pair.forEach { artist ->
-                    Column(
-                        // 0.1.15 资料库同步：QQ 关注歌手按 mid 进 QQ 歌手页，
-                        // 网易云歌手按 id 进网易云歌手页。
-                        Modifier.weight(1f).clickable { if (artist.mid.isNotBlank()) onOpenQqArtist(artist.mid) else onOpenArtist(artist.id) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Avatar(artist.picUrl, 64)
-                        Spacer(Modifier.height(8.dp))
-                        Text(artist.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(artist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                Avatar(artist.picUrl, 48)
+                Column(Modifier.weight(1f)) {
+                    Text(artist.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(artist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val idText = if (artist.mid.isNotBlank()) "MID ${artist.mid}" else "ID ${artist.id}"
+                    val days = followDaysLabel(artist)
+                    Text(
+                        if (days != null) "$idText · $days" else idText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
