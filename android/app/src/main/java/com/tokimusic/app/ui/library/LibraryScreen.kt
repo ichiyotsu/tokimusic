@@ -297,7 +297,7 @@ fun LibraryScreen(
                         onMinutesClick = onOpenListeningStats,
                         onLevelClick = onOpenLevelDetail,
                         levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
-                        leadingAppIcon = true,
+                        leadingIconRes = R.drawable.ic_local_music,
                     )
                     LibraryStatsSource.LOCAL -> StatsPair(
                         level = "Lv.${localStats.level}",
@@ -306,7 +306,7 @@ fun LibraryScreen(
                         onMinutesClick = onOpenListeningStats,
                         onLevelClick = onOpenLevelDetail,
                         levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
-                        leadingAppIcon = true,
+                        leadingIconRes = R.drawable.ic_local_music,
                     )
                     LibraryStatsSource.BOTH -> Column(
                         Modifier.fillMaxWidth().padding(24.dp),
@@ -326,7 +326,7 @@ fun LibraryScreen(
                             onMinutesClick = onOpenListeningStats,
                             onLevelClick = onOpenLevelDetail,
                             levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
-                            leadingAppIcon = true,
+                            leadingIconRes = R.drawable.ic_local_music,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -995,12 +995,11 @@ private fun StatsPair(
     minutes: String,
     onMinutesClick: (() -> Unit)? = null,
     onLevelClick: (() -> Unit)? = null,
-    // 本轮（0124）第 15 项：TokiMusic 行的等级进度（本级进度 + 今日积分），非空时显示在等级卡下方。
+    // 本轮（0124）第 15 项：TokiMusic 行的等级进度，非空时显示在等级卡下方。
+    // 本轮（0125）第 2 项：等级块不显示具体积分数字——只留进度条，
+    // 数字（今日积分 / 还差多少分）只在等级详情页出现。
     levelSnapshot: com.tokimusic.app.player.MusicLevelSnapshot? = null,
     leadingIconRes: Int? = null,
-    // 本轮（0124）第 14 项：TokiMusic 行的前导图标用 app 图标
-    // （启动图标同款：白底 + 前景字形），不用通用音符图标。
-    leadingAppIcon: Boolean = false,
     modifier: Modifier = Modifier.fillMaxWidth().padding(24.dp),
 ) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1008,26 +1007,15 @@ private fun StatsPair(
             StatCard(
                 "音乐等级", level, Modifier.fillMaxWidth(),
                 onClick = onLevelClick,
-                leadingIcon = when {
-                    leadingAppIcon -> { { AppIconBadge() } }
-                    leadingIconRes != null -> {
-                        { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
-                    }
-                    else -> null
-                },
+                leadingIcon = if (leadingIconRes != null) {
+                    { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
+                } else null,
             )
             if (levelSnapshot != null) {
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.LinearProgressIndicator(
                     progress = { levelSnapshot.progress },
                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (levelSnapshot.isMaxLevel) "已满级 · 今日 ${levelSnapshot.todayPoints}/${levelSnapshot.dailyCap} 分"
-                    else "今日 ${levelSnapshot.todayPoints}/${levelSnapshot.dailyCap} 分 · 距 Lv.${levelSnapshot.level + 1} 还差 ${(levelSnapshot.nextLevelFloor ?: 0) - levelSnapshot.totalPoints} 分",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1036,21 +1024,6 @@ private fun StatsPair(
         // 第五轮第 23 项：删掉左边的“收藏歌曲”卡；听歌时长放
         // 等级右边，单位 h、可带一位小数（如 1537.5h）；点卡仍进时长页。
         StatCard("听歌时长", minutes, Modifier.weight(1f), onClick = onMinutesClick)
-    }
-}
-
-/** 本轮（0124）第 14 项：app 图标徽章——与启动图标同构图（白底圆角 + ic_launcher_foreground 前景字形），28dp 与源图标同尺寸口径。 */
-@Composable
-private fun AppIconBadge() {
-    Box(
-        Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Color.White),
-        contentAlignment = Alignment.Center,
-    ) {
-        androidx.compose.foundation.Image(
-            painterResource(R.drawable.ic_launcher_foreground),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-        )
     }
 }
 

@@ -86,6 +86,9 @@ fun OverlayTitleHeader(
     // 0.1.19 第 1 项：仅设置打开时为 true——顶栏此时才注册成 haze 源，
     // 让 SettingsBackdrop 糊到标题与头像（见 Row 上的注释）。
     captureForBackdrop: Boolean = false,
+    // 本轮（0125）第 3 项：标题文字正后方的小徽章（如等级页的 "beta"），
+    // 非空时在标题 chip 内、标题文字后渲染；样式与页内小徽章同口径。
+    titleBadge: String? = null,
 ) {
     val density = LocalDensity.current
     val content = MaterialTheme.colorScheme.onSurface
@@ -156,15 +159,34 @@ fun OverlayTitleHeader(
                     },
                     label = "headerTitle",
                 ) { currentTitle ->
-                    Text(
-                        currentTitle,
-                        modifier = Modifier.padding(horizontal = tokiSpace("lg")),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = content,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        Modifier.padding(horizontal = tokiSpace("lg")),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            currentTitle,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = content,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (titleBadge != null) {
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    titleBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

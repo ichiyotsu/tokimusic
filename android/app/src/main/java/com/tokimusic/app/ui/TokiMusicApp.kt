@@ -503,6 +503,10 @@ fun TokiMusicApp(
                                     // 成 haze 源（平时注册会抑制 chip 自身的
                                     // 磨砂，见 OverlayTitleHeader 的注释）。
                                     captureForBackdrop = showSettings,
+                                    // 本轮（0125）第 3 项：等级页的 beta 徽章
+                                    // 放进悬浮标题栏（标题文字正后方），页面
+                                    // 内容区不再单独放标题行。
+                                    titleBadge = if (levelOpen) "beta" else null,
                                     // 第三轮第 5 项：淡入/上移只作用在标题 chip 上
                                     // （titleAlpha/titleOffsetY），返回 chip 一直显示。
                                     titleAlpha = headerAlpha,

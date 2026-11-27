@@ -2,6 +2,7 @@ package com.tokimusic.app.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,26 +18,51 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.player.formatPointCount
 import com.tokimusic.app.player.levelEarningRows
 import com.tokimusic.app.ui.AppViewModel
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * 音乐等级详情页（本轮 0124 第 15b 项）：从资料库等级块点入的二级页
  * （返回走 TokiMusicApp 的二级页返回链，回到资料库一级）。
- * 内容：标题 + beta 徽章 → 大字号当前等级 → 本级进度条（三标注：
- * 当前总积分压条上带实色底衬、条下左本级下限、条下右下一级门槛，
- * 满级显示满级态）→「达成条件 + 达成进度」（目前只有听歌来源：
- * 听歌时长 / 整首听完奖励两行 + 今日总积分 vs 每日上限）。
+ * 内容：大字号当前等级 → 本级进度条（三标注：当前总积分压条上带
+ * 实色底衬、条下左本级下限、条下右下一级门槛，满级显示满级态）→
+ * 「达成条件 + 达成进度」（目前只有听歌来源：听歌时长 / 整首听完
+ * 奖励两行 + 今日总积分 vs 每日上限）。
+ * 本轮（0125）第 3 项：beta 徽章移进悬浮标题栏（标题「音乐等级」
+ * 正后方，见 TokiMusicApp / OverlayTitleHeader 的 titleBadge），
+ * 内容区不再单独放标题行。第 4 项：进度条上的积分数值标签跟随
+ * 填充占比移动（见 [levelProgressLabelOffsetPx]）。
  * 数字全部来自 MusicLevel 纯函数与 MusicLevelStore 快照，不另算。
  */
+
+/**
+ * 进度条数值标签的水平偏移（px，本轮 0125 第 4 项）：标签中心锚在
+ * 填充前缘（progress × 条宽），再钳制到 [0, 条宽 − 标签宽]，保证
+ * 标签整体始终留在条内——占比 0 时贴最左、满格时贴最右。
+ */
+fun levelProgressLabelOffsetPx(barWidthPx: Int, labelWidthPx: Int, progress: Float): Int {
+    if (barWidthPx <= 0 || labelWidthPx <= 0) return 0
+    val maxOffset = max(0, barWidthPx - labelWidthPx)
+    val fillEdge = (barWidthPx * progress.coerceIn(0f, 1f)).roundToInt()
+    return (fillEdge - labelWidthPx / 2).coerceIn(0, maxOffset)
+}
+
 @Composable
 fun LevelDetailScreen(
     vm: AppViewModel,
@@ -49,32 +76,6 @@ fun LevelDetailScreen(
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
     ) {
         item {
-            // 标题行：标题文字正后方带 beta 小徽章（等级功能测试中，
-            // 用户 2026-11-27 口径；样式仿应用内小徽章：小圆角底 + labelSmall）。
-            Row(
-                Modifier.padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "音乐等级",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Box(
-                    Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        "beta",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        item {
             // 大字号当前等级。
             Text(
                 if (snapshot.isMaxLevel) "Lv.${snapshot.level} · 满级" else "Lv.${snapshot.level}",
@@ -86,19 +87,30 @@ fun LevelDetailScreen(
         item {
             Column(Modifier.padding(horizontal = 24.dp)) {
                 // 本级进度条：填充 = 本级下限 → 下一级门槛的进度；
-                // 当前总积分压在条上（居中、实色底衬保证可读）。
-                Box(
+                // 当前总积分数值标签跟随填充占比（0125 第 4 项）：中心
+                // 锚在填充前缘、随占比左右移动，两端钳制不出条；
+                // 实色底衬保证可读。
+                BoxWithConstraints(
                     Modifier.fillMaxWidth().height(28.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 ) {
+                    val barWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+                    var labelWidthPx by remember { mutableStateOf(0) }
                     Box(
                         Modifier.fillMaxWidth(snapshot.progress)
                             .height(28.dp)
                             .background(MaterialTheme.colorScheme.primary),
                     )
                     Box(
-                        Modifier.align(Alignment.Center)
+                        Modifier.align(Alignment.CenterStart)
+                            .offset {
+                                IntOffset(
+                                    levelProgressLabelOffsetPx(barWidthPx, labelWidthPx, snapshot.progress),
+                                    0,
+                                )
+                            }
+                            .onSizeChanged { labelWidthPx = it.width }
                             .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.surface)
                             .padding(horizontal = 8.dp, vertical = 2.dp),
