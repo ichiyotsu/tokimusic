@@ -93,6 +93,7 @@ import com.tokimusic.app.ui.library.LibrarySection
 import com.tokimusic.app.ui.stats.ListeningStatsScreen
 import com.tokimusic.app.ui.stats.NeteaseReportScreen
 import com.tokimusic.app.ui.player.MiniPlayer
+import com.tokimusic.app.ui.player.MiniPlayerPro
 import com.tokimusic.app.ui.player.PlayerScreen
 import com.tokimusic.app.ui.playlists.PlaylistDetailScreen
 import com.tokimusic.app.ui.settings.SettingsOverlay
@@ -252,6 +253,9 @@ fun TokiMusicApp(
         // 不再是独立全屏页。搜索在 0.1.20 第 11 项改为独立一级页
         // （Dest.Search），不再是弹窗。
         var showSettings by remember { mutableStateOf(false) }
+        // 本轮（0127）第 12 条：MiniPlayer Pro 面板（长按 MiniPlayer
+        // 3 秒触发，顶部半屏展开；状态在根层，面板画在根 Box 上）。
+        var showMiniPro by remember { mutableStateOf(false) }
         val density = LocalDensity.current
         // 第二轮第 8 项：歌单详情的悬浮标题只在标题行滑出可视区后出现
         // （淡入 + 上移动画）；进新歌单时先复位为隐藏。第三轮第 5 项起，
@@ -861,7 +865,8 @@ fun TokiMusicApp(
                                 dest = dest,
                                 glass = barGlass,
                                 miniPlayerGlass = miniPlayerGlass,
-                                onOpenPlayer = { showPlayer = true },
+                                onOpenPlayer = { showPlayer = true; showMiniPro = false },
+                                onMiniProTrigger = { showMiniPro = true },
                                 onSelect = {
                                     dest = it
                                     playlistId = null
@@ -887,6 +892,18 @@ fun TokiMusicApp(
                     // 标题与头像一起进覆盖页的模糊（覆盖范围不丢）。
                 }
             }
+        }
+        // 本轮（0127）第 12 条：MiniPlayer Pro 面板（顶部半屏，自顶
+        // 滑入）——画在内容 + 底部 chrome 之上、「我的」覆盖页之下。
+        AnimatedVisibility(
+            visible = showMiniPro,
+            enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { -it } +
+                fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = slideOutVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { -it } +
+                fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            label = "miniPlayerPro",
+        ) {
+            MiniPlayerPro(vm, hazeState, coverColors = playerCoverColors, onClose = { showMiniPro = false })
         }
         // 本轮（0127）第 10 条：「我的」是全屏覆盖页（SettingsOverlay），
         // 画在根 Box 最上层（歌曲操作弹窗等 Dialog 窗口仍在它之上，
@@ -967,6 +984,7 @@ private fun BottomChrome(
     glass: Modifier,
     miniPlayerGlass: Modifier,
     onOpenPlayer: () -> Unit,
+    onMiniProTrigger: () -> Unit,
     onSelect: (Dest) -> Unit,
     onHeight: (Dp) -> Unit,
 ) {
@@ -1021,7 +1039,7 @@ private fun BottomChrome(
                 exit = slideOutVertically(scheme.defaultSpatialSpec()) { it } + fadeOut(scheme.defaultEffectsSpec()),
                 label = "miniPlayer",
             ) {
-                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, coverColors = coverColors)
+                MiniPlayer(playerState, vm, onOpenPlayer, glass = miniPlayerGlass, coverColors = coverColors, onProTrigger = onMiniProTrigger)
             }
             NavBarSlot(
                 navVisible = navVisible,
