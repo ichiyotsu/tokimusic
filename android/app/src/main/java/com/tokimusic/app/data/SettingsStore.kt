@@ -152,19 +152,6 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 退出登录不清除——“第一次登录”只记一次）。 */
     var firstLoginMs: Long get() = prefs.getLong("first_login_ms", 0L)
         set(v) { prefs.edit().putLong("first_login_ms", v).apply() }
-    /** Toki ID 回退 ID（本轮 0127 第 20 条）：正常路径下 Toki ID 由
-     * 设备 SSAID 确定性算出、不落盘（见 access/TokiAccess.kt）；
-     * 仅当 SSAID 取不到（null/空）时，本地随机生成一个同格式 ID
-     * 存这里长期使用。空 = 还没走过回退路径。 */
-    var tokiIdFallback: String get() = prefs.getString("toki_id_fallback", "") ?: ""
-        set(v) { prefs.edit().putString("toki_id_fallback", v).apply() }
-    /** 封禁名单缓存（本轮 0127 第 20 条）：上次成功拉取的名单 JSON
-     * 原文与时间；启动先用缓存判，至多每天拉一次新的；拉取失败
-     * fail open（用缓存，缓存也没有就不封）。 */
-    var blocklistJson: String get() = prefs.getString("blocklist_json", "") ?: ""
-        set(v) { prefs.edit().putString("blocklist_json", v).apply() }
-    var blocklistFetchMs: Long get() = prefs.getLong("blocklist_fetch_ms", 0L)
-        set(v) { prefs.edit().putLong("blocklist_fetch_ms", v).apply() }
     /** QQ 音乐登录凭证（第六轮第 1 项）：musicid / musickey，与网易云 cookie
      * 一样明文存 SharedPreferences（P1 同款，见类注释）。空 = 未登录 QQ。 */
     override var qqMusicId: String get() = prefs.getString("qq_music_id", "") ?: ""
