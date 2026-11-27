@@ -114,8 +114,87 @@ object Retrospective {
         }.sortedByDescending { it.first }
     }
 
-    /** 莫奈色板（柔和印象派色，封面渐变专用；与第 6 项口径一致）。 */
-    val MONET_PALETTE: List<Color> = listOf(
+    /** 「音乐记忆」歌单的虚拟 id 段（本轮 0124 第 11 项）：-(700 + monthKey)，与回顾段 -(100 + monthKey) 错开。 */
+    const val MEMORY_ID_BASE = 700L
+
+    fun memoryPlaylistId(monthKey: Int): Long = -(MEMORY_ID_BASE + monthKey)
+
+    fun memoryMonthKeyOf(id: Long): Int? {
+        if (id >= -MEMORY_ID_BASE) return null
+        val key = (-id - MEMORY_ID_BASE).toInt()
+        return if (key in 2000 * 12..2100 * 12) key else null
+    }
+
+    /**
+     * 单月 top 歌曲（本轮 0124 第 11 项，纯函数，JVM 单测覆盖）：原始
+     * 事件 + 月度聚合合并计数，不设 ≥10 门槛、不排除当前月——「音乐
+     * 记忆」是用户点名的指定月份，有多少算多少（为空则页面走空态）。
+     */
+    fun monthTopCounts(
+        events: List<PlayEvent>,
+        songAggregates: List<MonthlySongAgg>,
+        targetMonthKey: Int,
+        limit: Int = TOP_LIMIT,
+    ): List<PlayCount> {
+        val bySong = HashMap<Pair<Long, String>, PlayCount>()
+        fun add(pc: PlayCount) {
+            val key = pc.songId to pc.source
+            val cur = bySong[key]
+            bySong[key] = if (cur == null) pc else cur.copy(plays = cur.plays + pc.plays, seconds = cur.seconds + pc.seconds)
+        }
+        topSongs(events.filter { monthKey(it.playedAtMs) == targetMonthKey }, Int.MAX_VALUE).forEach { add(it) }
+        for (agg in songAggregates) {
+            if (agg.monthKey == targetMonthKey) {
+                add(PlayCount(agg.songId, agg.source, agg.plays, agg.seconds))
+            }
+        }
+        return bySong.values
+            .sortedWith(compareByDescending<PlayCount> { it.plays }.thenByDescending { it.seconds })
+            .take(limit)
+    }
+
+    /**
+     * 任意时间区间的 top 歌曲（本轮 0124 第 10 项，纯函数，JVM 单测
+     * 覆盖）：原始事件（区间内逐条计）+ 月度聚合（整月完全落在区间
+     * 内才并入——日级数据只存在于当前月的原始事件里，过去月份只有
+     * 月度聚合；区间按自然日/月/年对齐时月份要么全含要么不含）。
+     */
+    fun topSongsInRange(
+        events: List<PlayEvent>,
+        songAggregates: List<MonthlySongAgg>,
+        startMs: Long,
+        endMs: Long,
+        limit: Int = 5,
+    ): List<PlayCount> {
+        if (endMs <= startMs || limit <= 0) return emptyList()
+        val bySong = HashMap<Pair<Long, String>, PlayCount>()
+        fun add(pc: PlayCount) {
+            val key = pc.songId to pc.source
+            val cur = bySong[key]
+            bySong[key] = if (cur == null) pc else cur.copy(plays = cur.plays + pc.plays, seconds = cur.seconds + pc.seconds)
+        }
+        topSongs(events.filter { it.playedAtMs in startMs until endMs }, Int.MAX_VALUE).forEach { add(it) }
+        for (agg in songAggregates) {
+            val monthStart = monthStartMs(agg.monthKey)
+            val monthEnd = monthStartMs(agg.monthKey + 1)
+            if (monthStart >= startMs && monthEnd <= endMs) {
+                add(PlayCount(agg.songId, agg.source, agg.plays, agg.seconds))
+            }
+        }
+        return bySong.values
+            .sortedWith(compareByDescending<PlayCount> { it.plays }.thenByDescending { it.seconds })
+            .take(limit)
+    }
+
+    /** monthKey 对应月份第一天的本地零点毫秒（纯函数）。 */
+    fun monthStartMs(monthKey: Int): Long {
+        val cal = Calendar.getInstance()
+        cal.set(yearOf(monthKey), monthOf(monthKey) - 1, 1, 0, 0, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    /** 莫奈色板（柔和印象派色，封面渐变专用；与第 6 项口径一致）。 */    val MONET_PALETTE: List<Color> = listOf(
         Color(0xFF8FA998), // 鼠尾草绿
         Color(0xFFD9C7A7), // 沙
         Color(0xFFA8BFD1), // 雾蓝

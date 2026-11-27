@@ -1132,18 +1132,32 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    // 算法推荐开关（0.1.18 引入、默认关；0.1.21 热修一度撤除，本轮按
-    // 用户口径恢复）：切换两种推荐形式——关 = 源默认推送，开 = 自制
-    // 画像推送。主页独立分区不恢复。翻动即时生效（见 VM 的
-    // setAlgorithmRecommendEnabled：开→立即重排，关→立即还原源顺序）。
+    // 算法推荐开关（0.1.18 引入；0.1.21 热修一度撤除后恢复）：切换两种
+    // 推荐形式——关 = 源默认推送，开 = 自制画像推送。本轮（0124）第 13
+    // 项起置灰不可操作、默认开（见下方 item 的注释）。
+    // 本轮（0124）第 13 项：算法推荐开关置灰不可操作——默认开（见
+    // SettingsStore 默认值改 true），整行与开关呈禁用态，点击提示
+    // 「不可用」；口味训练在后台照常进行（画像构建/重排不受影响）。
     item {
-        var algoRecommend by remember { mutableStateOf(vm.store.algorithmRecommendEnabled) }
+        val context = LocalContext.current
         SettingsSubCard {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("算法推荐", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Row(
+                Modifier.fillMaxWidth().height(64.dp)
+                    .clickable {
+                        Toast.makeText(context, "算法推荐暂不可用", Toast.LENGTH_SHORT).show()
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "算法推荐",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                )
                 Switch(
-                    checked = algoRecommend,
-                    onCheckedChange = { algoRecommend = it; vm.setAlgorithmRecommendEnabled(it) },
+                    checked = vm.store.algorithmRecommendEnabled,
+                    onCheckedChange = null,
+                    enabled = false,
                 )
             }
         }

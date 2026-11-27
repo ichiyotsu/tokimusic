@@ -219,6 +219,8 @@ fun TokiMusicApp(
         var librarySection by remember { mutableStateOf<LibrarySection?>(null) }
         // Round 3 item 13: listening-stats second-level page.
         var statsOpen by remember { mutableStateOf(false) }
+        // 本轮（0124）第 15b 项：音乐等级详情二级页（资料库等级块点入）。
+        var levelOpen by remember { mutableStateOf(false) }
         // 0.1.17 第 17 项：网易云收听报告二级页（资料库网易云听歌时长入口）。
         var neteaseReportOpen by remember { mutableStateOf(false) }
         // Sixth round, batch 2, item 10: the stats page's 〈!〉 annotation.
@@ -338,6 +340,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> artistTitle
             playlistId != null -> playlistTitle
             statsOpen -> "听歌时长"
+            levelOpen -> "音乐等级"
             neteaseReportOpen -> "收听报告"
             librarySection != null -> librarySection!!.title
             dest == Dest.Home -> homeSectionTitle
@@ -359,7 +362,7 @@ fun TokiMusicApp(
         // 第五轮第 9 项（用户确认）：底栏隐藏所有二级页都一样做——导航胶囊
         // 只在三个 tab 页显示；MiniPlayer 仍留在底边（见 BottomChrome）。
         val isSecondLevel = albumId != null || qqAlbumMid != null || artistId != null || qqArtistMid != null || playlistId != null ||
-            statsOpen || neteaseReportOpen || librarySection != null
+            statsOpen || levelOpen || neteaseReportOpen || librarySection != null
         val bottomNavVisible = !showPlayer && !isSecondLevel
         val onBack: (() -> Unit)? = when {
             showPlayer -> ({ showPlayer = false })
@@ -369,6 +372,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> closeQqArtist
             playlistId != null -> ({ playlistId = null })
             statsOpen -> ({ statsOpen = false })
+            levelOpen -> ({ levelOpen = false })
             neteaseReportOpen -> ({ neteaseReportOpen = false })
             librarySection != null -> ({ librarySection = null })
             else -> null
@@ -380,8 +384,9 @@ fun TokiMusicApp(
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid != null) { closeQqArtist() }
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId != null) { playlistId = null }
         BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && statsOpen) { statsOpen = false }
-        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && neteaseReportOpen) { neteaseReportOpen = false }
-        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && !neteaseReportOpen && librarySection != null) { librarySection = null }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && levelOpen) { levelOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && !levelOpen && neteaseReportOpen) { neteaseReportOpen = false }
+        BackHandler(enabled = !showPlayer && albumId == null && qqAlbumMid == null && artistId == null && qqArtistMid == null && playlistId == null && !statsOpen && !levelOpen && !neteaseReportOpen && librarySection != null) { librarySection = null }
 
         val contentGap = tokiSpace("lg")
         val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -404,6 +409,7 @@ fun TokiMusicApp(
             qqArtistMid != null -> "qqartist:$qqArtistMid"
             playlistId != null -> "playlist:$playlistId"
             statsOpen -> "stats"
+            levelOpen -> "level"
             neteaseReportOpen -> "netease-report"
             librarySection != null -> "section:$librarySection"
             else -> dest
@@ -440,6 +446,7 @@ fun TokiMusicApp(
                                         qqAlbumMid = null
                                         librarySection = null
                                         statsOpen = false
+                                        levelOpen = false
                                         neteaseReportOpen = false
                                         showPlayer = false
                                     },
@@ -618,7 +625,7 @@ fun TokiMusicApp(
                                             val s = key as? String ?: return false
                                             return s.startsWith("album:") || s.startsWith("qqalbum:") || s.startsWith("artist:") || s.startsWith("qqartist:") ||
                                                 s.startsWith("playlist:") || s.startsWith("section:") ||
-                                                s == "stats"
+                                                s == "stats" || s == "level"
                                         }
                                         val toDetail = isDetailKey(targetState) && !isDetailKey(initialState) && initialState != "player"
                                         val fromDetail = isDetailKey(initialState) && !isDetailKey(targetState) && targetState != "player"
@@ -734,6 +741,10 @@ fun TokiMusicApp(
                                             noteVisible = statsNoteVisible,
                                             onNoteDismiss = { statsNoteVisible = false },
                                         )
+                                        // 本轮（0124）第 15b 项：音乐等级详情页。
+                                        key == "level" -> com.tokimusic.app.ui.library.LevelDetailScreen(
+                                            vm, topPadding, bottomPadding,
+                                        )
                                         // 0.1.17 第 17 项：网易云收听报告页。
                                         key == "netease-report" -> NeteaseReportScreen(
                                             vm, topPadding, bottomPadding,
@@ -764,6 +775,7 @@ fun TokiMusicApp(
                                             onOpenSection = { librarySection = it },
                                             onCloseSection = { librarySection = null },
                                             onOpenListeningStats = { statsOpen = true },
+                                            onOpenLevelDetail = { levelOpen = true },
                                             onOpenNeteaseReport = { neteaseReportOpen = true },
                                             onOpenArtist = { artistId = it },
                                             onOpenAlbum = { albumId = it },

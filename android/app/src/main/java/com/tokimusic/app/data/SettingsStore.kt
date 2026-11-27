@@ -36,6 +36,9 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     /** 搜索源偏好（0.1.18 第 9 项恢复）：上次选的搜索源，NETEASE / QQ。 */
     var lastSearchSource: String get() = prefs.getString("last_search_source", "NETEASE") ?: "NETEASE"
         set(v) { prefs.edit().putString("last_search_source", v).apply() }
+    /** 主页推荐块顺序（本轮 0124 第 23 项）：逗号分隔的块 key 串，解析见 HomeBlockOrder。 */
+    var homeBlockOrder: String? get() = prefs.getString("home_block_order", null)
+        set(v) { prefs.edit().putString("home_block_order", v).apply() }
     /** 歌词逐字高亮开关（与播放器内的麦克风按钮同步）。0.1.15 第 5/6 项：
      * 改成 Compose 状态驱动——之前是 SharedPreferences 直值，播放器
      * 更多页里翻动后歌词视图不重组（与 0.1.14 大排查 S13 同根因）。 */
@@ -103,7 +106,7 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
      * 用户口径恢复）：关 = 推荐歌单/新歌按所选音乐源的默认内容与顺序；
      * 开 = 口味画像重排/加权介入推荐。播放事件记录与此开关无关
      * （0.1.20 起常开，供回顾歌单与画像积累）。 */
-    var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", false)
+    var algorithmRecommendEnabled: Boolean get() = prefs.getBoolean("algorithm_recommend_enabled", true)
         set(v) { prefs.edit().putBoolean("algorithm_recommend_enabled", v).apply() }
     /** 听歌记录上报开关（0.1.17 第 13 项，默认开——用户 2026-11-25 定）：
      * 开启后在网易云里听的歌同步上报到网易云听歌记录；只报网易云源的歌。 */

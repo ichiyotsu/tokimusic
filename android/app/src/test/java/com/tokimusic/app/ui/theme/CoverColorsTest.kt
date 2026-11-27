@@ -1,5 +1,6 @@
 package com.tokimusic.app.ui.theme
 
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -222,5 +223,22 @@ class CoverColorsTest {
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))
         assertEquals("3分05秒", com.tokimusic.app.ui.components.formatTotalDurationMs(185_000L))
         assertEquals("0分00秒", com.tokimusic.app.ui.components.formatTotalDurationMs(0L))
+    }
+
+    @Test
+    fun coverBottomFadeDarkensInDarkAndLightensInLight() {
+        // 本轮（0124）第 24 项：主页块封面下半淡出色——深色压深、
+        // 浅色提亮、alpha 恒 0.85，色相仍来自封面自身。
+        val top = Color(0.85f, 0.45f, 0.35f)
+        val bottom = Color(0.55f, 0.30f, 0.55f)
+        val mid = 0.5f
+        val dark = coverBottomFadeColor(top, bottom, lightMode = false)
+        val light = coverBottomFadeColor(top, bottom, lightMode = true)
+        assertEquals(0.85f, dark.alpha, 0.001f)
+        assertEquals(0.85f, light.alpha, 0.001f)
+        val midRed = (top.red + bottom.red) * mid
+        assertTrue(dark.red < midRed)
+        assertTrue(light.red > midRed)
+        assertTrue(dark.red > dark.green) // 仍带封面色相，不是纯黑
     }
 }

@@ -121,6 +121,8 @@ fun LibraryScreen(
     onCloseSection: () -> Unit,
     // Round 3 item 13: "听歌时长" stat opens the listening-stats page.
     onOpenListeningStats: () -> Unit = {},
+    // 本轮（0124）第 15b 项：TokiMusic 等级块点入等级详情页。
+    onOpenLevelDetail: () -> Unit = {},
     // 0.1.17 第 17 项：网易云听歌时长入口打开收听报告页（周/月/年）。
     onOpenNeteaseReport: () -> Unit = {},
     // Round 3 item 12: artist rows open the artist page, album rows open
@@ -267,6 +269,8 @@ fun LibraryScreen(
                         level = "Lv.${localStats.level}",
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                         onMinutesClick = onOpenListeningStats,
+                        onLevelClick = onOpenLevelDetail,
+                        levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
                         leadingAppIcon = true,
                     )
                     LibraryStatsSource.LOCAL -> StatsPair(
@@ -274,6 +278,8 @@ fun LibraryScreen(
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                         // 0.1.17 第 14 项补：本地模式的 tokimusic 行同样点进听歌时长页。
                         onMinutesClick = onOpenListeningStats,
+                        onLevelClick = onOpenLevelDetail,
+                        levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
                         leadingAppIcon = true,
                     )
                     LibraryStatsSource.BOTH -> Column(
@@ -292,6 +298,8 @@ fun LibraryScreen(
                             level = "Lv.${localStats.level}",
                             minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                             onMinutesClick = onOpenListeningStats,
+                            onLevelClick = onOpenLevelDetail,
+                            levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
                             leadingAppIcon = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -330,10 +338,12 @@ fun LibraryScreen(
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
+            // 本轮（0124）第 22 项：最近播放来自本机 PlayEventLog（全源），
+            // 与登录无关——副文案恒显本地条数，点开也不再要求登录。
             TokiCardRow(
                 Icons.Rounded.MusicNote, "歌曲",
-                if (anyLoggedIn) "${mine.recent.size} 首最近播放" else "登录后查看",
-            ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
+                "${mine.recent.size} 首最近播放",
+            ) { if (anyLoggedIn || localMode || mine.recent.isNotEmpty()) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         // 0.1.20 第 7 项：本地入口卡（所有模式都显示；本地模式下它是
         // 唯一的分区卡）。副文案是已导入首数。本轮按用户口径改名
@@ -705,28 +715,15 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         LocalBucket.QQ -> qqTracks
         LocalBucket.DOWNLOAD -> deviceTracks
     }
-    // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            Text(
-                "把本机里的歌曲文件导入本地库，按来源分三个桶扫描：NeteaseMusic 与 QQMusic 读各自的下载目录，Device 读其他目录与设备里的其他音频。NeteaseMusic 的 .ncm / .uc 与普通音频可以解密导入；QQMusic 加密文件（.qmc / .mflac / .mgg）暂不支持解密，会在结果里逐条说明。点某个来源即开始扫描；目录没授权时先在该来源下选一次目录。",
-                Modifier.padding(horizontal = 24.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        // 页首导入按钮（本轮：原资料库顶栏读取图标的落点）——
-        // 一次扫三桶；单桶细扫用下面三个选项。
-        item {
-            TokiCardRow(
-                Icons.Rounded.Download, "导入本地歌曲",
-                if (importing) "读取中…" else "点按扫描 NeteaseMusic / QQMusic / Device 三个来源",
-            ) { startAllRead() }
-        }
+        // 本轮（0124）第 21 项：页首简介文案与「导入本地歌曲」（一次扫
+        // 三桶）行按用户要求删除。导入能力本身保留——下面三个来源桶
+        // 的导入行（点卡扫描该桶 + 目录授权）仍是完整入口，MediaStore
+        // 扫描 / SAF 导入链路未动。
         if (permissionDeniedHint && !hasAudioPermission) {
             item {
                 Text(
@@ -955,6 +952,9 @@ private fun StatsPair(
     level: String,
     minutes: String,
     onMinutesClick: (() -> Unit)? = null,
+    onLevelClick: (() -> Unit)? = null,
+    // 本轮（0124）第 15 项：TokiMusic 行的等级进度（本级进度 + 今日积分），非空时显示在等级卡下方。
+    levelSnapshot: com.tokimusic.app.player.MusicLevelSnapshot? = null,
     leadingIconRes: Int? = null,
     // 本轮（0124）第 14 项：TokiMusic 行的前导图标用 app 图标
     // （启动图标同款：白底 + 前景字形），不用通用音符图标。
@@ -962,16 +962,33 @@ private fun StatsPair(
     modifier: Modifier = Modifier.fillMaxWidth().padding(24.dp),
 ) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        StatCard(
-            "音乐等级", level, Modifier.weight(1f),
-            leadingIcon = when {
-                leadingAppIcon -> { { AppIconBadge() } }
-                leadingIconRes != null -> {
-                    { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
-                }
-                else -> null
-            },
-        )
+        Column(Modifier.weight(1f)) {
+            StatCard(
+                "音乐等级", level, Modifier.fillMaxWidth(),
+                onClick = onLevelClick,
+                leadingIcon = when {
+                    leadingAppIcon -> { { AppIconBadge() } }
+                    leadingIconRes != null -> {
+                        { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
+                    }
+                    else -> null
+                },
+            )
+            if (levelSnapshot != null) {
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { levelSnapshot.progress },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (levelSnapshot.isMaxLevel) "已满级 · 今日 ${levelSnapshot.todayPoints}/${levelSnapshot.dailyCap} 分"
+                    else "今日 ${levelSnapshot.todayPoints}/${levelSnapshot.dailyCap} 分 · 距 Lv.${levelSnapshot.level + 1} 还差 ${(levelSnapshot.nextLevelFloor ?: 0) - levelSnapshot.totalPoints} 分",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         // 第 7 项：资料库顶部“歌单”卡换成音乐等级（/api/user/level
         // 的真实等级）；未登录 / 未取到时显示 —。
         // 第五轮第 23 项：删掉左边的“收藏歌曲”卡；听歌时长放

@@ -72,4 +72,76 @@ class RetrospectiveTest {
         assertEquals(3, a.size)
         assertTrue(a.all { it in Retrospective.MONET_PALETTE })
     }
+
+    @Test
+    fun recentDistinctKeepsLatestPerSong() {
+        // 本轮（0124）第 22 项：倒序输入、同歌去重保留最近一次、跨源同 id 不误杀。
+        val t = ms(2026, 11, 20)
+        val events = listOf(
+            event(7, "NETEASE", t + 3000),
+            event(8, "QQ", t + 2000),
+            event(7, "NETEASE", t + 1000),
+            event(7, "QQ", t + 500),
+        )
+        val out = recentDistinct(events, 10)
+        assertEquals(listOf(7L to "NETEASE", 8L to "QQ", 7L to "QQ"), out.map { it.songId to it.source })
+        assertEquals(t + 3000, out.first().playedAtMs)
+        assertEquals(2, recentDistinct(events, 2).size)
+        assertEquals(0, recentDistinct(events, 0).size)
+    }
+
+    @Test
+    fun monthTopCountsHasNoThresholdAndMergesAggregates() {
+        // 本轮（0124）第 11 项：指定月份不设门槛，事件 + 聚合合并计数。
+        val key = Retrospective.monthKey(ms(2026, 10, 1))
+        val events = listOf(
+            event(1, "NETEASE", ms(2026, 10, 3)),
+            event(1, "NETEASE", ms(2026, 10, 4)),
+            event(2, "QQ", ms(2026, 10, 5)),
+            event(3, "NETEASE", ms(2026, 9, 5)),
+        )
+        val aggregates = listOf(
+            MonthlySongAgg(monthKey = key, songId = 2, source = "QQ", plays = 5, seconds = 900),
+        )
+        val top = Retrospective.monthTopCounts(events, aggregates, key)
+        assertEquals(2, top.size)
+        assertEquals(2L, top[0].songId)
+        assertEquals(6, top[0].plays)
+        assertEquals(1L, top[1].songId)
+        assertEquals(2, top[1].plays)
+        // 记忆歌单 id 与回顾 id 互不误判。
+        assertEquals(key, Retrospective.memoryMonthKeyOf(Retrospective.memoryPlaylistId(key)))
+        assertNull(Retrospective.memoryMonthKeyOf(Retrospective.playlistId(key)))
+    }
+
+    @Test
+    fun topSongsInRangeMergesRawAndFullMonthAggregates() {
+        // 本轮（0124）第 10 项：区间内原始事件逐条计；整月落在区间内
+        // 的聚合才并入（半月聚合不并，避免与原始事件重复/越界）。
+        val octStart = Retrospective.monthStartMs(Retrospective.monthKey(ms(2026, 10, 1)))
+        val novStart = Retrospective.monthStartMs(Retrospective.monthKey(ms(2026, 11, 1)))
+        val decStart = Retrospective.monthStartMs(Retrospective.monthKey(ms(2026, 12, 1)))
+        val events = listOf(
+            event(1, "NETEASE", ms(2026, 11, 3)),
+            event(1, "NETEASE", ms(2026, 11, 4)),
+            event(2, "QQ", ms(2026, 11, 5)),
+            event(9, "NETEASE", ms(2026, 9, 5)),
+        )
+        val aggregates = listOf(
+            MonthlySongAgg(Retrospective.monthKey(ms(2026, 10, 1)), 3, "NETEASE", 7, 700),
+            MonthlySongAgg(Retrospective.monthKey(ms(2026, 11, 1)), 4, "NETEASE", 9, 900),
+        )
+        // 区间 = 11 月整月：10 月聚合不入（整月不在区间）、11 月聚合
+        // 本应入——但注意 11 月聚合与 11 月原始事件在真实数据里互斥
+        // （瘦身不变量），这里只验区间过滤：聚合按整月判定。
+        val november = Retrospective.topSongsInRange(events, aggregates, novStart, decStart)
+        assertEquals(listOf(4L, 1L, 2L), november.map { it.songId })
+        assertEquals(9, november[0].plays)
+        // 区间 = 10 月整月：只有 10 月聚合一首。
+        val october = Retrospective.topSongsInRange(events, aggregates, octStart, novStart)
+        assertEquals(listOf(3L), october.map { it.songId })
+        // 日区间（11 月 3 日当天）：只有原始事件、无聚合。
+        val day = Retrospective.topSongsInRange(events, aggregates, ms(2026, 11, 3) - 12 * 3600_000L, ms(2026, 11, 3) + 12 * 3600_000L)
+        assertEquals(listOf(1L), day.map { it.songId })
+    }
 }

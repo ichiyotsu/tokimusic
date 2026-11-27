@@ -206,6 +206,8 @@ class PlayerController(context: Context) {
      * 切歌 / 队列播完时 finishPlayEvent 落库；开关关时不写库。
      */
     val playEventLog = PlayEventLog(context)
+    /** 本轮（0124）第 15 项：音乐等级积分 store——与 playEventLog 同一写入口（finishPlayEvent）。 */
+    val levelStore = MusicLevelStore(context)
     private val settingsStore = SettingsStore(appContext)
     private var eventSong: Song? = null
     private var eventPlayedMs: Long = 0L
@@ -402,6 +404,15 @@ class PlayerController(context: Context) {
             playedAtMs = System.currentTimeMillis(),
         )
         scope.launch { withContext(Dispatchers.IO) { runCatching { playEventLog.insert(event) } } }
+        // 本轮（0124）第 15 项：等级积分与播放事件同一写入口——
+        // 完整分钟数计分 + 整首听完（≥90%）奖励，每日上限在 store 内钳制。
+        val playedSeconds = (playedMs / 1000).toInt()
+        val completed = MusicLevel.isCompleted(playedSeconds, song.durationMs)
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { levelStore.record(playedSeconds, completed, System.currentTimeMillis()) }
+            }
+        }
     }
 
     private fun ensureUrlForCurrent(player: Player, autoPlay: Boolean = true) {

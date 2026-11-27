@@ -315,3 +315,22 @@ class PlayEventLog(context: Context) : SQLiteOpenHelper(
                 "PRIMARY KEY (month_key, artist))"
     }
 }
+
+/**
+ * 最近播放去重（本轮 0124 第 22 项，纯函数，JVM 单测覆盖）：输入按
+ * played_at 倒序（recentEvents 的口径），按（source, songId）去重
+ * 保留第一次出现（= 最近一次播放），截到 [limit] 条。资料库「歌曲」
+ * 与主页「最近播放」共用同一份本地最近列表，不再读云端记录。
+ */
+fun recentDistinct(events: List<PlayEvent>, limit: Int): List<PlayEvent> {
+    if (limit <= 0) return emptyList()
+    val seen = HashSet<Pair<String, Long>>()
+    val out = ArrayList<PlayEvent>()
+    for (event in events) {
+        if (seen.add(event.source to event.songId)) {
+            out += event
+            if (out.size >= limit) break
+        }
+    }
+    return out
+}

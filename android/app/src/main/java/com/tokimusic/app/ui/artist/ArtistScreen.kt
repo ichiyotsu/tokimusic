@@ -145,7 +145,11 @@ fun ArtistScreen(
         }
     }
     val a = artist
-    LaunchedEffect(a?.name) { onTitle(a?.name ?: "歌手") }
+    LaunchedEffect(a?.name) {
+        onTitle(a?.name ?: "歌手")
+        // 本轮（0124）第 13 项：歌手页浏览记入口味训练信号。
+        a?.name?.takeIf { it.isNotBlank() }?.let { vm.recordArtistView(it) }
+    }
     // 0.1.13 第 24 项：关注态——进页时同步已关注列表，歌手加载后
     // 向外层报告 (是否已关注, 切换)，顶栏右侧显示关注图标按钮
     // （见 TokiMusicApp）。

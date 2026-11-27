@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -144,6 +145,30 @@ fun ListeningStatsScreen(
         TreemapRange.Month -> treemapDayEntries(today, 30) { store.dayMillis(it) }
         TreemapRange.Year -> treemapMonthEntries(today, 12) { store.monthMillis(it.year, it.monthValue) }
     }
+    // 本轮（0124）第 10 项：常听歌曲——当前档位区间（日 = 选中当天、
+    // 月 = 整月、年 = 整年）的播放次数 top 5，数据来自 PlayEventLog
+    // （原始事件 + 月度聚合，口径见 Retrospective.topSongsInRange）。
+    val frequentRange = when (granularity) {
+        Granularity.Day -> today.plusDays(offset.toLong()).let {
+            it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() to
+                it.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+        Granularity.Month -> YearMonth.now().plusMonths(offset.toLong()).let {
+            it.atDay(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() to
+                it.plusMonths(1).atDay(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+        Granularity.Year -> java.time.LocalDate.of(today.year + offset, 1, 1).let {
+            it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() to
+                it.plusYears(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+    }
+    var frequentSongs by remember {
+        mutableStateOf<List<Pair<com.tokimusic.app.data.model.Song, com.tokimusic.app.player.Retrospective.PlayCount>>>(emptyList())
+    }
+    LaunchedEffect(frequentRange, tick) {
+        frequentSongs = runCatching { vm.frequentSongs(frequentRange.first, frequentRange.second) }
+            .getOrDefault(emptyList())
+    }
 
     // 第三轮第 14 项：列表上下边缘 32dp 淡出（与主页、歌单详情同款）。
     // 点空白区域消掉悬浮注释（第 10 项）：外层 Box 在注释可见时接住空白处点按。
@@ -245,6 +270,30 @@ fun ListeningStatsScreen(
                     entries = treemapEntries,
                     range = treemapRange,
                 )
+            }
+        }
+        // 本轮（0124）第 10 项：常听歌曲（当前区间播放次数 top 5）。
+        item { SectionTitle("常听歌曲") }
+        if (frequentSongs.isEmpty()) {
+            item {
+                Text(
+                    "暂无播放记录",
+                    Modifier.padding(horizontal = 24.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            items(frequentSongs) { (song, count) ->
+                com.tokimusic.app.ui.components.SongRow(
+                    song,
+                    trailingText = "${count.plays} 次",
+                    onLongPress = { vm.openSongActions(it) },
+                ) {
+                    val songs = frequentSongs.map { it.first }
+                    val idx = songs.indexOf(song)
+                    if (idx >= 0) vm.play(songs, idx, "常听歌曲")
+                }
             }
         }
     }

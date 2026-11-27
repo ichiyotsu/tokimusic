@@ -27,9 +27,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Card
@@ -56,8 +59,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -132,6 +139,9 @@ fun HomeScreen(
     val density = LocalDensity.current
     var playlistsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     var newSongsTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
+    // 本轮（0124）第 23 项：主页推荐块顺序（LazyColumn 作用域不是
+    // Composable，状态必须提到这里）。
+    var blockOrder by remember { mutableStateOf(HomeBlockOrder.apply(vm.store.homeBlockOrder)) }
     val topBarBottomPx = with(density) { topPadding.toPx() }
     val activeSection by remember {
         derivedStateOf {
@@ -269,15 +279,38 @@ fun HomeScreen(
         }
         val showDaily = neteaseEnabled && (!home.loggedIn || home.daily.isNotEmpty())
         val showRadar = neteaseEnabled && (!home.loggedIn || home.radar.isNotEmpty())
-        if (showDaily || showRadar) {
+        // 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（只在对应列表非空时
+        // 出现。每日需 QQ 登录，未登录时 qqDaily 为空所以不显示；雷达
+        // 匿名可用。0.1.18 第 8 项：QQ 两张卡改名 Daily 30 / For You；
+        // 点开走虚拟歌单 -3（QQ 每日）/ -4（QQ 雷达）。）
+        val showQqDaily = qqEnabled && home.qqDaily.isNotEmpty()
+        val showQqRadar = qqEnabled && home.qqRadar.isNotEmpty()
+        // 本轮（0124）第 23 项：四个推荐块（每日推荐 / 私人雷达 /
+        // Daily 30 / For You）合并成一个可重排区——长按拖动换位，
+        // 顺序存 SettingsStore（HomeBlockOrder）；隐藏的块不渲染，
+        // 存储顺序对可见块生效。其他分区（最近播放/推荐歌单/新歌/
+        // 回顾/音乐记忆）不参与，位置不变。
+        val visibleBlocks = blockOrder.filter { key ->
+            when (key) {
+                HomeBlockOrder.DAILY -> showDaily
+                HomeBlockOrder.RADAR -> showRadar
+                HomeBlockOrder.QQ_DAILY -> showQqDaily
+                HomeBlockOrder.QQ_RADAR -> showQqRadar
+                else -> false
+            }
+        }
+        if (visibleBlocks.isNotEmpty()) {
             item {
-                // 每日推荐 / 私人雷达双列并排占满宽（不是横向滚动）。
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (showDaily) {
-                        RecommendCard(
+                ReorderableBlockGrid(
+                    keys = visibleBlocks,
+                    onOrderCommitted = { newVisibleOrder ->
+                        val merged = HomeBlockOrder.mergeVisible(blockOrder, newVisibleOrder)
+                        blockOrder = merged
+                        vm.store.homeBlockOrder = HomeBlockOrder.serialize(merged)
+                    },
+                ) { key ->
+                    when (key) {
+                        HomeBlockOrder.DAILY -> RecommendCard(
                             title = "每日推荐",
                             songs = home.daily,
                             loggedIn = home.loggedIn,
@@ -285,11 +318,9 @@ fun HomeScreen(
                             onOpen = { onOpenPlaylist(-1L) },
                             hazeState = hazeState,
                             showSourceBadge = bothEnabled,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    if (showRadar) {
-                        RecommendCard(
+                        HomeBlockOrder.RADAR -> RecommendCard(
                             title = "私人雷达",
                             songs = home.radar,
                             loggedIn = home.loggedIn,
@@ -297,29 +328,9 @@ fun HomeScreen(
                             onOpen = { onOpenPlaylist(-2L) },
                             hazeState = hazeState,
                             showSourceBadge = bothEnabled,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    if (!showDaily || !showRadar) Spacer(Modifier.weight(1f))
-                }
-            }
-        }
-        // 0.1.15 第 15 项：QQ 每日推荐 / 私人雷达（与网易云双列同款
-        // 布局，单独一行；只在对应列表非空时出现。每日需 QQ 登录，
-        // 未登录时 qqDaily 为空所以不显示；雷达匿名可用。0.1.18 第 8 项：
-        // QQ 两张卡改名 Daily 30 / For You（网易云卡片仍叫每日推荐 /
-        // 私人雷达）；源徽标固定显示（QQ），与网易云卡片区分；
-        // 点开走虚拟歌单 -3（QQ 每日）/ -4（QQ 雷达）。）
-        val showQqDaily = qqEnabled && home.qqDaily.isNotEmpty()
-        val showQqRadar = qqEnabled && home.qqRadar.isNotEmpty()
-        if (showQqDaily || showQqRadar) {
-            item {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (showQqDaily) {
-                        RecommendCard(
+                        HomeBlockOrder.QQ_DAILY -> RecommendCard(
                             title = "Daily 30",
                             songs = home.qqDaily,
                             loggedIn = true,
@@ -328,11 +339,9 @@ fun HomeScreen(
                             hazeState = hazeState,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    if (showQqRadar) {
-                        RecommendCard(
+                        else -> RecommendCard(
                             title = "For You",
                             songs = home.qqRadar,
                             loggedIn = true,
@@ -341,39 +350,24 @@ fun HomeScreen(
                             hazeState = hazeState,
                             showSourceBadge = true,
                             source = MusicSource.QQ,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    if (!showQqDaily || !showQqRadar) Spacer(Modifier.weight(1f))
                 }
             }
         }
-        if (neteaseEnabled && (!home.loggedIn || home.recent.isNotEmpty())) {
+        // 本轮（0124）第 22 项：最近播放改读本机 PlayEventLog（VM 已
+        // 换源）——不再要求登录网易云，有本地记录就显示。
+        if (home.recent.isNotEmpty()) {
             item {
                 Text("最近播放", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
-                if (!home.loggedIn) {
-                    Card(
-                        onClick = onOpenLogin,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                    ) {
-                        Text(
-                            "登录后查看最近播放",
-                            Modifier.padding(24.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        itemsIndexed(home.recent) { index, song ->
-                            RecentCard(song) { vm.play(home.recent, index, "最近播放") }
-                        }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    itemsIndexed(home.recent) { index, song ->
+                        RecentCard(song) { vm.play(home.recent, index, "最近播放") }
                     }
                 }
             }
@@ -393,8 +387,10 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 LazyHorizontalGrid(
-                    rows = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxWidth().height(644.dp),
+                    // 本轮（0124）第 12 项：推荐歌单改 2 行（行高与 3 行时
+                    // 同口径：(644 − 2×16) / 3 = 204/行 → 2 行 = 424dp）。
+                    rows = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxWidth().height(424.dp),
                     contentPadding = PaddingValues(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -454,6 +450,39 @@ fun HomeScreen(
                 }
             }
         }
+        // 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月回顾
+        // 歌单（作者 TokiMusic，生成机制同回顾：PlayEventLog 月度聚合，
+        // VM 的 refreshRetrospectives 一并算出）。无 10 月播放记录时
+        // 显示空态卡（不编造歌曲、不可点）。
+        item {
+            Text("音乐记忆", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            if (home.memorySongs.isNotEmpty() && home.memoryMonthKey != 0) {
+                MemoryPlaylistCard(
+                    title = "${com.tokimusic.app.player.Retrospective.monthLabel(home.memoryMonthKey)} 音乐记忆",
+                    songs = home.memorySongs,
+                ) {
+                    onOpenPlaylist(com.tokimusic.app.player.Retrospective.memoryPlaylistId(home.memoryMonthKey))
+                }
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text("10'26 音乐记忆", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "暂无播放记录",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
     }
         Box(
             Modifier.fillMaxWidth().height(32.dp).align(Alignment.TopCenter).background(
@@ -503,8 +532,10 @@ private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Lon
         24
     }
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(5),
-        modifier = Modifier.fillMaxWidth().height(372.dp),
+        // 本轮（0124）第 12 项：单源改 3 行（原 5 行；行高同口径：
+        // (372 − 4×8) / 5 = 68/行 → 3 行 = 3×68 + 2×8 = 220dp）。
+        rows = GridCells.Fixed(3),
+        modifier = Modifier.fillMaxWidth().height(220.dp),
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -617,10 +648,26 @@ private fun RecommendCard(
                 }
                 Box(
                     Modifier.matchParentSize().background(
-                        Brush.verticalGradient(
-                            if (blurOn) listOf(Color.Transparent, Color.Black.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.32f))
-                            else listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.8f)),
-                        ),
+                        // 本轮（0124）第 24 项：有封面主题色时，下半改走
+                        // 主题色淡出（每张卡自己的封面色，下缘最浓、
+                        // 中部渐隐），压住封面让底部文字读得清；无封面色
+                        // 时回退原中性黑 scrim（行为不变）。
+                        if (coverColors != null) {
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.5f to Color.Transparent,
+                                    1f to com.tokimusic.app.ui.theme.coverBottomFadeColor(
+                                        coverColors.top, coverColors.bottom,
+                                        lightMode = !com.tokimusic.app.ui.theme.LocalDarkTheme.current,
+                                    ),
+                                ),
+                            )
+                        } else {
+                            Brush.verticalGradient(
+                                if (blurOn) listOf(Color.Transparent, Color.Black.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.32f))
+                                else listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.8f)),
+                            )
+                        },
                     ),
                 )
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -785,4 +832,143 @@ internal fun interleavePlaylists(first: List<Playlist>, second: List<Playlist>):
         if (i < second.size) out.add(second[i])
     }
     return out
+}
+
+/**
+ * 主页推荐块可重排网格（本轮 0124 第 23 项）：两列排布，长按任意块
+ * 拾起（放大 + 阴影 + 跟手位移），拖过相邻块中心即换位，松手落位
+ * 并回调提交顺序（父级持久化）。普通点按/块内滚动不受影响（长按
+ * 才进拖动态；拖动事件被消费，外层 LazyColumn 不跟着滚）。
+ * 其他块的让位是即时重排（无 Lazy 布局动画）——取舍记在 NOTES。
+ */
+@Composable
+private fun ReorderableBlockGrid(
+    keys: List<String>,
+    onOrderCommitted: (List<String>) -> Unit,
+    cellContent: @Composable (String) -> Unit,
+) {
+    var order by remember { mutableStateOf(keys) }
+    LaunchedEffect(keys) {
+        if (order.toSet() != keys.toSet()) order = keys
+    }
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var cellSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val spacingPx = with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.toPx() }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        for (rowKeys in order.chunked(2)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                for (key in rowKeys) {
+                    val isDragging = draggingKey == key
+                    Box(
+                        Modifier.weight(1f)
+                            .onSizeChanged { if (it.width > 0) cellSize = it }
+                            .zIndex(if (isDragging) 1f else 0f)
+                            .graphicsLayer {
+                                if (isDragging) {
+                                    translationX = dragOffset.x
+                                    translationY = dragOffset.y
+                                    scaleX = 1.03f
+                                    scaleY = 1.03f
+                                    shadowElevation = 16.dp.toPx()
+                                }
+                            }
+                            .pointerInput(key) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggingKey = key
+                                        dragOffset = androidx.compose.ui.geometry.Offset.Zero
+                                    },
+                                    onDragEnd = {
+                                        onOrderCommitted(order)
+                                        draggingKey = null
+                                        dragOffset = androidx.compose.ui.geometry.Offset.Zero
+                                    },
+                                    onDragCancel = {
+                                        onOrderCommitted(order)
+                                        draggingKey = null
+                                        dragOffset = androidx.compose.ui.geometry.Offset.Zero
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dragOffset += amount
+                                        if (cellSize != androidx.compose.ui.unit.IntSize.Zero) {
+                                            val idx = order.indexOf(key)
+                                            if (idx >= 0) {
+                                                val col = idx % 2
+                                                val row = idx / 2
+                                                val stepX = cellSize.width + spacingPx
+                                                val stepY = cellSize.height + spacingPx
+                                                val targetCol = (col + (dragOffset.x / stepX).roundToInt()).coerceIn(0, 1)
+                                                val targetRow = (row + (dragOffset.y / stepY).roundToInt())
+                                                    .coerceIn(0, (order.size - 1) / 2)
+                                                val target = (targetRow * 2 + targetCol).coerceAtMost(order.size - 1)
+                                                if (target != idx) {
+                                                    order = HomeBlockOrder.move(order, idx, target)
+                                                    dragOffset -= androidx.compose.ui.geometry.Offset(
+                                                        (targetCol - col) * stepX,
+                                                        (targetRow - row) * stepY,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    },
+                                )
+                            },
+                    ) {
+                        cellContent(key)
+                    }
+                }
+                if (rowKeys.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * 「音乐记忆」歌单卡（本轮 0124 第 11 项）：与资料库本地歌单行同款
+ * 版式（56dp 封面位 + 标题 +「N 首 · TokiMusic」），封面取歌单第一首。
+ */
+@Composable
+private fun MemoryPlaylistCard(
+    title: String,
+    songs: List<Song>,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            val cover = songs.firstOrNull()?.picUrl.orEmpty()
+            if (cover.isNotBlank()) {
+                AsyncImage(cover, title, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${songs.size} 首 · TokiMusic",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }

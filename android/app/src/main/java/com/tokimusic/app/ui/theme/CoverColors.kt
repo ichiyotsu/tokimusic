@@ -145,6 +145,22 @@ fun moreSheetGlassVeil(top: Color, bottom: Color, lightMode: Boolean): Color {
 }
 
 /**
+ * 主页推荐块封面下半的主题色淡出色（本轮 0124 第 24 项，纯函数，
+ * JVM 单测覆盖）：取封面渐变中点色，深色模式压深、浅色模式提亮
+ * （与 moreSheetGlassVeil 同方向），alpha 0.85——渐变在卡片下半
+ * 由透明渐入到此色，压住封面下缘让底部文字（标题/副标题）读得清。
+ * 每张卡用自己的封面色；无封面色时调用方回退原中性黑 scrim。
+ */
+fun coverBottomFadeColor(top: Color, bottom: Color, lightMode: Boolean): Color {
+    val base = lerp(top, bottom, 0.5f)
+    return if (lightMode) {
+        lerp(base, Color.White, 0.35f).copy(alpha = 0.85f)
+    } else {
+        lerp(base, Color.Black, 0.45f).copy(alpha = 0.85f)
+    }
+}
+
+/**
  * 「我的」页（原账户与设置弹窗）的玻璃底色（本轮第 1 条，纯函数，
  * 可单测）：与播放页「更多」面板同一套配方（[moreSheetGlassVeil]），
  * 让两页同属一个视觉家族。没有主题色时（无当前歌曲、取不到封面

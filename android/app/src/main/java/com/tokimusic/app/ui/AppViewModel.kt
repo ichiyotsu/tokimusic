@@ -52,7 +52,10 @@ data class HomeUiState(val loading: Boolean = true, val error: Boolean = false, 
     /** 0.1.20 第 11 项：歌词搜索结果（网易云 cloudsearch type=1006；QQ 无歌词搜索恒空）。 */
     val searchLyricResults: List<Song> = emptyList(),
     /** 0.1.20 第 6 项：回顾歌单——(monthKey, 该月 top 歌已解析列表)，月份倒序。 */
-    val retrospectives: List<Pair<Int, List<Song>>> = emptyList())
+    val retrospectives: List<Pair<Int, List<Song>>> = emptyList(),
+    /** 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月回顾歌单（作者 TokiMusic）；memoryMonthKey 为 0 表示无数据（页面走空态）。 */
+    val memorySongs: List<Song> = emptyList(),
+    val memoryMonthKey: Int = 0)
 data class MineUiState(val profile: UserProfile? = null, val likeCount: Int = 0, val playlistCount: Int = 0, val record: List<RecordItem> = emptyList(), val recent: List<Song> = emptyList(), val estimatedListeningMinutes: Long = 0, val level: Int? = null)
 
 /** 单个来源的资料库统计（0.1.13 第 23 项）：等级 + 听歌分钟数；minutes 为 null 表示该源没有时长数据（QQ 暂无时长接口），显示 "—"。 */
@@ -148,6 +151,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val localLibraryStore = com.tokimusic.app.data.local.LocalLibraryStore(getApplication())
     private val localImporter = com.tokimusic.app.data.local.LocalImporter(getApplication())
     private val songCache = com.tokimusic.app.data.SongCacheStore(getApplication())
+    /** 本轮（0124）第 13 项：口味训练信号（常搜/常看计数，只存本机）。 */
+    val tasteSignals = com.tokimusic.app.data.TasteSignalsStore(getApplication())
+
+    /** 歌手页浏览记一次信号（画像训练用；一次性不计入，门槛在 TasteProfile.signalBoosts）。 */
+    fun recordArtistView(artistName: String) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { tasteSignals.recordArtistView(artistName) } }
+    }
+
+    /** 专辑页浏览记一次信号（折算到专辑歌手）。 */
+    fun recordAlbumView(artistName: String) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { tasteSignals.recordAlbumView(artistName) } }
+    }
     private val _localTracks = MutableStateFlow(localLibraryStore.all())
     /** 已导入的本地文件登记（本地页展示 + 第 8 项匹配的数据源）。 */
     val localTracks: StateFlow<List<com.tokimusic.app.data.local.LocalTrack>> = _localTracks
@@ -364,6 +379,80 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * 本轮（0124）第 10 项：听歌统计页「常听歌曲」——某时间区间内
+     * 播放次数 top 的歌曲（已解析为 Song），口径见
+     * Retrospective.topSongsInRange；解析走回顾同路（缓存 + 网易云
+     * songDetail 兜底，本地模式不联网兜底，本地歌走登记表）。
+     */
+    suspend fun frequentSongs(startMs: Long, endMs: Long, limit: Int = 5): List<Pair<Song, com.tokimusic.app.player.Retrospective.PlayCount>> {
+        val counts = withContext(Dispatchers.IO) {
+            com.tokimusic.app.player.Retrospective.topSongsInRange(
+                player.playEventLog.recentEvents(20_000),
+                player.playEventLog.monthlySongAggregates(),
+                startMs, endMs, limit,
+            )
+        }
+        if (counts.isEmpty()) return emptyList()
+        val cache = withContext(Dispatchers.IO) { songCache.all() }
+        val byKey = cache.associateBy { it.source to it.id }
+        val missingNetease = counts
+            .filter { it.source == "NETEASE" }
+            .map { it.songId }
+            .filter { (MusicSource.NETEASE to it) !in byKey }
+            .distinct()
+        val fetched = if (missingNetease.isNotEmpty() && !isLocalModeNow()) {
+            runCatching { api.songDetail(missingNetease.take(200)) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val fetchedById = fetched.associateBy { it.id }
+        val localById = _localTracks.value.associateBy { com.tokimusic.app.data.model.localSongId(it.uri) }
+        return counts.mapNotNull { count ->
+            val source = runCatching { MusicSource.valueOf(count.source) }.getOrNull()
+                ?: return@mapNotNull null
+            val song = byKey[source to count.songId]
+                ?: fetchedById[count.songId]
+                ?: localById[count.songId]?.let { localLibraryStore.toSong(it) }
+                ?: return@mapNotNull null
+            song to count
+        }
+    }
+
+    /**
+     * 本轮（0124）第 22 项：本地最近播放（资料库「歌曲」与主页「最近
+     * 播放」共用同一份计算）——PlayEventLog 全源事件按时间倒序、
+     * 按歌去重保留最近一次，经 SongCacheStore 解析，网易云缓存缺失
+     * 走 songDetail 兜底（本地模式跳过联网兜底），本地文件歌经本地
+     * 库登记表解析。云端播放记录不再参与。
+     */
+    private suspend fun resolveLocalRecent(limit: Int = 60): List<Song> {
+        val events = withContext(Dispatchers.IO) { player.playEventLog.recentEvents(2_000) }
+        val distinct = com.tokimusic.app.player.recentDistinct(events, limit)
+        if (distinct.isEmpty()) return emptyList()
+        val cache = withContext(Dispatchers.IO) { songCache.all() }
+        val byKey = cache.associateBy { it.source to it.id }
+        val missingNetease = distinct
+            .filter { it.source == "NETEASE" }
+            .map { it.songId }
+            .filter { (MusicSource.NETEASE to it) !in byKey }
+            .distinct()
+        val fetched = if (missingNetease.isNotEmpty() && !isLocalModeNow()) {
+            runCatching { api.songDetail(missingNetease.take(200)) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val fetchedById = fetched.associateBy { it.id }
+        val localById = _localTracks.value.associateBy { com.tokimusic.app.data.model.localSongId(it.uri) }
+        return distinct.mapNotNull { event ->
+            val source = runCatching { MusicSource.valueOf(event.source) }.getOrNull()
+                ?: return@mapNotNull null
+            byKey[source to event.songId]
+                ?: fetchedById[event.songId]
+                ?: localById[event.songId]?.let { localLibraryStore.toSong(it) }
+        }
+    }
+
+    /**
      * 第 6 项：回顾歌单刷新——PlayEventLog 按月聚合（过去月份、每月
      * 不同歌曲 ≥10 才生成），歌曲对象经 SongCacheStore 解析，网易云
      * 缓存缺失的批量走 songDetail 兜底；仍解析不到的跳过（覆盖限制
@@ -378,13 +467,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val monthly = com.tokimusic.app.player.Retrospective.monthlyTopMerged(
                 events, aggregates, System.currentTimeMillis(),
             )
-            if (monthly.isEmpty()) {
-                _home.value = _home.value.copy(retrospectives = emptyList())
+            // 本轮（0124）第 11 项：「10'26 音乐记忆」——2026 年 10 月的
+            // 指定月份回顾（不设 ≥10 门槛，有多少算多少；无数据时
+            // memoryMonthKey 保持 0，页面走空态，绝不编造歌曲）。
+            val memoryKey = run {
+                val cal = java.util.Calendar.getInstance()
+                cal.set(2026, java.util.Calendar.OCTOBER, 1, 0, 0, 0)
+                com.tokimusic.app.player.Retrospective.monthKey(cal.timeInMillis)
+            }
+            val memoryCounts = com.tokimusic.app.player.Retrospective.monthTopCounts(
+                events, aggregates, memoryKey,
+            )
+            if (monthly.isEmpty() && memoryCounts.isEmpty()) {
+                _home.value = _home.value.copy(retrospectives = emptyList(), memorySongs = emptyList(), memoryMonthKey = 0)
                 return@launch
             }
             val cache = withContext(Dispatchers.IO) { songCache.all() }
             val byKey = cache.associateBy { it.source to it.id }
-            val missingNetease = monthly.flatMap { it.second }
+            val missingNetease = (monthly.flatMap { it.second } + memoryCounts)
                 .filter { it.source == "NETEASE" }
                 .map { it.songId }
                 .filter { (MusicSource.NETEASE to it) !in byKey }
@@ -403,7 +503,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     byKey[source to count.songId] ?: fetchedById[count.songId]
                 }
             }.filter { it.second.isNotEmpty() }
-            _home.value = _home.value.copy(retrospectives = resolved)
+            val memoryResolved = memoryCounts.mapNotNull { count ->
+                val source = runCatching { MusicSource.valueOf(count.source) }.getOrNull()
+                    ?: return@mapNotNull null
+                byKey[source to count.songId] ?: fetchedById[count.songId]
+            }
+            _home.value = _home.value.copy(
+                retrospectives = resolved,
+                memorySongs = memoryResolved,
+                memoryMonthKey = if (memoryResolved.isNotEmpty()) memoryKey else 0,
+            )
         }
     }
 
@@ -416,6 +525,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             coverUrl = "",
             trackCount = songs.size,
             creatorName = "TokiMusic 回顾",
+            source = MusicSource.LOCAL,
+        )
+        return playlist to songs
+    }
+
+    /** 本轮（0124）第 11 项：「10'26 音乐记忆」详情——名字与作者按用户口径（「10'26 音乐记忆」/ TokiMusic），与普通回顾歌单分开。 */
+    fun memoryDetail(monthKey: Int): Pair<Playlist, List<Song>>? {
+        if (_home.value.memoryMonthKey != monthKey) return null
+        val songs = _home.value.memorySongs
+        if (songs.isEmpty()) return null
+        val playlist = Playlist(
+            id = com.tokimusic.app.player.Retrospective.memoryPlaylistId(monthKey),
+            name = "${com.tokimusic.app.player.Retrospective.monthLabel(monthKey)} 音乐记忆",
+            coverUrl = songs.firstOrNull()?.picUrl ?: "",
+            trackCount = songs.size,
+            creatorName = "TokiMusic",
             source = MusicSource.LOCAL,
         )
         return playlist to songs
@@ -550,6 +675,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 com.tokimusic.app.player.TasteProfile.RETROSPECTIVE_BOOST
                         }
                 }
+            // 本轮（0124）第 13 项：常搜/常看信号并入画像（≥2 次才计，
+            // 一次性行为不计；信号只存本机 TasteSignalsStore）。
+            val boosts = com.tokimusic.app.player.TasteProfile.signalBoosts(
+                searchCounts = tasteSignals.searchCounts(),
+                artistViews = tasteSignals.artistCounts(),
+            )
+            for ((name, boost) in boosts) {
+                base[name] = (base[name] ?: 0.0) + boost
+            }
             base
         }
         return profile
@@ -703,8 +837,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // QQ 那行换成了 tokimusic 行，QQ 统计再无用量。
     private val _localStats = MutableStateFlow(SourceStats(level = 1, minutes = 0L)); val localStats: StateFlow<SourceStats> = _localStats
     fun refreshLocalStats() {
-        _localStats.value = SourceStats(level = 1, minutes = player.statsStore.totalMinutes())
+        // 本轮（0124）第 15 项：等级不再写死 Lv.1——取等级 store 的真实等级。
+        _localStats.value = SourceStats(
+            level = player.levelStore.snapshot(System.currentTimeMillis()).level,
+            minutes = player.statsStore.totalMinutes(),
+        )
     }
+
+    /** 本轮（0124）第 15/15b 项：等级快照（资料库等级块与等级详情页共用）。 */
+    fun musicLevelSnapshot(): com.tokimusic.app.player.MusicLevelSnapshot =
+        player.levelStore.snapshot(System.currentTimeMillis())
     private val _health = MutableStateFlow<ApiHealth?>(null); val health: StateFlow<ApiHealth?> = _health
     private val _userMessage = MutableStateFlow<String?>(null); val userMessage: StateFlow<String?> = _userMessage
     fun consumeMessage() { _userMessage.value = null }
@@ -935,7 +1077,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         val likesD = async { api.likeList(p.uid) }
                         val recordD = async { api.userRecord(p.uid, weekly = false) }
                         val levelD = async { runCatching { api.userLevel() }.getOrNull() }
-                        val recentD = async { api.recentSongs() }
+                        // 本轮（0124）第 22 项：资料库「歌曲」的最近播放同样改读本机记录（与主页共用 resolveLocalRecent）。
+                        val recentD = async { resolveLocalRecent() }
                         val detail = detailD.await()
                         val pls = plsD.await()
                         val likes = likesD.await()
@@ -1001,7 +1144,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val radarD = async {
                 if (neEnabled && profile != null) runCatching { api.userRecord(profile.uid, weekly = true) }.getOrDefault(emptyList()).map { it.song }.take(20) else emptyList()
             }
-            val recentD = async { if (neEnabled && profile != null) api.recentSongs() else emptyList() }
+            // 本轮（0124）第 22 项：最近播放改读本机 PlayEventLog（全源、
+            // 本地优先），不再读网易云云端记录——未登录也有最近播放。
+            val recentD = async { resolveLocalRecent() }
             val qqTopD = async { if (qqEnabledNow) runCatching { qqClient.toplist() }.getOrNull() else emptyList() }
             val qqPlsD = async { if (qqEnabledNow) runCatching { qqClient.recommendPlaylists() }.getOrNull() else emptyList() }
             val qqNewsD = async { if (qqEnabledNow) runCatching { qqClient.recommendNewSongs() }.getOrNull() else emptyList() }
@@ -1055,6 +1200,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 虚拟歌单，曲目在 VM 状态里，先于一切网络路由返回。
         // 本轮：本地歌单返回前先走在线封面回落（本地模式不触发）。
         localSourceDetail(id)?.let { (pl, songs) -> return pl to fillLocalOnlineCovers(songs) }
+        com.tokimusic.app.player.Retrospective.memoryMonthKeyOf(id)?.let { key ->
+            memoryDetail(key)?.let { return it }
+        }
         com.tokimusic.app.player.Retrospective.monthKeyOfPlaylist(id)?.let { key ->
             retrospectiveDetail(key)?.let { return it }
         }
@@ -1126,6 +1274,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         _searchSource.value = src
         store.lastSearchSource = src.name
+        // 本轮（0124）第 13 项：搜索关键词记入口味训练信号（本机）。
+        viewModelScope.launch(Dispatchers.IO) { runCatching { tasteSignals.recordSearch(keywords) } }
         searchJob = viewModelScope.launch {
             _home.value = _home.value.copy(searching = true, searchSource = src)
             when (src) {

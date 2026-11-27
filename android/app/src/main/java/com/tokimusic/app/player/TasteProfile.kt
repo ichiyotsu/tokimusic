@@ -85,4 +85,39 @@ object TasteProfile {
         }
         return sum / sqrt(artistsOfTracks.size.toDouble())
     }
+
+    /** 常看歌手的画像加权（本轮 0124 第 13 项）。 */
+    const val SIGNAL_VIEW_BOOST = 0.5
+
+    /** 常搜关键词的画像加权（关键词与歌手名同名时才实际命中）。 */
+    const val SIGNAL_SEARCH_BOOST = 0.3
+
+    /** 信号计入画像的最低重复次数：一次性查看/搜索不计入。 */
+    const val SIGNAL_MIN_COUNT = 2
+
+    /**
+     * 「常搜 / 常看」信号 → 画像加权（本轮 0124 第 13 项，纯函数，
+     * JVM 单测覆盖）：计数 < [SIGNAL_MIN_COUNT] 的一律不计（一次性
+     * 行为不算喜好）；歌手浏览（歌手页 + 专辑页折算）每次达标给
+     * [SIGNAL_VIEW_BOOST]；搜索关键词达标给 [SIGNAL_SEARCH_BOOST]
+     * （键是关键词原文——与歌手名一致时在重排打分时自然命中，不一致
+     * 的键永远不会被查到，无副作用）。
+     */
+    fun signalBoosts(
+        searchCounts: Map<String, Int>,
+        artistViews: Map<String, Int>,
+    ): Map<String, Double> {
+        val boosts = HashMap<String, Double>()
+        for ((name, count) in artistViews) {
+            if (name.isNotBlank() && count >= SIGNAL_MIN_COUNT) {
+                boosts[name] = (boosts[name] ?: 0.0) + SIGNAL_VIEW_BOOST
+            }
+        }
+        for ((keyword, count) in searchCounts) {
+            if (keyword.isNotBlank() && count >= SIGNAL_MIN_COUNT) {
+                boosts[keyword] = (boosts[keyword] ?: 0.0) + SIGNAL_SEARCH_BOOST
+            }
+        }
+        return boosts
+    }
 }

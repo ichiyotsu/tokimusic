@@ -133,4 +133,25 @@ class TasteProfileTest {
         )
         assertEquals(1.0, legacy["旧"]!!, 1e-9)
     }
+
+    @Test
+    fun signalBoostsRequireRepetition() {
+        // 本轮（0124）第 13 项：一次性搜索/查看不计入；≥2 次才给加权。
+        val boosts = TasteProfile.signalBoosts(
+            searchCounts = mapOf("周杰伦" to 1, "林俊杰" to 2),
+            artistViews = mapOf("周杰伦" to 3, "路人" to 1),
+        )
+        assertEquals(TasteProfile.SIGNAL_VIEW_BOOST, boosts["周杰伦"]!!, 1e-9)
+        assertEquals(TasteProfile.SIGNAL_SEARCH_BOOST, boosts["林俊杰"]!!, 1e-9)
+        assertEquals(null, boosts["路人"])
+        // 同一歌手同时命中常看与常搜时叠加。
+        val both = TasteProfile.signalBoosts(
+            searchCounts = mapOf("周杰伦" to 2),
+            artistViews = mapOf("周杰伦" to 2),
+        )
+        assertEquals(
+            TasteProfile.SIGNAL_VIEW_BOOST + TasteProfile.SIGNAL_SEARCH_BOOST,
+            both["周杰伦"]!!, 1e-9,
+        )
+    }
 }

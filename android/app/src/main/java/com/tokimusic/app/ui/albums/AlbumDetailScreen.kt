@@ -105,7 +105,13 @@ fun AlbumDetailScreen(
         }
     }
     val (album, tracks) = detail ?: (Album(albumId, "加载中…") to emptyList())
-    LaunchedEffect(album.name) { onTitle(album.name) }
+    LaunchedEffect(album.name) {
+        onTitle(album.name)
+        // 本轮（0124）第 13 项：专辑页浏览记入口味训练信号（折算到专辑歌手）。
+        if (album.name != "加载中…" && album.artistText.isNotBlank()) {
+            vm.recordAlbumView(album.artistText.substringBefore(" / ").substringBefore(","))
+        }
+    }
     val coverColors = rememberCoverColors(if (isQq) qqAlbumId(qqMid!!) else albumId, album.coverUrl)
     val listState = rememberLazyListState()
     // 标题行（第 0 项）滑出可视区后，通知外层显示悬浮标题。
