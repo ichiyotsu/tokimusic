@@ -639,6 +639,8 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
 private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp, onOpenPlaylist: (Long) -> Unit) {
     val context = LocalContext.current
     val tracks by vm.localTracks.collectAsState()
+    // 本轮（0124）第 9 项：已下载歌单登记（LazyColumn 作用域非 Composable，订阅提这里）。
+    val downloadedEntries by vm.downloadedPlaylists.collectAsState()
     val report by vm.localImportReport.collectAsState()
     val importing by vm.localImporting.collectAsState()
     val audioPermission = if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -835,6 +837,20 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     val idx = playableDevice.indexOf(song)
                     if (idx >= 0) vm.play(playableDevice, idx, "Device")
                 }
+            }
+        }
+        // 本轮（0124）第 9 项：已下载歌单镜像——按歌单格式列出（与
+        // 上面三桶歌单行同款），点开走下载歌单的虚拟 id 详情。
+        if (downloadedEntries.isNotEmpty()) {
+            item { SectionTitle("已下载歌单") }
+            items(downloadedEntries, key = { it.virtualId }) { entry ->
+                LocalPlaylistRow(
+                    name = entry.name,
+                    trackCount = entry.trackUris.size,
+                    creator = entry.creator,
+                    coverUrl = entry.coverUrl,
+                    icon = Icons.Rounded.Download,
+                ) { onOpenPlaylist(entry.virtualId) }
             }
         }
     }

@@ -1,8 +1,12 @@
 package com.tokimusic.app.ui.playlists
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -264,6 +268,62 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            // 本轮（0124）第 9 项：整单下载入口（仅在线源歌单；本地/
+            // 虚拟歌单不显示）。状态：未下载 / 下载中（进度）/ 已下载 /
+            // 部分下载（点按继续补齐）。
+            if ((pl.source == com.tokimusic.app.data.model.MusicSource.NETEASE ||
+                    pl.source == com.tokimusic.app.data.model.MusicSource.QQ) && tracks.isNotEmpty()
+            ) {
+                val dlProgress by vm.downloadProgress.collectAsState()
+                val dlEntries by vm.downloadedPlaylists.collectAsState()
+                @Suppress("UNUSED_EXPRESSION")
+                dlEntries // 订阅登记变化以刷新下方状态文案
+                val progress = dlProgress[vm.downloadProgressKey(pl)]
+                val state = vm.playlistDownloadState(pl)
+                val entry = vm.downloadedEntryFor(pl)
+                val have = com.tokimusic.app.data.local.downloadedHaveCount(
+                    entry, vm.localTracks.value.map { it.uri }.toSet(),
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(coverColors.onCoverButtonBg())
+                        .clickable(enabled = progress == null) { vm.downloadPlaylist(pl, tracks) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (progress != null) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = coverColors.onCoverTextAt(titleFraction),
+                        )
+                    } else {
+                        Icon(
+                            if (state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED) {
+                                Icons.Rounded.Check
+                            } else {
+                                Icons.Rounded.Download
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = coverColors.onCoverTextAt(titleFraction),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        when {
+                            progress != null -> "下载中 ${progress.done}/${progress.total}"
+                            state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED -> "已下载 $have 首"
+                            state == com.tokimusic.app.data.local.PlaylistDownloadState.PARTIAL -> "已下载 $have/${entry?.trackUris?.size ?: 0} 首 · 继续下载"
+                            else -> "下载歌单"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = coverColors.onCoverTextAt(titleFraction),
+                    )
+                }
             }
         },
         listContent = {

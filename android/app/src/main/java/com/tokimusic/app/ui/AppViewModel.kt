@@ -1200,6 +1200,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 虚拟歌单，曲目在 VM 状态里，先于一切网络路由返回。
         // 本轮：本地歌单返回前先走在线封面回落（本地模式不触发）。
         localSourceDetail(id)?.let { (pl, songs) -> return pl to fillLocalOnlineCovers(songs) }
+        // 本轮（0124）第 9 项：已下载歌单的虚拟 id 详情（本地镜像）。
+        downloadedPlaylistDetail(id)?.let { return it }
         com.tokimusic.app.player.Retrospective.memoryMonthKeyOf(id)?.let { key ->
             memoryDetail(key)?.let { return it }
         }
@@ -1235,6 +1237,205 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return api.playlistDetail(id).also { (pl, tracks) ->
             if (pl.subscribed) _subscribedPlaylistIds.value += playlistFavoriteKey(pl.source, pl.id)
             withContext(Dispatchers.IO) { runCatching { playlistSnapshots.put(pl, tracks) } }
+        }
+    }
+
+    // ---- 本轮（0124）第 9 项：歌单整单下载 ----
+
+    private val downloadedPlaylistStore = com.tokimusic.app.data.local.DownloadedPlaylistStore(getApplication())
+    private val _downloadedPlaylists = MutableStateFlow(downloadedPlaylistStore.all())
+    /** 已下载歌单登记（本地页镜像展示用）。 */
+    val downloadedPlaylists: StateFlow<List<com.tokimusic.app.data.local.DownloadedPlaylist>> = _downloadedPlaylists
+
+    /** 下载进度（key = "SOURCE:歌单id"）；不在表中 = 没在下载。 */
+    data class PlaylistDownloadProgress(val done: Int, val total: Int, val failed: Int)
+    private val _downloadProgress = MutableStateFlow<Map<String, PlaylistDownloadProgress>>(emptyMap())
+    val downloadProgress: StateFlow<Map<String, PlaylistDownloadProgress>> = _downloadProgress
+
+    private val downloadHttp = okhttp3.OkHttpClient()
+
+    fun downloadProgressKey(playlist: Playlist): String = "${playlist.source.name}:${playlist.id}"
+
+    fun downloadedEntryFor(playlist: Playlist): com.tokimusic.app.data.local.DownloadedPlaylist? =
+        _downloadedPlaylists.value.firstOrNull { it.source == playlist.source.name && it.playlistId == playlist.id }
+
+    fun playlistDownloadState(playlist: Playlist): com.tokimusic.app.data.local.PlaylistDownloadState =
+        com.tokimusic.app.data.local.playlistDownloadState(
+            downloadedEntryFor(playlist),
+            _localTracks.value.map { it.uri }.toSet(),
+        )
+
+    /** 已下载歌单的详情（虚拟 id 路由）：曲目 = 登记顺序的本地歌。 */
+    fun downloadedPlaylistDetail(id: Long): Pair<Playlist, List<Song>>? {
+        val entry = _downloadedPlaylists.value.firstOrNull { it.virtualId == id } ?: return null
+        val byUri = localLibraryStore.all().associateBy { it.uri }
+        val songs = entry.trackUris.mapNotNull { uri -> byUri[uri]?.let { toSongWithCover(it) } }
+        val playlist = Playlist(
+            id = entry.virtualId,
+            name = entry.name,
+            coverUrl = entry.coverUrl,
+            trackCount = songs.size,
+            creatorName = entry.creator,
+            source = MusicSource.LOCAL,
+        )
+        return playlist to songs
+    }
+
+    /** 下载取址（静默版）：只走源自身路由，不做本地优先（调用方已查过登记表）。 */
+    private suspend fun downloadUrlFor(song: Song): String? = when (song.source) {
+        MusicSource.NETEASE -> runCatching { api.songUrl(song.id).url }.getOrNull()?.takeIf { it.isNotBlank() }
+        MusicSource.QQ -> (runCatching { qqClient.songUrl(song.sourceId, store.audioQuality) }.getOrNull() as? QqSongUrlResult.Url)?.url
+        MusicSource.LOCAL -> null
+    }
+
+    /**
+     * 整单下载：逐首走源自身取址路由下载到 filesDir/local_import/
+     * download/，以真实 originSource/originId 登记进本地库（本地优先
+     * 播放自动命中、离线可播），歌单登记进下载歌单表并镜像到本地页。
+     * 单首失败计数不中断；已在本地库且文件还在的歌跳过下载、照样进
+     * 歌单。门控与播放同口径：本地模式/源关闭不可下载，QQ 需登录。
+     */
+    fun downloadPlaylist(playlist: Playlist, tracks: List<Song>) {
+        val source = playlist.source
+        if (source != MusicSource.NETEASE && source != MusicSource.QQ) return
+        if (tracks.isEmpty()) {
+            _userMessage.value = "歌单暂无可下载曲目"
+            return
+        }
+        if (isLocalModeNow()) {
+            _userMessage.value = "本地模式下无法下载，请先开启来源"
+            return
+        }
+        if (isSourceDisabled(source)) {
+            _userMessage.value = "该来源已关闭，无法下载"
+            return
+        }
+        if (source == MusicSource.QQ && (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank())) {
+            _userMessage.value = "请先登录 QQMusic"
+            return
+        }
+        val key = downloadProgressKey(playlist)
+        if (key in _downloadProgress.value) return
+        _downloadProgress.value = _downloadProgress.value + (key to PlaylistDownloadProgress(0, tracks.size, 0))
+        viewModelScope.launch {
+            var done = 0
+            var failed = 0
+            val urisInOrder = ArrayList<String>()
+            val newTracks = ArrayList<com.tokimusic.app.data.local.LocalTrack>()
+            try {
+                for (song in tracks) {
+                    val existing = withContext(Dispatchers.IO) {
+                        runCatching { localLibraryStore.findFor(song) }.getOrNull()
+                            ?.takeIf { localImporter.exists(it.uri) }
+                    }
+                    if (existing != null) {
+                        urisInOrder += existing.uri
+                        done++
+                        _downloadProgress.value = _downloadProgress.value + (key to PlaylistDownloadProgress(done, tracks.size, failed))
+                        continue
+                    }
+                    val track = runCatching { downloadOneSong(song) }.getOrNull()
+                    if (track != null) {
+                        newTracks += track
+                        urisInOrder += track.uri
+                        done++
+                    } else {
+                        failed++
+                    }
+                    _downloadProgress.value = _downloadProgress.value + (key to PlaylistDownloadProgress(done, tracks.size, failed))
+                }
+                withContext(Dispatchers.IO) {
+                    if (newTracks.isNotEmpty()) localLibraryStore.putAll(newTracks)
+                    downloadedPlaylistStore.put(
+                        source = source.name,
+                        playlistId = playlist.id,
+                        name = playlist.name,
+                        creator = playlist.creatorName,
+                        coverUrl = playlist.coverUrl,
+                        trackUris = urisInOrder,
+                        nowMs = System.currentTimeMillis(),
+                    )
+                }
+                _downloadedPlaylists.value = downloadedPlaylistStore.all()
+                refreshLocalTracks()
+                _userMessage.value = when {
+                    failed == 0 -> "下载完成：${done} 首"
+                    done == 0 -> "下载失败：${failed} 首均无法下载"
+                    else -> "下载完成：成功 ${done} 首，失败 ${failed} 首"
+                }
+            } finally {
+                _downloadProgress.value = _downloadProgress.value - key
+            }
+        }
+    }
+
+    /** 下载一首歌到 download 桶并造登记条目；任何一步失败返回 null。 */
+    private suspend fun downloadOneSong(song: Song): com.tokimusic.app.data.local.LocalTrack? {
+        val url = downloadUrlFor(song) ?: return null
+        return withContext(Dispatchers.IO) {
+            val ext = url.substringBefore('?').substringAfterLast('.', "").lowercase()
+                .takeIf { it in setOf("mp3", "flac", "m4a", "ogg", "wav") } ?: "mp3"
+            val originId = when (song.source) {
+                MusicSource.NETEASE -> song.id.toString()
+                else -> song.sourceId
+            }
+            val safeId = originId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+            val dir = java.io.File(getApplication<android.app.Application>().filesDir, "local_import/download").apply { mkdirs() }
+            val file = java.io.File(dir, "dl_${song.source.name.lowercase()}_$safeId.$ext")
+            val request = okhttp3.Request.Builder().url(url).build()
+            val ok = runCatching {
+                downloadHttp.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use false
+                    val body = resp.body ?: return@use false
+                    file.outputStream().use { out -> body.byteStream().copyTo(out) }
+                    file.length() > 0
+                }
+            }.getOrDefault(false)
+            if (!ok) {
+                runCatching { file.delete() }
+                return@withContext null
+            }
+            // 封面（尽力）：下原图到 local_covers，登记其 file://。
+            var coverUri = ""
+            if (song.picUrl.isNotBlank()) {
+                coverUri = runCatching {
+                    val coverDir = java.io.File(getApplication<android.app.Application>().filesDir, "local_covers").apply { mkdirs() }
+                    val coverFile = java.io.File(coverDir, "dl_${song.source.name.lowercase()}_$safeId.jpg")
+                    downloadHttp.newCall(okhttp3.Request.Builder().url(song.picUrl).build()).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use ""
+                        val body = resp.body ?: return@use ""
+                        coverFile.outputStream().use { out -> body.byteStream().copyTo(out) }
+                        if (coverFile.length() > 0) android.net.Uri.fromFile(coverFile).toString() else ""
+                    }
+                }.getOrDefault("")
+            }
+            // 歌词（尽力）：纯文本落 local_lyrics（网易云 LRC/YRC、QQ LRC）。
+            var lyricPath = ""
+            val lyricText = when (song.source) {
+                MusicSource.NETEASE -> runCatching { api.lyric(song.id) }.getOrNull()?.let { it.lrc ?: it.yrc }
+                MusicSource.QQ -> runCatching { qqClient.lyric(song.sourceId) }.getOrNull()?.lrc
+                else -> null
+            }
+            if (!lyricText.isNullOrBlank()) {
+                lyricPath = runCatching {
+                    val lyricDir = java.io.File(getApplication<android.app.Application>().filesDir, "local_lyrics").apply { mkdirs() }
+                    val lyricFile = java.io.File(lyricDir, "dl_${song.source.name.lowercase()}_$safeId.lrc")
+                    lyricFile.writeText(lyricText)
+                    lyricFile.absolutePath
+                }.getOrDefault("")
+            }
+            com.tokimusic.app.data.local.LocalTrack(
+                originSource = song.source.name,
+                originId = originId,
+                title = song.name,
+                artist = song.artists.joinToString(" / ") { it.name },
+                album = song.albumName,
+                durationMs = song.durationMs,
+                uri = android.net.Uri.fromFile(file).toString(),
+                format = ext,
+                cover = coverUri,
+                lyric = lyricPath,
+            )
         }
     }
 
