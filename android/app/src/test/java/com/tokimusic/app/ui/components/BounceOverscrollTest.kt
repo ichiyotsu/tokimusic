@@ -59,4 +59,11 @@ class BounceOverscrollTest {
         // 过阻尼），欠阻尼会在 0 点附近衰减振荡出可见的几像素抖动。
         assertTrue(BOUNCE_SPRING_DAMPING >= 1.0f)
     }
+
+    @Test
+    fun maxDistanceIsUserTuned24dp() {
+        // 最大拖出量是用户 2026-11-27 定的手感值（24dp 克制档），
+        // 防止后续顺手改动悄悄改变全局回弹量。
+        assertEquals(24f, BOUNCE_MAX_DISTANCE_DP, 0.001f)
+    }
 }

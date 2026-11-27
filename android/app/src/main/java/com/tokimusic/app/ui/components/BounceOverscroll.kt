@@ -33,8 +33,8 @@ import kotlin.math.sign
 internal const val BOUNCE_SPRING_DAMPING: Float = Spring.DampingRatioNoBouncy
 internal const val BOUNCE_SPRING_STIFFNESS: Float = Spring.StiffnessMediumLow
 
-/** 回弹最大拖出量（全局唯一）：阻尼变换的渐近值。 */
-internal const val BOUNCE_MAX_DISTANCE_DP: Float = 96f
+/** 回弹最大拖出量（全局唯一）：阻尼变换的渐近值。2026-11-27 用户定 24dp（克制档）。 */
+internal const val BOUNCE_MAX_DISTANCE_DP: Float = 24f
 
 /**
  * iOS 式回弹过冲（0.1.21）：基于官方 [OverscrollEffect] 接口自实现
