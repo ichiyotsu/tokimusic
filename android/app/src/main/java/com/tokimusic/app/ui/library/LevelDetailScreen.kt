@@ -35,6 +35,7 @@ import com.tokimusic.app.player.formatPointCount
 import com.tokimusic.app.player.levelEarningRows
 import com.tokimusic.app.ui.AppViewModel
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -52,15 +53,18 @@ import kotlin.math.roundToInt
  */
 
 /**
- * 进度条数值标签的水平偏移（px，本轮 0125 第 4 项）：标签中心锚在
- * 填充前缘（progress × 条宽），再钳制到 [0, 条宽 − 标签宽]，保证
- * 标签整体始终留在条内——占比 0 时贴最左、满格时贴最右。
+ * 进度条数值标签的水平偏移（px，本轮 0125 第 4 项 + 14:01 细化）：
+ * 标签中心锚在填充前缘（progress × 条宽），再钳制到
+ * [留白, 条宽 − 标签宽 − 留白]——标签整体始终留在条内，且两端都
+ * 不贴边：占比 0 时左缘距条左端恰为留白，满格时右缘距条右端同为
+ * 留白。条太窄放不下两侧留白时留白对称收缩（留白 ≤ 可用行程的一半）。
  */
-fun levelProgressLabelOffsetPx(barWidthPx: Int, labelWidthPx: Int, progress: Float): Int {
+fun levelProgressLabelOffsetPx(barWidthPx: Int, labelWidthPx: Int, progress: Float, insetPx: Int = 0): Int {
     if (barWidthPx <= 0 || labelWidthPx <= 0) return 0
-    val maxOffset = max(0, barWidthPx - labelWidthPx)
+    val travel = max(0, barWidthPx - labelWidthPx)
+    val inset = min(insetPx.coerceAtLeast(0), travel / 2)
     val fillEdge = (barWidthPx * progress.coerceIn(0f, 1f)).roundToInt()
-    return (fillEdge - labelWidthPx / 2).coerceIn(0, maxOffset)
+    return (fillEdge - labelWidthPx / 2).coerceIn(inset, travel - inset)
 }
 
 @Composable
@@ -88,14 +92,16 @@ fun LevelDetailScreen(
             Column(Modifier.padding(horizontal = 24.dp)) {
                 // 本级进度条：填充 = 本级下限 → 下一级门槛的进度；
                 // 当前总积分数值标签跟随填充占比（0125 第 4 项）：中心
-                // 锚在填充前缘、随占比左右移动，两端钳制不出条；
-                // 实色底衬保证可读。
+                // 锚在填充前缘、随占比左右移动，两端带 6dp 留白钳制
+                // （不出条、不贴边）；实色底衬保证可读。
                 BoxWithConstraints(
                     Modifier.fillMaxWidth().height(28.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 ) {
-                    val barWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+                    val density = LocalDensity.current
+                    val barWidthPx = with(density) { maxWidth.roundToPx() }
+                    val labelInsetPx = with(density) { 6.dp.roundToPx() }
                     var labelWidthPx by remember { mutableStateOf(0) }
                     Box(
                         Modifier.fillMaxWidth(snapshot.progress)
@@ -106,7 +112,7 @@ fun LevelDetailScreen(
                         Modifier.align(Alignment.CenterStart)
                             .offset {
                                 IntOffset(
-                                    levelProgressLabelOffsetPx(barWidthPx, labelWidthPx, snapshot.progress),
+                                    levelProgressLabelOffsetPx(barWidthPx, labelWidthPx, snapshot.progress, labelInsetPx),
                                     0,
                                 )
                             }

@@ -773,7 +773,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             name = "${com.tokimusic.app.player.Retrospective.yearOf(monthKey)}年${com.tokimusic.app.player.Retrospective.monthOf(monthKey)}月回顾",
             coverUrl = "",
             trackCount = songs.size,
-            creatorName = "TokiMusic 回顾",
+            creatorName = "TokiMusic",
             source = MusicSource.LOCAL,
         )
         return playlist to songs

@@ -217,4 +217,58 @@ object Retrospective {
             MONET_PALETTE[(start + 6) % n],
         )
     }
+
+    // ---- 生成封面（本轮 0125 第 6 项）----
+    // 音乐记忆歌单卡的封面不用图片：按年月种子从同类色（相邻色相）
+    // 家族里选一组 3 色做 45° 渐变，同月永远同组；深/浅两套色按
+    // 主题选，两套都压在中低明度上，保证白色粗体字可读（参考图：
+    // OCT'26 青蓝渐变 / SEP'26 紫渐变，白字）。
+
+    private val MONTH_ABBR: List<String> = listOf(
+        "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    )
+
+    fun monthAbbr(monthKey: Int): String = MONTH_ABBR[monthOf(monthKey) - 1]
+
+    /** 封面大字，如 2026 年 10 月 → "OCT'26"（参考图口径：缩写大写 + 'YY）。 */
+    fun coverTitle(monthKey: Int): String =
+        "${monthAbbr(monthKey)}'${(yearOf(monthKey) % 100).toString().padStart(2, '0')}"
+
+    /** 封面副标，如「音乐记忆 · 10月」。 */
+    fun coverSubtitle(monthKey: Int): String = "音乐记忆 · ${monthOf(monthKey)}月"
+
+    /** 深色主题的封面色族（深色版：整体更沉，白字对比更足）。每族 3 色为同色相的浅→深。 */
+    val COVER_FAMILIES_DARK: List<List<Color>> = listOf(
+        listOf(Color(0xFF55839B), Color(0xFF33566B), Color(0xFF16242F)), // 青蓝（参考图 OCT）
+        listOf(Color(0xFF6E4FA8), Color(0xFF472A73), Color(0xFF221238)), // 紫（参考图 SEP）
+        listOf(Color(0xFF5B6FC0), Color(0xFF3A4890), Color(0xFF1D2447)), // 靛蓝
+        listOf(Color(0xFF4E8A6A), Color(0xFF2F5D45), Color(0xFF152B20)), // 深绿
+        listOf(Color(0xFFA04E68), Color(0xFF6E3049), Color(0xFF33161F)), // 酒红玫瑰
+        listOf(Color(0xFF96703E), Color(0xFF6B4E24), Color(0xFF2F2110)), // 琥珀铜
+        listOf(Color(0xFF4E7E8C), Color(0xFF2E5563), Color(0xFF14262D)), // 石板青
+        listOf(Color(0xFF8A5580), Color(0xFF5D3560), Color(0xFF2A1730)), // 梅紫
+    )
+
+    /** 浅色主题的封面色族（同色相、整体更亮，但仍压住明度保证白字可读）。与深色版同序同色相。 */
+    val COVER_FAMILIES_LIGHT: List<List<Color>> = listOf(
+        listOf(Color(0xFF6FA3BC), Color(0xFF4A7E99), Color(0xFF2E5A73)), // 青蓝
+        listOf(Color(0xFF8B6CC4), Color(0xFF65449E), Color(0xFF422A6E)), // 紫
+        listOf(Color(0xFF7C8CD4), Color(0xFF5565B4), Color(0xFF35448A)), // 靛蓝
+        listOf(Color(0xFF6BAE87), Color(0xFF478A64), Color(0xFF2A5C40)), // 绿
+        listOf(Color(0xFFC0738D), Color(0xFF9C4E6B), Color(0xFF6E3049)), // 玫瑰
+        listOf(Color(0xFFC09A5E), Color(0xFF9C7739), Color(0xFF75552B)), // 琥珀
+        listOf(Color(0xFF71A3B3), Color(0xFF4C7E90), Color(0xFF2E5563)), // 石板青
+        listOf(Color(0xFFAC7CA6), Color(0xFF84548A), Color(0xFF5D3560)), // 梅紫
+    )
+
+    /**
+     * 某月的生成封面 3 色（确定性：同月同族；按主题在深/浅两套里选）。
+     * 家族下标与 [gradientColors] 同一哈希口径，换封面不动选色习惯。
+     */
+    fun coverColors(monthKey: Int, darkTheme: Boolean): List<Color> {
+        val families = if (darkTheme) COVER_FAMILIES_DARK else COVER_FAMILIES_LIGHT
+        val idx = ((monthKey * 31 + 7) % families.size + families.size) % families.size
+        return families[idx]
+    }
 }

@@ -6,6 +6,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,8 +36,6 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Card
@@ -51,6 +54,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +70,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -434,8 +440,8 @@ fun HomeScreen(
         // 0.1.20 第 6 项：回顾歌单——过去月份的月度回顾（数据来自
         // PlayEventLog，与算法推荐共用同一批事件；每月不同歌曲 ≥10
         // 才生成，VM 已过滤）。卡片与每日推荐同版式（200/260）：封面
-        // 是莫奈色板 3 色渐变（按月确定），左上角是月份文案 M'YY
-        // （Inter Regular、放大、30% 阴影），点开走虚拟歌单详情。
+        // 是音乐记忆生成封面（0125 第 6 项：同类色 45° 渐变 + 大字
+        // OCT'26 + 副标「音乐记忆 · M月」），点开走虚拟歌单详情。
         if (home.retrospectives.isNotEmpty()) {
             item {
                 Text("回顾", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
@@ -460,9 +466,13 @@ fun HomeScreen(
             Text("音乐记忆", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             if (home.memorySongs.isNotEmpty() && home.memoryMonthKey != 0) {
-                MemoryPlaylistCard(
-                    title = "${com.tokimusic.app.player.Retrospective.monthLabel(home.memoryMonthKey)} 音乐记忆",
-                    songs = home.memorySongs,
+                // 本轮（0125）第 6 项：音乐记忆改歌单卡形式——生成
+                // 渐变封面宽卡（与回顾卡同款封面），点开走歌单详情。
+                MemoryCoverCard(
+                    monthKey = home.memoryMonthKey,
+                    trackCount = home.memorySongs.size,
+                    wide = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).aspectRatio(2.1f),
                 ) {
                     onOpenPlaylist(com.tokimusic.app.player.Retrospective.memoryPlaylistId(home.memoryMonthKey))
                 }
@@ -776,48 +786,83 @@ private fun LocalGeneratedCard(title: String, caption: String, modifier: Modifie
 }
 
 /**
- * 回顾歌单卡（0.1.20 第 6 项）：与每日推荐卡同版式（200/260）：封面
- * = 莫奈色板 3 色动态渐变（Retrospective.gradientColors 按月确定）；
- * 左上角月份文案 M'YY——Inter Regular、headlineMedium 放大、30%
- * 黑色阴影（防被浅色渐变吞掉）；左下小字是当月 top 歌手（与每日
- * 推荐卡的歌手行同位）。
+ * 回顾歌单卡（0.1.20 第 6 项）：与每日推荐卡同版式（200/260），
+ * 内容走音乐记忆生成封面（本轮 0125 第 6 项，见 [MemoryCoverCard]）。
  */
 @Composable
 private fun RetrospectiveCard(monthKey: Int, songs: List<Song>, onClick: () -> Unit) {
-    val colors = com.tokimusic.app.player.Retrospective.gradientColors(monthKey)
+    MemoryCoverCard(
+        monthKey = monthKey,
+        trackCount = songs.size,
+        wide = false,
+        modifier = Modifier.height(195.dp).aspectRatio(200f / 260f),
+        onClick = onClick,
+    )
+}
+
+/**
+ * 音乐记忆生成封面歌单卡（本轮 0125 第 6 项）：封面不用图片——
+ * Retrospective.coverColors 按年月种子选的同类色 3 色做 45° 渐变
+ * （深/浅两套按主题选，同月恒定），封面文字按用户参考图：大字
+ * "OCT'26"（coverTitle）+ 副标「音乐记忆 · 10月」（coverSubtitle），
+ * 左下小字「N 首 · TokiMusic」（作者口径，用户 14:02 补充）。
+ * wide = 主页音乐记忆入口的宽卡；窄版是回顾横排卡。
+ */
+@Composable
+private fun MemoryCoverCard(
+    monthKey: Int,
+    trackCount: Int,
+    wide: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val darkTheme = com.tokimusic.app.ui.theme.LocalDarkTheme.current
+    val colors = com.tokimusic.app.player.Retrospective.coverColors(monthKey, darkTheme)
     Card(
         onClick = onClick,
-        modifier = Modifier.height(195.dp).aspectRatio(200f / 260f),
+        modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier.matchParentSize().background(
-                    Brush.linearGradient(colors),
-                ),
-            )
-            Text(
-                com.tokimusic.app.player.Retrospective.monthLabel(monthKey),
-                Modifier.align(Alignment.TopStart).padding(16.dp),
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontFamily = com.tokimusic.app.ui.theme.InterFamily,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
-                    shadow = androidx.compose.ui.graphics.Shadow(
-                        color = Color.Black.copy(alpha = 0.3f),
-                        offset = androidx.compose.ui.geometry.Offset(0f, 2f),
-                        blurRadius = 8f,
+                    Brush.linearGradient(
+                        colors,
+                        start = androidx.compose.ui.geometry.Offset.Zero,
+                        end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
                     ),
                 ),
-                color = Color.White,
             )
+            Column(Modifier.align(Alignment.TopStart).padding(16.dp)) {
+                Text(
+                    com.tokimusic.app.player.Retrospective.coverTitle(monthKey),
+                    style = (if (wide) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineMedium).copy(
+                        fontFamily = com.tokimusic.app.ui.theme.InterFamily,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black.copy(alpha = 0.3f),
+                            offset = androidx.compose.ui.geometry.Offset(0f, 2f),
+                            blurRadius = 8f,
+                        ),
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
+                )
+                Text(
+                    com.tokimusic.app.player.Retrospective.coverSubtitle(monthKey),
+                    style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.92f),
+                    maxLines = 1,
+                )
+            }
             Text(
-                artistLine(songs),
+                "$trackCount 首 · TokiMusic",
                 Modifier.align(Alignment.BottomStart).padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.85f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
             )
         }
     }
@@ -841,7 +886,12 @@ internal fun interleavePlaylists(first: List<Playlist>, second: List<Playlist>):
  * 拾起（放大 + 阴影 + 跟手位移），拖过相邻块中心即换位，松手落位
  * 并回调提交顺序（父级持久化）。普通点按/块内滚动不受影响（长按
  * 才进拖动态；拖动事件被消费，外层 LazyColumn 不跟着滚）。
- * 其他块的让位是即时重排（无 Lazy 布局动画）——取舍记在 NOTES。
+ * 本轮（0125）第 5 项：被换位的块不再瞬移——四块同处一个
+ * LazyColumn item 内，Lazy 的 animateItemPlacement 用不上，改走
+ * FLIP 式动画：换位瞬间按各块新旧槽位差给它补一个起始偏移
+ * （视觉位置与换位前完全一致），再用弹簧把偏移收回 0，块便平滑
+ * 滑到新槽位。槽位坐标按统一格尺寸推算（与拖动换位的步进同
+ * 口径）。拖动块本身不走此动画，继续 1:1 跟手。
  */
 @Composable
 private fun ReorderableBlockGrid(
@@ -857,6 +907,15 @@ private fun ReorderableBlockGrid(
     var dragOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var cellSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val spacingPx = with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.toPx() }
+    val scope = rememberCoroutineScope()
+    // 每块一个 FLIP 偏移动画（仅非拖动块用；拖动块走 dragOffset 跟手）。
+    val shifts = remember { mutableStateMapOf<String, Animatable<androidx.compose.ui.geometry.Offset, AnimationVector2D>>() }
+    fun shiftFor(key: String) = shifts.getOrPut(key) {
+        Animatable(androidx.compose.ui.geometry.Offset.Zero, androidx.compose.ui.geometry.Offset.VectorConverter)
+    }
+    // 槽位左上角坐标（统一格尺寸推算，与拖动步进同口径）。
+    fun slotOffset(index: Int, stepX: Float, stepY: Float) =
+        androidx.compose.ui.geometry.Offset((index % 2) * stepX, (index / 2) * stepY)
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -865,6 +924,7 @@ private fun ReorderableBlockGrid(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 for (key in rowKeys) {
                     val isDragging = draggingKey == key
+                    val shift = shiftFor(key)
                     Box(
                         Modifier.weight(1f)
                             .onSizeChanged { if (it.width > 0) cellSize = it }
@@ -876,6 +936,9 @@ private fun ReorderableBlockGrid(
                                     scaleX = 1.03f
                                     scaleY = 1.03f
                                     shadowElevation = 16.dp.toPx()
+                                } else {
+                                    translationX = shift.value.x
+                                    translationY = shift.value.y
                                 }
                             }
                             .pointerInput(key) {
@@ -909,7 +972,30 @@ private fun ReorderableBlockGrid(
                                                     .coerceIn(0, (order.size - 1) / 2)
                                                 val target = (targetRow * 2 + targetCol).coerceAtMost(order.size - 1)
                                                 if (target != idx) {
-                                                    order = HomeBlockOrder.move(order, idx, target)
+                                                    val oldOrder = order
+                                                    val newOrder = HomeBlockOrder.move(order, idx, target)
+                                                    // FLIP 让位动画：被挤开的块先补上
+                                                    // 新旧槽位差（视觉位置不变），再滑回 0。
+                                                    for (k in newOrder) {
+                                                        if (k == key) continue
+                                                        val oldIdx = oldOrder.indexOf(k)
+                                                        val newIdx = newOrder.indexOf(k)
+                                                        if (oldIdx >= 0 && newIdx >= 0 && oldIdx != newIdx) {
+                                                            val anim = shiftFor(k)
+                                                            val delta = slotOffset(oldIdx, stepX, stepY) - slotOffset(newIdx, stepX, stepY)
+                                                            scope.launch {
+                                                                anim.snapTo(anim.value + delta)
+                                                                anim.animateTo(
+                                                                    androidx.compose.ui.geometry.Offset.Zero,
+                                                                    spring(
+                                                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                                                        stiffness = Spring.StiffnessMediumLow,
+                                                                    ),
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    order = newOrder
                                                     dragOffset -= androidx.compose.ui.geometry.Offset(
                                                         (targetCol - col) * stepX,
                                                         (targetRow - row) * stepY,
@@ -927,50 +1013,5 @@ private fun ReorderableBlockGrid(
                 if (rowKeys.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-    }
-}
-
-/**
- * 「音乐记忆」歌单卡（本轮 0124 第 11 项）：与资料库本地歌单行同款
- * 版式（56dp 封面位 + 标题 +「N 首 · TokiMusic」），封面取歌单第一首。
- */
-@Composable
-private fun MemoryPlaylistCard(
-    title: String,
-    songs: List<Song>,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center,
-        ) {
-            val cover = songs.firstOrNull()?.picUrl.orEmpty()
-            if (cover.isNotBlank()) {
-                AsyncImage(cover, title, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-            } else {
-                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                "${songs.size} 首 · TokiMusic",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
