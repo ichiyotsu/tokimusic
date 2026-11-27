@@ -251,8 +251,50 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     fun clearArtistFollowTimeMs(artistId: Long) {
         prefs.edit().remove("artist_follow_time_$artistId").apply()
     }
+
+    /**
+     * 条 18 同步：偏好快照（settings section）。只同步用户偏好键——
+     * 登录凭据（cookie / QQ musickey 等）、设备标识、visitorData
+     * 一律不进同步包（安全与设备专属性，见 0124 NOTES 条 18）。
+     */
+    fun syncSettingsSnapshot(): org.json.JSONObject {
+        val o = org.json.JSONObject()
+        for (key in SYNC_BOOLEAN_KEYS) if (prefs.contains(key)) o.put(key, prefs.getBoolean(key, false))
+        for (key in SYNC_STRING_KEYS) prefs.getString(key, null)?.let { o.put(key, it) }
+        for (key in SYNC_INT_KEYS) if (prefs.contains(key)) o.put(key, prefs.getInt(key, 0))
+        for (key in SYNC_FLOAT_KEYS) if (prefs.contains(key)) o.put(key, prefs.getFloat(key, 0f).toDouble())
+        for (key in SYNC_LONG_KEYS) if (prefs.contains(key)) o.put(key, prefs.getLong(key, 0L))
+        return o
+    }
+
+    fun applySyncSettings(json: org.json.JSONObject) {
+        val e = prefs.edit()
+        for (key in SYNC_BOOLEAN_KEYS) if (json.has(key)) e.putBoolean(key, json.optBoolean(key))
+        for (key in SYNC_STRING_KEYS) if (json.has(key)) e.putString(key, json.optString(key))
+        for (key in SYNC_INT_KEYS) if (json.has(key)) e.putInt(key, json.optInt(key))
+        for (key in SYNC_FLOAT_KEYS) if (json.has(key)) e.putFloat(key, json.optDouble(key).toFloat())
+        for (key in SYNC_LONG_KEYS) if (json.has(key)) e.putLong(key, json.optLong(key))
+        e.apply()
+    }
+
 }
 
 /** 歌单收藏的存储键（纯函数，JVM 单测覆盖）：源 + id，避免跨源 id 撞号。 */
 fun playlistFavoriteKey(source: com.tokimusic.app.data.model.MusicSource, id: Long): String =
     "${source.name}:$id"
+
+// 条 18 同步偏好键清单（SettingsStore.syncSettingsSnapshot 用）。
+private val SYNC_BOOLEAN_KEYS = listOf(
+    "reduce_motion", "light_mode", "karaoke_highlight", "show_translation", "show_romaji",
+    "lyric_distance_blur", "live_updates_enabled", "live_lyrics_enabled",
+    "floating_lyrics_enabled", "floating_lyrics_black", "algorithm_recommend_enabled",
+    "scrobble_enabled", "spatial_audio_enabled", "check_update_on_launch",
+    "netease_enabled", "qq_enabled", "youtube_enabled",
+        )
+private val SYNC_STRING_KEYS = listOf("audio_quality", "last_search_source", "home_block_order")
+private val SYNC_INT_KEYS = listOf("lyric_timing_offset_ms")
+private val SYNC_FLOAT_KEYS = listOf(
+    "floating_lyrics_text_size_sp", "floating_lyrics_top_fraction", "floating_lyrics_horizontal_fraction",
+        )
+private val SYNC_LONG_KEYS = emptyList<String>()
+

@@ -98,6 +98,8 @@ class MusicLevelStore(context: Context) {
         val todayPoints: Int = 0,
         val todayMinutePoints: Int = 0,
         val todayCompletions: Int = 0,
+        // 条 18 同步：最后一次入账时间，作 level section 的合并戳。
+        val lastGainMs: Long = 0L,
     )
 
     private fun dayKeyOf(nowMs: Long): Int {
@@ -117,6 +119,7 @@ class MusicLevelStore(context: Context) {
                 todayPoints = o.optInt("today", 0),
                 todayMinutePoints = o.optInt("todayMinutes", 0),
                 todayCompletions = o.optInt("todayCompletions", 0),
+                lastGainMs = o.optLong("lastGainMs", 0L),
             )
         }.getOrDefault(State())
     }
@@ -128,6 +131,7 @@ class MusicLevelStore(context: Context) {
             .put("today", state.todayPoints)
             .put("todayMinutes", state.todayMinutePoints)
             .put("todayCompletions", state.todayCompletions)
+            .put("lastGainMs", state.lastGainMs)
         prefs.edit().putString(KEY, o.toString()).apply()
     }
 
@@ -158,11 +162,26 @@ class MusicLevelStore(context: Context) {
                     todayPoints = state.todayPoints + gained,
                     todayMinutePoints = state.todayMinutePoints + minuteGain,
                     todayCompletions = state.todayCompletions + if (bonusGain > 0) 1 else 0,
+                    lastGainMs = if (gained > 0) nowMs else state.lastGainMs,
                 ),
             )
         }
         return gained
     }
+
+    /** 条 18 同步：导出/导入原始状态（与 load/save 同一 JSON 形状）。 */
+    @Synchronized
+    fun exportStateJson(): JSONObject {
+        val raw = prefs.getString(KEY, "") ?: ""
+        return runCatching { JSONObject(raw.ifBlank { "{}" }) }.getOrDefault(JSONObject())
+    }
+
+    @Synchronized
+    fun importStateJson(json: JSONObject) {
+        prefs.edit().putString(KEY, json.toString()).apply()
+    }
+
+    fun lastGainMs(): Long = load().lastGainMs
 
     /** 当前快照（跨天未记账时当日计数按 0 呈现，不写盘）。 */
     fun snapshot(nowMs: Long): MusicLevelSnapshot {

@@ -156,6 +156,250 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val songCache = com.tokimusic.app.data.SongCacheStore(getApplication())
     /** 本轮（0124）第 13 项：口味训练信号（常搜/常看计数，只存本机）。 */
     val tasteSignals = com.tokimusic.app.data.TasteSignalsStore(getApplication())
+    // ===== 本轮（0124）第 18 项：Toki 账号（Google 登录 + Drive 同步） =====
+    val accountStore = com.tokimusic.app.data.sync.TokiAccountStore(getApplication())
+    private val googleAuth = com.tokimusic.app.data.sync.GoogleAuthManager(getApplication())
+    private val driveClient = com.tokimusic.app.data.sync.DriveSyncClient()
+    private val _tokiProfile = MutableStateFlow(accountStore.profile)
+    val tokiProfile: StateFlow<com.tokimusic.app.data.sync.GoogleProfile?> = _tokiProfile
+    private val _driveGranted = MutableStateFlow(accountStore.driveGranted)
+    val driveGranted: StateFlow<Boolean> = _driveGranted
+    private val _autoSyncEnabled = MutableStateFlow(accountStore.autoSync)
+    val autoSyncEnabled: StateFlow<Boolean> = _autoSyncEnabled
+    private val _syncStatus = MutableStateFlow(accountStore.lastSyncStatus)
+    val syncStatus: StateFlow<String> = _syncStatus
+    private val _lastSyncAt = MutableStateFlow(accountStore.lastSyncAtMs)
+    val lastSyncAt: StateFlow<Long> = _lastSyncAt
+    @Volatile private var driveAccessToken: String? = null
+    @Volatile private var driveFileId: String? = null
+    private var autoSyncJob: kotlinx.coroutines.Job? = null
+    /** 账号页注册的 Drive 授权确认页拉起器（页面销毁时置空）。 */
+    var driveResolutionLauncher: ((android.content.IntentSender) -> Unit)? = null
+
+    suspend fun signInWithGoogle(activity: android.app.Activity): com.tokimusic.app.data.sync.GoogleSignInResult {
+        val result = googleAuth.signIn(activity)
+        if (result is com.tokimusic.app.data.sync.GoogleSignInResult.Success) {
+            accountStore.profile = result.profile
+            _tokiProfile.value = result.profile
+            // 登录后尝试静默拿 Drive 授权（此前授权过则直接回令牌），
+            // 拿到就按条 18 走「下载 → 合并 → 上传」的登录后同步。
+            authorizeDrive(activity)
+        }
+        return result
+    }
+
+    fun signOutGoogle() {
+        viewModelScope.launch {
+            googleAuth.signOut()
+            accountStore.profile = null
+            _tokiProfile.value = null
+            _driveGranted.value = false
+            driveAccessToken = null
+            driveFileId = null
+            _userMessage.value = "已解绑 Google 账号"
+        }
+    }
+
+    /** Drive 授权：页面点「授权」与登录后静默尝试共用。 */
+    suspend fun authorizeDrive(activity: android.app.Activity) {
+        when (val result = googleAuth.authorizeDrive(activity)) {
+            is com.tokimusic.app.data.sync.DriveAuthResult.Granted -> onDriveGranted(result.accessToken)
+            is com.tokimusic.app.data.sync.DriveAuthResult.NeedsResolution -> {
+                val launcher = driveResolutionLauncher
+                if (launcher != null) {
+                    launcher(result.intentSender)
+                } else {
+                    _userMessage.value = "需要确认 Drive 授权"
+                }
+            }
+            is com.tokimusic.app.data.sync.DriveAuthResult.Failed ->
+                _userMessage.value = "Drive 授权失败：${result.reason}"
+        }
+    }
+
+    /** 授权确认页返回成功后由页面回调：重新走一次 authorize（这次直接回令牌）。 */
+    fun onDriveResolutionFinished(activity: android.app.Activity) {
+        viewModelScope.launch { authorizeDrive(activity) }
+    }
+
+    private fun onDriveGranted(token: String) {
+        driveAccessToken = token
+        accountStore.driveGranted = true
+        _driveGranted.value = true
+        viewModelScope.launch { syncNow(manual = false) }
+    }
+
+    fun setAutoSync(enabled: Boolean) {
+        accountStore.autoSync = enabled
+        _autoSyncEnabled.value = enabled
+        if (enabled) maybeAutoSync()
+    }
+
+    /** 构建本机同步包（各 section 的戳规则见 SyncBundle 注释）。 */
+    fun buildSyncBundle(): com.tokimusic.app.data.sync.SyncBundle {
+        val sections = LinkedHashMap<String, com.tokimusic.app.data.sync.SyncSection>()
+        sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_SETTINGS] =
+            com.tokimusic.app.data.sync.SyncSection(accountStore.settingsStampMs, store.syncSettingsSnapshot())
+        sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_LEVEL] =
+            com.tokimusic.app.data.sync.SyncSection(player.levelStore.lastGainMs(), player.levelStore.exportStateJson())
+        sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_TASTE] =
+            com.tokimusic.app.data.sync.SyncSection(tasteSignals.lastRecordMs(), tasteSignals.exportCountsJson())
+        val tracksByUri = localLibraryStore.all().associateBy { it.uri }
+        val items = org.json.JSONArray()
+        var playlistsStamp = 0L
+        for (entry in downloadedPlaylistStore.all()) {
+            playlistsStamp = maxOf(playlistsStamp, entry.updatedAtMs)
+            val tracks = org.json.JSONArray()
+            for (uri in entry.trackUris) {
+                val track = tracksByUri[uri] ?: continue
+                tracks.put(
+                    org.json.JSONObject()
+                        .put("source", track.originSource)
+                        .put("originId", track.originId)
+                        .put("title", track.title)
+                        .put("artist", track.artist),
+                )
+            }
+            items.put(
+                org.json.JSONObject()
+                    .put("source", entry.source)
+                    .put("playlistId", entry.playlistId.toString())
+                    .put("name", entry.name)
+                    .put("creator", entry.creator)
+                    .put("coverUrl", entry.coverUrl)
+                    .put("tracks", tracks),
+            )
+        }
+        sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_PLAYLISTS] =
+            com.tokimusic.app.data.sync.SyncSection(playlistsStamp, org.json.JSONObject().put("items", items))
+        val liked = org.json.JSONObject()
+            .put("netease", org.json.JSONArray().apply { likedSongs.value.filter { it.source == MusicSource.NETEASE }.forEach { put(it.id.toString()) } })
+            .put("qq", org.json.JSONArray().apply { (qqLibrary.value?.favSongs ?: emptyList()).forEach { put(it.sourceId) } })
+            .put("youtube", org.json.JSONArray().apply { likedSongs.value.filter { it.source == MusicSource.YOUTUBEMUSIC }.forEach { put(it.sourceId) } })
+        sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_LIKED] =
+            com.tokimusic.app.data.sync.SyncSection(System.currentTimeMillis(), liked)
+        return com.tokimusic.app.data.sync.SyncBundle(sections = sections)
+    }
+
+    /** 把合并后的同步包落到本机各 store。liked 只携带身份、不回写服务商账号（v1 限制，见 NOTES）。 */
+    fun applySyncBundle(bundle: com.tokimusic.app.data.sync.SyncBundle) {
+        bundle.sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_SETTINGS]?.let {
+            store.applySyncSettings(it.data)
+            _neteaseEnabled.value = store.neteaseEnabled
+            _qqEnabled.value = store.qqEnabled
+            _youtubeEnabled.value = store.youtubeEnabled
+        }
+        bundle.sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_LEVEL]?.let {
+            player.levelStore.importStateJson(it.data)
+        }
+        bundle.sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_TASTE]?.let {
+            tasteSignals.mergeCountsJson(it.data)
+        }
+        bundle.sections[com.tokimusic.app.data.sync.SyncBundleCodec.SECTION_PLAYLISTS]?.let { section ->
+            val items = section.data.optJSONArray("items") ?: org.json.JSONArray()
+            val now = System.currentTimeMillis()
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val tracksArr = item.optJSONArray("tracks") ?: org.json.JSONArray()
+                val uris = ArrayList<String>()
+                val structureOnly = ArrayList<com.tokimusic.app.data.local.LocalTrack>()
+                for (j in 0 until tracksArr.length()) {
+                    val t = tracksArr.optJSONObject(j) ?: continue
+                    val sourceName = t.optString("source")
+                    val originId = t.optString("originId")
+                    val probe = probeSongForIdentity(sourceName, originId) ?: continue
+                    val existing = localLibraryStore.findFor(probe)
+                    if (existing != null) {
+                        uris += existing.uri
+                    } else {
+                        // 结构-only 登记：uri 为空占位，本机没有文件时播不了，
+                        // 重新下载该歌单即可补齐（与条 9 的登记形状一致）。
+                        structureOnly += com.tokimusic.app.data.local.LocalTrack(
+                            originSource = sourceName,
+                            originId = originId,
+                            title = t.optString("title"),
+                            artist = t.optString("artist"),
+                            album = "",
+                            durationMs = 0,
+                            uri = "",
+                            format = "",
+                            cover = "",
+                            lyric = "",
+                        )
+                    }
+                }
+                if (structureOnly.isNotEmpty()) localLibraryStore.putAll(structureOnly)
+                downloadedPlaylistStore.put(
+                    source = item.optString("source"),
+                    playlistId = item.optString("playlistId").toLongOrNull() ?: continue,
+                    name = item.optString("name"),
+                    creator = item.optString("creator"),
+                    coverUrl = item.optString("coverUrl"),
+                    trackUris = uris,
+                    nowMs = now,
+                )
+            }
+            _downloadedPlaylists.value = downloadedPlaylistStore.all()
+            refreshLocalTracks()
+        }
+    }
+
+    private fun probeSongForIdentity(sourceName: String, originId: String): Song? = when (sourceName) {
+        "NETEASE" -> originId.toLongOrNull()?.let { Song(id = it, name = "", artists = emptyList(), source = MusicSource.NETEASE, sourceId = originId) }
+        "QQ" -> Song(id = com.tokimusic.app.data.model.qqSongId(originId), name = "", artists = emptyList(), source = MusicSource.QQ, sourceId = originId)
+        "YOUTUBEMUSIC" -> Song(id = com.tokimusic.app.data.model.ytSongId(originId), name = "", artists = emptyList(), source = MusicSource.YOUTUBEMUSIC, sourceId = originId)
+        else -> null
+    }
+
+    /**
+     * 同步主流程（条 18）：下载远端 → 按 section 戳合并 → 落本机 →
+     * 上传合并结果。manual=true 时给用户反馈；自动同步静默失败。
+     */
+    suspend fun syncNow(manual: Boolean): Boolean {
+        val token = driveAccessToken
+        if (_tokiProfile.value == null || token == null) {
+            if (manual) _userMessage.value = "请先绑定 Google 并授权 Drive 同步"
+            return false
+        }
+        return try {
+            if (driveFileId == null) driveFileId = driveClient.findFileId(token)
+            val remoteJson = driveFileId?.let { driveClient.download(token, it) }
+            val remote = com.tokimusic.app.data.sync.SyncBundleCodec.decode(remoteJson)
+            val local = buildSyncBundle()
+            val merged = if (remote != null) com.tokimusic.app.data.sync.SyncBundleCodec.merge(local, remote) else local
+            if (remote != null) applySyncBundle(merged)
+            val now = System.currentTimeMillis()
+            accountStore.settingsStampMs = now
+            driveFileId = driveClient.upload(token, driveFileId, com.tokimusic.app.data.sync.SyncBundleCodec.encode(merged))
+            accountStore.lastSyncAtMs = now
+            accountStore.lastSyncStatus = "同步完成"
+            _lastSyncAt.value = now
+            _syncStatus.value = "同步完成"
+            if (manual) _userMessage.value = "同步完成"
+            true
+        } catch (e: Exception) {
+            accountStore.lastSyncStatus = "同步失败"
+            _syncStatus.value = "同步失败"
+            if (manual) _userMessage.value = "同步失败：${e.message ?: "网络错误"}"
+            false
+        }
+    }
+
+    fun syncNowAsync(manual: Boolean) {
+        viewModelScope.launch { syncNow(manual) }
+    }
+
+    /** 机会性自动同步：等级/设置变化后防抖 20s 静默跑（令牌缺失时直接跳过）。 */
+    fun maybeAutoSync() {
+        if (_tokiProfile.value == null || !_driveGranted.value || !_autoSyncEnabled.value) return
+        if (driveAccessToken == null) return
+        autoSyncJob?.cancel()
+        autoSyncJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(20_000)
+            syncNow(manual = false)
+        }
+    }
+
 
     /** 歌手页浏览记一次信号（画像训练用；一次性不计入，门槛在 TasteProfile.signalBoosts）。 */
     fun recordArtistView(artistName: String) {
@@ -846,6 +1090,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // QQ 那行换成了 tokimusic 行，QQ 统计再无用量。
     private val _localStats = MutableStateFlow(SourceStats(level = 1, minutes = 0L)); val localStats: StateFlow<SourceStats> = _localStats
     fun refreshLocalStats() {
+        maybeAutoSync()
         // 本轮（0124）第 15 项：等级不再写死 Lv.1——取等级 store 的真实等级。
         _localStats.value = SourceStats(
             level = player.levelStore.snapshot(System.currentTimeMillis()).level,

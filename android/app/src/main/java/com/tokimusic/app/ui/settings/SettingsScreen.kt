@@ -160,7 +160,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("个性化"), Audio("音频"), Lyrics("歌词"), Achievements("成就") }
+private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("个性化"), Audio("音频"), Lyrics("歌词"), Achievements("成就"), Account("Toki 账号") }
 
 /**
  * 0.1.13 第 19 项：sheet 顶边 + 两侧描边（1dp，28dp 顶圆角），不要底边——
@@ -477,6 +477,7 @@ fun SettingsSheet(
                     SettingsSub.Audio -> audioSection(vm, audioQuality) { audioQuality = it; vm.store.audioQuality = it }
                     SettingsSub.Lyrics -> lyricsSection(vm)
                     SettingsSub.Achievements -> achievementsSection(vm, profile)
+                    SettingsSub.Account -> accountSection(vm)
                 }
             }
             // 本轮：顶部 24dp 淡出按滚动状态恢复——0.1.21 为修「第一个
@@ -838,14 +839,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             SubRow("歌词", onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
             // 0.1.13 第 12 项：成就页入口（加入天数搬进成就页）。
             SubRow("成就", onClick = { onOpenSub(SettingsSub.Achievements) }, position = SegmentPosition.Middle)
-            // 0.1.21：页面最底下（成就下面）加「管理你的 Toki 账号」
-            // 占位入口——点击只给一句短提示，不做页面/跳转。
-            val tokiAccountContext = LocalContext.current
-            SubRow(
-                "管理你的 Toki 账号",
-                onClick = { Toast.makeText(tokiAccountContext, "该功能暂不可用", Toast.LENGTH_SHORT).show() },
-                position = SegmentPosition.Last,
-            )
+            // 本轮（0124）第 18 项：「Toki 账号」二级页（Google 绑定 +
+            // Drive 同步）——替换 0.1.21 的「管理你的 Toki 账号」占位
+            // 入口（原为只弹提示的假入口）。
+            SubRow("Toki 账号", onClick = { onOpenSub(SettingsSub.Account) }, position = SegmentPosition.Last)
         }
     }
 }

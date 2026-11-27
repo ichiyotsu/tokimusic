@@ -55,6 +55,13 @@ android {
         versionCode = 24
         versionName = "0.2.0-beta1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 本轮（0124）第 18 项：Google 登录用的 Web OAuth 客户端 ID，
+        // 唯一配置点——gradle 属性 TOKIMUSIC_GOOGLE_WEB_CLIENT_ID 或
+        // 同名环境变量；未配置时为空串，「Toki 账号」页显示未配置态。
+        val googleWebClientId: String =
+            (project.findProperty("TOKIMUSIC_GOOGLE_WEB_CLIENT_ID") as String?)
+                ?: System.getenv("TOKIMUSIC_GOOGLE_WEB_CLIENT_ID") ?: ""
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
     signingConfigs {
         if (releaseKeystore != null) {
@@ -92,6 +99,12 @@ dependencies {
     implementation(libs.coil.compose); implementation(libs.okhttp); implementation(libs.zxing.core)
     // 0.1.20 第 7 项：SAF 目录遍历（DocumentFile）——显式声明，不靠传递依赖。
     implementation(libs.androidx.documentfile)
+    // 本轮（0124）第 18 项：Credential Manager + Google ID 登录 +
+    // Identity 授权（Drive appdata scope）。
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
+    implementation(libs.play.services.auth)
     implementation(libs.media3.exoplayer); implementation(libs.media3.session)
     implementation(libs.androidx.mediarouter)
     // mediarouter 把 fragment 标为 runtime 依赖，不进编译 classpath；
