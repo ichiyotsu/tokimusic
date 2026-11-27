@@ -101,6 +101,18 @@ fun nextModeAfterTap(current: PlayMode, tapped: PlayMode): PlayMode =
     if (current == tapped) PlayMode.Sequential else tapped
 
 /**
+ * 队列顶部分段单选的选中段（本轮 0124 第 5 项，纯函数，JVM 单测
+ * 覆盖）：0 = 顺序、1 = 随机、2 = 倒序。RepeatAll / RepeatOne 是
+ * 顺序族（歌单页单按钮的循环模式），在分段控件里归到「顺序」段——
+ * 保证任何模式下恰有一段选中，不会出现三段全未选。
+ */
+fun queueModeSegment(mode: PlayMode): Int = when (mode) {
+    PlayMode.Shuffle -> 1
+    PlayMode.Reverse -> 2
+    PlayMode.Sequential, PlayMode.RepeatAll, PlayMode.RepeatOne -> 0
+}
+
+/**
  * 歌单页单按钮位的点按（0.1.14 第 7 项）：顺序 / 随机二选一切换——
  * 当前是随机时回顺序，其余（顺序 / 倒序 / 列表循环 / 单曲循环）都切到随机，
  * 即按钮是“随机开 / 关”的开关，图标显示当前模式；与四个播放模式

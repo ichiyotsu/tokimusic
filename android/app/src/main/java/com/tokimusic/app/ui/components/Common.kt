@@ -93,6 +93,45 @@ import com.tokimusic.app.ui.theme.fontFamilyForText
 }
 @OptIn(ExperimentalFoundationApi::class)
 /**
+ * 设置家族的分组卡（0.1.13 第 20 项起在设置页用；本轮 0124 第 4 项
+ * 提升为共享组件，「更多」面板同款套用）：分段圆角（segmentedCorners
+ * 28/4）、surfaceContainer 底、内边距横 24 / 纵 8；onClick 非空时用
+ * M3 Card(onClick)，涟漪按卡形裁剪撑满栏位。containerColor /
+ * horizontalMargin 可调：玻璃面板（更多）传半透明底 + 0 边距。
+ */
+@Composable
+fun TokiSettingsCard(
+    position: SegmentPosition = SegmentPosition.Single,
+    onClick: (() -> Unit)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    horizontalMargin: Dp = 4.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val cardModifier = Modifier.fillMaxWidth().padding(horizontal = horizontalMargin)
+    val cardShape = segmentedCorners(position, 28.dp)
+    val cardColors = CardDefaults.cardColors(containerColor = containerColor)
+    val cardContent: @Composable ColumnScope.() -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), content = content)
+    }
+    if (onClick != null) {
+        Card(
+            onClick = onClick,
+            modifier = cardModifier,
+            shape = cardShape,
+            colors = cardColors,
+            content = cardContent,
+        )
+    } else {
+        Card(
+            modifier = cardModifier,
+            shape = cardShape,
+            colors = cardColors,
+            content = cardContent,
+        )
+    }
+}
+
+/**
  * 0.1.15 第 21 项：分段圆角——一个列表组只有首项顶部与末项底部是
  * 大圆角，中间项只有极小圆角（4dp），项与项之间留细微间距。
  * positionOf 按下标算位置（单项列表首末同体，上下都大圆角）。

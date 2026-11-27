@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -52,6 +53,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.FormatQuote
@@ -122,11 +124,13 @@ import com.tokimusic.app.player.LiveLyricLine
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.player.PlayerState
 import com.tokimusic.app.player.nextModeAfterTap
+import com.tokimusic.app.player.queueModeSegment
 import com.tokimusic.app.player.queueRowState
 import com.tokimusic.app.player.QueueRowState
 import com.tokimusic.app.player.rememberCastActive
 import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
+import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceIcon
 import com.tokimusic.app.ui.theme.LocalDarkTheme
@@ -712,11 +716,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
         coverColors = coverColors,
         liked = liked,
         castActive = castActive,
-        isPlaying = state.isPlaying,
         // 本轮第 2 条：喜欢移进面板底栏（常驻控制），点按就地切换
-        // 星标、不再关面板（与播放/暂停同为底栏控制的语义）。
+        // 星标、不再关面板。本轮（0124）第 4 项：底栏只留喜欢，
+        // 播放/暂停按钮已去掉（播放器主界面有控制）。
         onToggleLike = { vm.toggleLike(song.id) },
-        onTogglePlay = { vm.player.toggle() },
         onPlayNext = {
             vm.playNext(song)
             Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
@@ -841,17 +844,22 @@ private fun QueueView(
     val onCover = coverColors.onCoverText()
     val onCoverDim = coverColors.onCoverTextDim()
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        // 0.1.18 第 10 项：顶部三个模式 pill（顺序 / 随机 / 倒序）——
-        // 点未激活的切到它，点已激活的回顺序播放（互斥单选由单一
-        // playMode 状态保证，见 nextModeAfterTap）；倒序图标用 SwapVert
-        //（上下互换，表顺序反向）。激活态白底 + 深色图标，未激活半透明底。
+        // 本轮（0124）第 5 项：顶部模式改分段单选控件——一个胶囊容器
+        // 里三段（顺序 / 随机 / 倒序），恰一段选中（queueModeSegment
+        // 把 RepeatAll/RepeatOne 归到顺序段）；未选中段只有一种样式
+        // （透明底 + onCover 图标），选中段实底 onCover + 深色图标。
+        // 点按语义不变（nextModeAfterTap：点已激活段回顺序）。
+        val segment = queueModeSegment(playMode)
         Row(
-            Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(onCover.copy(alpha = 0.22f))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            ModePill(PlayMode.Sequential, Icons.Rounded.FormatListNumbered, "顺序播放", playMode == PlayMode.Sequential, onCover, coverColors.bottom) { onModeTap(PlayMode.Sequential) }
-            ModePill(PlayMode.Shuffle, Icons.Rounded.Shuffle, "随机播放", playMode == PlayMode.Shuffle, onCover, coverColors.bottom) { onModeTap(PlayMode.Shuffle) }
-            ModePill(PlayMode.Reverse, Icons.Rounded.SwapVert, "倒序播放", playMode == PlayMode.Reverse, onCover, coverColors.bottom) { onModeTap(PlayMode.Reverse) }
+            QueueModeSegment(0, segment, Icons.Rounded.FormatListNumbered, "顺序播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Sequential) }
+            QueueModeSegment(1, segment, Icons.Rounded.Shuffle, "随机播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Shuffle) }
+            QueueModeSegment(2, segment, Icons.Rounded.SwapVert, "倒序播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Reverse) }
         }
         Spacer(Modifier.height(16.dp))
         Text("继续播放", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = onCover)
@@ -890,23 +898,24 @@ private fun QueueView(
     }
 }
 
-/** 队列顶栏的模式 pill：圆角胶囊，56dp 高，三等分（0.1.18 第 10 项：三个模式）。 */
+/** 队列顶部分段单选的一段（本轮 0124 第 5 项）：选中 = 实底 onCover + 深色图标；未选中只有一种样式（透明底 + onCover 图标）。 */
 @Composable
-private fun RowScope.ModePill(
-    mode: PlayMode,
+private fun RowScope.QueueModeSegment(
+    index: Int,
+    selectedIndex: Int,
     icon: ImageVector,
     label: String,
-    active: Boolean,
     onCover: Color,
     activeIconColor: Color,
     onClick: () -> Unit,
 ) {
+    val active = index == selectedIndex
     val interaction = remember { MutableInteractionSource() }
     TokiLongPressLabel(label, Modifier.weight(1f)) {
         Box(
-            Modifier.fillMaxWidth().height(56.dp)
+            Modifier.fillMaxWidth().fillMaxHeight()
                 .clip(RoundedCornerShape(percent = 50))
-                .background(if (active) onCover else onCover.copy(alpha = 0.22f))
+                .background(if (active) onCover else Color.Transparent)
                 .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
                 .pressRebound(interaction),
             contentAlignment = Alignment.Center,
@@ -994,9 +1003,7 @@ private fun MoreSheet(
     coverColors: CoverColors,
     liked: Boolean,
     castActive: Boolean,
-    isPlaying: Boolean,
     onToggleLike: () -> Unit,
-    onTogglePlay: () -> Unit,
     onPlayNext: () -> Unit,
     // 第 18 项：打开安卓原生投放窗（调用方先关弹窗再执行）。
     onCast: () -> Unit,
@@ -1059,80 +1066,80 @@ private fun MoreSheet(
                     }
                 }
             }
-            // 本轮第 2 条：列表按「我的」页的分组方式重排（Gboard 式
-            // 分组列表：一组一容器、组内细分割线、组间留距）——容器是
-            // 28dp 圆角的半透明 surfaceContainer，压在主题色玻璃上仍
-            // 透得出磨砂；行高维持 0.1.21 第 8 项定的 52dp 等高。
-            // 操作组：投放 / 下一首播放（喜欢移去底栏，见下；第六轮
-            // 第 28 项定的去重不变——歌词 / 队列在播放页底部按钮行）。
+            // 本轮（0124）第 4 项：分组改套「我的」页的组件家族——
+            // TokiSettingsCard 分段卡（First/Middle/Last + 4dp 细缝）
+            // + 64dp 图标行（与设置页行同规格）；容器底色仍用半透明
+            // surfaceContainer 压在主题色玻璃上，保留磨砂透出感。
+            // 操作组：投放 / 下一首播放（喜欢只在底栏，见下）。
             Spacer(Modifier.height(12.dp))
-            MoreGroup {
-                MoreAction(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
-                MoreGroupDivider()
-                MoreAction(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MoreSheetCard(SegmentPosition.First) {
+                    MoreSheetActionRow(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
+                }
+                MoreSheetCard(SegmentPosition.Last) {
+                    MoreSheetActionRow(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
+                }
             }
-            // 歌词设定组（0.1.15 第 5/6 项的四个设定）：翻译 / 罗马音 /
-            // 逐字高亮三个开关 + 逐字时序（行 + 滑杆 + 说明同属一项，
-            // 项内不再加分割线）。与设置 → 歌词同一批开关，改完立即生效。
+            // 歌词设定组：翻译 / 罗马音 / 逐字高亮 / 歌词模糊四个开关
+            // + 逐字时序（行 + 滑杆 + 说明同属末项）。与设置里的歌词
+            // 开关同一批 store 值，改完立即生效。
             Spacer(Modifier.height(12.dp))
-            MoreGroup {
-                MoreSwitch(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
-                MoreGroupDivider()
-                MoreSwitch(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
-                MoreGroupDivider()
-                MoreSwitch(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
-                MoreGroupDivider()
-                Row(
-                    Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Icon(Icons.Rounded.Timer, contentDescription = null)
-                    Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MoreSheetCard(SegmentPosition.First) {
+                    MoreSheetSwitchRow(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
+                }
+                MoreSheetCard(SegmentPosition.Middle) {
+                    MoreSheetSwitchRow(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
+                }
+                MoreSheetCard(SegmentPosition.Middle) {
+                    MoreSheetSwitchRow(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+                }
+                MoreSheetCard(SegmentPosition.Middle) {
+                    // 本轮（0124）第 17 项：歌词模糊开关——关时只关距离
+                    // 模糊，淡化与动画不受影响（接线在 LyricsView）。
+                    MoreSheetSwitchRow(Icons.Rounded.BlurOn, "歌词模糊", vm.store.lyricDistanceBlur) { vm.store.lyricDistanceBlur = it }
+                }
+                MoreSheetCard(SegmentPosition.Last) {
+                    Row(
+                        Modifier.fillMaxWidth().height(56.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            formatTimingOffset(vm.store.lyricTimingOffsetMs),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Slider(
+                        value = vm.store.lyricTimingOffsetMs.toFloat(),
+                        onValueChange = { vm.store.lyricTimingOffsetMs = ((it / 50f).roundToInt() * 50).coerceIn(-500, 500) },
+                        valueRange = -500f..500f,
+                        steps = 19,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Text(
-                        formatTimingOffset(vm.store.lyricTimingOffsetMs),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
+                        "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                     )
                 }
-                Slider(
-                    value = vm.store.lyricTimingOffsetMs.toFloat(),
-                    onValueChange = { vm.store.lyricTimingOffsetMs = ((it / 50f).roundToInt() * 50).coerceIn(-500, 500) },
-                    valueRange = -500f..500f,
-                    steps = 19,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                )
-                Text(
-                    "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
-                )
             }
-            // 本轮第 2 条：底栏——与「我的」页同家族的 56dp 按钮行，
-            // 放最主要的两个动作：喜欢（次按钮）与播放/暂停（主按钮）。
-            // 都是常驻控制：点按就地生效、不关面板（喜欢的星标随
-            // likedIds 就地翻转）。每个动作只出现一次：喜欢只在底栏、
-            // 不再在上面的操作组里重复。
+            // 本轮（0124）第 4 项：底栏只留收藏/喜欢——播放/暂停按钮
+            // 按用户口径去掉（播放器主界面有控制）。喜欢是常驻控制：
+            // 点按就地生效、不关面板（星标随 likedIds 就地翻转）。
             Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilledTonalButton(
-                    onClick = onToggleLike,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) {
-                    Icon(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (liked) "取消喜欢" else "喜欢")
-                }
-                Button(
-                    onClick = onTogglePlay,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) {
-                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (isPlaying) "暂停" else "播放")
-                }
+            FilledTonalButton(
+                onClick = onToggleLike,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) {
+                Icon(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (liked) "取消喜欢" else "喜欢")
             }
         }
         }
@@ -1157,56 +1164,49 @@ fun formatPublishDate(epochMs: Long): String {
     return fmt.format(java.util.Date(epochMs))
 }
 
-@Composable
-private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        // 0.1.21 第 8 项：与 MoreAction 统一 52dp 定高。本轮第 2 条：
-        // 行进组后不再自带圆角裁剪——涟漪由组容器的 28dp 形状统一裁。
-        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.height(52.dp).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(icon, contentDescription = null)
-        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun MoreAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Row(
-        // 0.1.21 第 8 项：52dp 定高，与 MoreSwitch / 时序行统一行高。
-        // 本轮第 2 条：同 MoreSwitch，圆角裁剪交给组容器。
-        Modifier.fillMaxWidth().clickable(onClick = onClick).height(52.dp).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(icon, contentDescription = null)
-        Text(label, style = MaterialTheme.typography.titleMedium)
-    }
-}
-
 /**
- * 本轮第 2 条：「更多」面板的分组容器——与「我的」页的分组卡同
- * 语言（28dp 圆角、一组一容器、容器负责裁剪组内行的涟漪）；底色
- * 用半透明 surfaceContainer 压在主题色玻璃上，保留磨砂透出感。
+ * 「更多」面板的分组卡（本轮 0124 第 4 项）：与「我的」页同组件
+ * TokiSettingsCard，只是底色用半透明 surfaceContainer 压在主题色
+ * 玻璃上、横向边距 0（面板列已留 24dp，与标题行同口径——第 8 项）。
  */
 @Composable
-private fun MoreGroup(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f)),
+private fun MoreSheetCard(
+    position: SegmentPosition,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    com.tokimusic.app.ui.components.TokiSettingsCard(
+        position = position,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f),
+        horizontalMargin = 0.dp,
         content = content,
     )
 }
 
-/** 组内细分割线：从行文本左缘（行内边距 12 + 图标 24 + 间隔 16 = 52dp）起到右缘内 12dp。 */
+/** 「更多」面板动作行：与设置页行同规格——64dp、24dp 图标、titleMedium。 */
 @Composable
-private fun MoreGroupDivider() {
-    HorizontalDivider(
-        Modifier.padding(start = 52.dp, end = 12.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-    )
+private fun MoreSheetActionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
+        Text(label, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** 「更多」面板开关行：同上规格 + 行尾 Switch；整行可点切换。 */
+@Composable
+private fun MoreSheetSwitchRow(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
+        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }
 
 private fun formatClock(ms: Long): String {

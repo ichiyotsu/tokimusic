@@ -267,13 +267,14 @@ fun LibraryScreen(
                         level = "Lv.${localStats.level}",
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                         onMinutesClick = onOpenListeningStats,
-                        leadingIconRes = R.drawable.ic_local_music,
+                        leadingAppIcon = true,
                     )
                     LibraryStatsSource.LOCAL -> StatsPair(
                         level = "Lv.${localStats.level}",
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                         // 0.1.17 第 14 项补：本地模式的 tokimusic 行同样点进听歌时长页。
                         onMinutesClick = onOpenListeningStats,
+                        leadingAppIcon = true,
                     )
                     LibraryStatsSource.BOTH -> Column(
                         Modifier.fillMaxWidth().padding(24.dp),
@@ -291,7 +292,7 @@ fun LibraryScreen(
                             level = "Lv.${localStats.level}",
                             minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                             onMinutesClick = onOpenListeningStats,
-                            leadingIconRes = R.drawable.ic_local_music,
+                            leadingAppIcon = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -955,20 +956,42 @@ private fun StatsPair(
     minutes: String,
     onMinutesClick: (() -> Unit)? = null,
     leadingIconRes: Int? = null,
+    // 本轮（0124）第 14 项：TokiMusic 行的前导图标用 app 图标
+    // （启动图标同款：白底 + 前景字形），不用通用音符图标。
+    leadingAppIcon: Boolean = false,
     modifier: Modifier = Modifier.fillMaxWidth().padding(24.dp),
 ) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         StatCard(
             "音乐等级", level, Modifier.weight(1f),
-            leadingIcon = if (leadingIconRes != null) {
-                { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
-            } else null,
+            leadingIcon = when {
+                leadingAppIcon -> { { AppIconBadge() } }
+                leadingIconRes != null -> {
+                    { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
+                }
+                else -> null
+            },
         )
         // 第 7 项：资料库顶部“歌单”卡换成音乐等级（/api/user/level
         // 的真实等级）；未登录 / 未取到时显示 —。
         // 第五轮第 23 项：删掉左边的“收藏歌曲”卡；听歌时长放
         // 等级右边，单位 h、可带一位小数（如 1537.5h）；点卡仍进时长页。
         StatCard("听歌时长", minutes, Modifier.weight(1f), onClick = onMinutesClick)
+    }
+}
+
+/** 本轮（0124）第 14 项：app 图标徽章——与启动图标同构图（白底圆角 + ic_launcher_foreground 前景字形），28dp 与源图标同尺寸口径。 */
+@Composable
+private fun AppIconBadge() {
+    Box(
+        Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 

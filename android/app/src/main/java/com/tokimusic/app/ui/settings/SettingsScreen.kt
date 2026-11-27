@@ -54,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -200,28 +201,13 @@ private fun SettingsSubCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val cardModifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-    val cardShape = segmentedCorners(position, 28.dp)
-    val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-    val cardContent: @Composable ColumnScope.() -> Unit = {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), content = content)
-    }
-    if (onClick != null) {
-        Card(
-            onClick = onClick,
-            modifier = cardModifier,
-            shape = cardShape,
-            colors = cardColors,
-            content = cardContent,
-        )
-    } else {
-        Card(
-            modifier = cardModifier,
-            shape = cardShape,
-            colors = cardColors,
-            content = cardContent,
-        )
-    }
+    // 本轮（0124）第 4 项：实现已提升为共享组件 TokiSettingsCard
+    // （ui.components），「更多」面板同款套用；此处仅保留旧签名转发。
+    com.tokimusic.app.ui.components.TokiSettingsCard(
+        position = position,
+        onClick = onClick,
+        content = content,
+    )
 }
 
 /**
@@ -902,6 +888,35 @@ fun joinedDaysEntries(
     return entries
 }
 
+/** 本轮（0124）第 7 项：成就详情（纯函数，JVM 单测覆盖）——点勋章卡看详情：名称、说明、进度/解锁状态。 */
+data class AchievementDetail(
+    val title: String,
+    val description: String,
+    val progressText: String,
+    val statusText: String,
+)
+
+fun achievementDetail(entry: JoinedDayEntry): AchievementDetail = when (entry.label) {
+    "TokiMusic" -> AchievementDetail(
+        title = "TokiMusic 陪伴",
+        description = "从第一次在 TokiMusic 登录起计算的陪伴天数。",
+        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
+        statusText = "已达成",
+    )
+    "NeteaseMusic" -> AchievementDetail(
+        title = "NeteaseMusic 陪伴",
+        description = "NeteaseMusic 账号的注册天数，由 NeteaseMusic 返回。",
+        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
+        statusText = if (entry.days != null) "已达成" else "已达成（天数未知）",
+    )
+    else -> AchievementDetail(
+        title = entry.label,
+        description = "",
+        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
+        statusText = "已达成",
+    )
+}
+
 /** 0.1.13 第 12 项：成就页——加入天数两列勋章卡片（TokiMusic / NeteaseMusic 各一张，图标当勋章，标题源名，副标题“已加入 X 天”），未登录任何源时显示空态；以后更多成就（等级、听歌时长里程碑等）也放这里。QQMusic 不显示（见 joinedDaysEntries）。 */
 private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
     vm: AppViewModel,
@@ -917,6 +932,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
             profile?.createDays,
             System.currentTimeMillis(),
         )
+        // 本轮（0124）第 7 项：勋章卡可点，点开成就详情弹窗。
+        var selectedEntry by remember { mutableStateOf<JoinedDayEntry?>(null) }
         // 0.1.17 第 8 项：成就单独两列展示，不需要外框——包着两列
         // 勋章卡的 SettingsSubCard 去掉，勋章卡本身（20dp 圆角卡）保留。
         if (entries.isEmpty()) {
@@ -934,10 +951,29 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 for (entry in entries) {
-                    JoinedDayMedalCard(entry, Modifier.weight(1f))
+                    JoinedDayMedalCard(entry, Modifier.weight(1f)) { selectedEntry = entry }
                 }
                 if (entries.size == 1) {
                     Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        selectedEntry?.let { entry ->
+            val detail = achievementDetail(entry)
+            com.tokimusic.app.ui.components.TokiDialog(
+                icon = Icons.Rounded.EmojiEvents,
+                title = detail.title,
+                onDismiss = { selectedEntry = null },
+                dismissText = "关闭",
+            ) {
+                Column {
+                    if (detail.description.isNotBlank()) {
+                        Text(detail.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Text("进度：${detail.progressText}", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text("状态：${detail.statusText}", style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
@@ -952,11 +988,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
     }
 }
 
-/** 0.1.13 第 12 项（成就页两列勋章设计，2026-11-24）：加入天数的一张勋章卡——图标当勋章放上方，标题源名，副标题“已加入 X 天”（天数为 null 时显示“已加入 — 天”）。 */
+/** 0.1.13 第 12 项（成就页两列勋章设计，2026-11-24）：加入天数的一张勋章卡——图标当勋章放上方，标题源名，副标题“已加入 X 天”（天数为 null 时显示“已加入 — 天”）。本轮（0124）第 7 项：整卡可点开详情。 */
 @Composable
-private fun JoinedDayMedalCard(entry: JoinedDayEntry, modifier: Modifier = Modifier) {
+private fun JoinedDayMedalCard(entry: JoinedDayEntry, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Card(
-        modifier,
+        onClick = onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {

@@ -35,4 +35,16 @@ class AchievementsTest {
         assertEquals(listOf("TokiMusic", "NeteaseMusic"), entries.map { it.label })
         assertEquals(listOf(5, 100), entries.map { it.days })
     }
+
+    @Test
+    fun achievementDetailCarriesNameProgressAndState() {
+        // 本轮（0124）第 7 项：成就详情含名称、进度与解锁状态。
+        val toki = achievementDetail(JoinedDayEntry("TokiMusic", R.drawable.ic_launcher_foreground, 42))
+        assertEquals("TokiMusic 陪伴", toki.title)
+        assertEquals("已加入 42 天", toki.progressText)
+        assertEquals("已达成", toki.statusText)
+        val ne = achievementDetail(JoinedDayEntry("NeteaseMusic", R.drawable.ic_source_netease, null))
+        assertEquals("已加入 — 天", ne.progressText)
+        assertEquals("已达成（天数未知）", ne.statusText)
+    }
 }

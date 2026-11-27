@@ -27,6 +27,17 @@ class PlayModeTest {
     }
 
     @Test
+    fun queueSegmentAlwaysSelectsExactlyOne() {
+        // 本轮（0124）第 5 项：五种模式逐一映射到 0/1/2 三段之一，
+        // 循环两模式归顺序段——任何状态下恰有一段选中。
+        assertEquals(0, queueModeSegment(PlayMode.Sequential))
+        assertEquals(1, queueModeSegment(PlayMode.Shuffle))
+        assertEquals(2, queueModeSegment(PlayMode.Reverse))
+        assertEquals(0, queueModeSegment(PlayMode.RepeatAll))
+        assertEquals(0, queueModeSegment(PlayMode.RepeatOne))
+    }
+
+    @Test
     fun singleButtonTogglesSequentialAndShuffle() {
         // 0.1.14 第 7 项：歌单页单按钮位是“随机开 / 关”——随机时回顺
         // 序，其余（顺序 / 倒序 / 列表循环 / 单曲循环）都切到随机。
