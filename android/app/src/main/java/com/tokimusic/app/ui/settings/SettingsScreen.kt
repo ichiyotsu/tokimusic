@@ -141,7 +141,12 @@ import com.tokimusic.app.ui.components.daysSince
 import com.tokimusic.app.ui.components.defaultCustomId
 import com.tokimusic.app.ui.components.positionOf
 import com.tokimusic.app.ui.components.segmentedCorners
+import com.tokimusic.app.ui.theme.CoverColors
+import com.tokimusic.app.ui.theme.LocalDarkTheme
 import com.tokimusic.app.ui.theme.TokiLogoutRed
+import com.tokimusic.app.ui.theme.settingsSheetGlassVeil
+import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
+import dev.chrisbanes.haze.HazeState
 import com.tokimusic.app.ui.components.NeteaseBadgeBackground
 import com.tokimusic.app.ui.components.QqBadgeBackground
 import com.tokimusic.app.ui.theme.ThemePreferences
@@ -256,7 +261,7 @@ private fun settingsGroupEnterModifier(
 }
 
 /**
- * 账户与设置弹窗（第二轮第 4 项）：参考 TokiNote〈我的〉页
+ * 「我的」弹窗（原名账户与设置，本轮第 1 条改名；第二轮第 4 项）：参考 TokiNote〈我的〉页
  * （ProfileSheet / NoteSheets.SheetContainer），做成底部弹窗——标题 +
  * 36dp 关闭钮；头像卡片 + 两源 logo 行 + 通用 / 个性化 /
  * 音频 / 歌词 / 成就 5 行（0.1.13 第 12 项起加入天数搬进成就页，
@@ -286,10 +291,29 @@ private fun settingsGroupEnterModifier(
  * 纯色圆形关闭钮），内容区上下 24dp 淡出保留（淡出色跟随容器色）。
  * 0.1.11 修复轮（用户反馈“账户与安全页底色不要模糊”）：容器与淡出色
  * 都改回不透明实色，弹窗不再透出背后内容。
+ *
+ * 本轮第 1 条（用户改口径，覆盖 0.1.11 的决定）：页名改「我的」；
+ * 底色改从播放器「更多」面板那一套——有当前歌曲时用主题色 veil
+ * （settingsSheetGlassVeil，与 moreSheetGlassVeil 同配方）+
+ * MiniPlayer 同级 85dp 玻璃（tokiContentGlassMiniPlayer），
+ * 0.1.11 的不透明实色只在无当前歌曲时作回退。玻璃要盖住拖柄区：
+ * 与 MoreSheet 同法关掉 sheet 自带拖柄、内容里自绘同规格拖柄
+ * （回退态也自绘，两态外观一致）。内容区上下淡出色跟随实际底色
+ * （玻璃态 = veil 色、回退态 = surfaceContainerLow）；顶部淡出
+ * 仍只在列表离开顶部时画（本轮第 5 条的恢复行为不变）。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePreferences) -> Unit, onClose: () -> Unit) {
+fun SettingsSheet(
+    vm: AppViewModel,
+    theme: ThemePreferences,
+    onTheme: (ThemePreferences) -> Unit,
+    onClose: () -> Unit,
+    // 本轮第 1 条：玻璃底色所需的采样状态与当前歌曲主题色
+    // （coverColors 为 null = 无当前歌曲，底色回退实色）。
+    hazeState: HazeState,
+    coverColors: CoverColors?,
+) {
     var sub by remember { mutableStateOf<SettingsSub?>(null) }
     // 0.1.16 第 2 条：一级页各板块首次淡入上浮只播一次——播过的组
     // 记在这里（sheet 作用域）；二级页切换会重建 LazyColumn，回来
@@ -329,10 +353,21 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
     // 第六轮第 19 项：开关 / 退出登录的二次确认（AlertDialog 弹窗，
     // Q12-2 定弹窗而非底部 sheet）。
     var sourceConfirm by remember { mutableStateOf<SourceConfirm?>(null) }
+    // 本轮第 1 条：底色——有当前歌曲的主题色时走「更多」面板同款
+    // 玻璃（veil + 85dp），没有时回退原不透明实色；内容区上下淡出
+    // 色（下方 sheetBg）跟随实际底色。
+    val glassVeil = settingsSheetGlassVeil(coverColors, lightMode = !LocalDarkTheme.current)
+    val sheetBg = glassVeil ?: MaterialTheme.colorScheme.surfaceContainerLow
+    val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        // 玻璃态容器透明（玻璃在内容 Box 上，见下）；回退态维持实色。
+        containerColor = if (glassVeil != null) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = sheetShape,
+        // 自带拖柄关掉：玻璃要盖住拖柄区，内容里自绘同规格拖柄
+        // （MoreSheet 同法；回退态也自绘，两态外观一致）。
+        dragHandle = null,
         // 0.1.14 第 3 条：遮罩不淡入淡出——原生 scrim 带
         // ScrimAlphaAnimation，关不掉；这里改透明，静态遮罩由调用方
         // 在应用窗口里画（见 TokiMusicApp 的 showSettings 处）。
@@ -342,7 +377,23 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
         ),
     ) {
+        // 本轮第 1 条：玻璃态把玻璃挂在内容 Box 上（容器已透明），
+        // 与 MoreSheet 同结构；回退态 Box 无额外修饰、容器实色照旧。
+        Box(
+            Modifier.fillMaxWidth().then(
+                if (glassVeil != null) {
+                    Modifier.clip(sheetShape).tokiContentGlassMiniPlayer(hazeState, glassVeil)
+                } else {
+                    Modifier
+                },
+            ),
+        ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            // 自绘拖柄（32×4dp、onSurfaceVariant 40%，与 MoreSheet /
+            // M3 默认同规格）——sheet 自带拖柄已关（见 ModalBottomSheet 处）。
+            Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(32.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
+            }
             // 第 8 项（第六轮第 7 项改）：标题不再进磨砂 chip——纯文字标题
             // （headlineMedium Bold）+ 纯色圆形关闭钮；0.1.11 起弹窗容器
             // 也是不透明实色，不再透出背后内容。返回键的图标一律是关闭
@@ -354,7 +405,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (sub == null) "账户与设置" else sub!!.title,
+                    if (sub == null) "我的" else sub!!.title,
                     Modifier.weight(1f, fill = false),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
@@ -375,9 +426,8 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                 }
             }
             // 第三轮第 14 项：弹窗内容区上下边缘 24dp 淡出（淡出色取
-            // 弹窗底色——0.1.11 起与容器同为不透明的 surfaceContainerLow；
-            // 淡出层不处理触摸，不挡滚动）。
-            val sheetBg = MaterialTheme.colorScheme.surfaceContainerLow
+            // 弹窗实际底色 sheetBg——本轮第 1 条起玻璃态为 veil 色、
+            // 回退态为 surfaceContainerLow；淡出层不处理触摸，不挡滚动）。
             // 0.1.16 第 2 条：二级页切换加过渡动画（进页从右滑入、
             // 返回从左滑出，与站内二级页同款——见 TokiMusicApp 的
             // toDetail；时长跟 motionScheme，减少动效时自动用标准
@@ -484,6 +534,7 @@ fun SettingsSheet(vm: AppViewModel, theme: ThemePreferences, onTheme: (ThemePref
                     },
                 )
             }
+        }
         }
     }
 }

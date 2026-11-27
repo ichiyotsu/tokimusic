@@ -442,7 +442,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .map { toSongWithCover(it) }
         // 作者字段口径（用户确认）：标题用英文名（NeteaseMusic /
         // QQMusic / Device），作者写中文——云音乐 / 企鹅音乐；Device
-        // 歌单的作者写当前 User 名（账户与设置的 User 值：自定义显示
+        // 歌单的作者写当前 User 名（「我的」页的 User 值：自定义显示
         // 名优先，其次登录昵称），取不到写字面「User」。
         val creator = when (bucket) {
             LocalBucket.NETEASE -> "云音乐"

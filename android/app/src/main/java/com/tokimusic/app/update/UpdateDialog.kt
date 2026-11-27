@@ -44,9 +44,15 @@ fun UpdateDialog(
     onDismiss: () -> Unit,
 ) {
     TokiSheetContainer(onDismiss = onDismiss) {
-        Text("发现新版本 ${release.version}", style = MaterialTheme.typography.headlineSmall)
+        // 本轮第 3 条：beta/alpha 版本同样是正常更新，但标题明示
+        // 「发现测试版本」；正式版维持「发现新版本」。
+        val testVersion = isTestVersion(release.version)
         Text(
-            "当前版本 $currentVersion → 新版本 ${release.version}",
+            if (testVersion) "发现测试版本 ${release.version}" else "发现新版本 ${release.version}",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(
+            "当前版本 $currentVersion → ${if (testVersion) "测试版本" else "新版本"} ${release.version}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

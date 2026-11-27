@@ -47,6 +47,18 @@ fun compareVersions(current: String, latest: String): Int {
     return 0
 }
 
+/**
+ * 测试版本判定（本轮第 3 条，纯函数，可单测）：新格式 x.x.x-betax /
+ * x.x.x-alphax（如 0.2.0-beta1）——取 "-" 后的预发布段判断，后缀按
+ * 格式约定全小写；无后缀的正式版（如 0.1.22）为 false，旧 -bN 后缀
+ * 不是 beta/alpha 词、同样为 false。测试版本仍走正常更新通道（检查
+ * 不排除、不隐藏、无独立渠道），只是更新弹窗文案改「发现测试版本」。
+ */
+fun isTestVersion(version: String): Boolean {
+    val suffix = version.trim().removePrefix("v").substringAfter('-', "")
+    return suffix.startsWith("beta") || suffix.startsWith("alpha")
+}
+
 /** 从 releases/latest 的 JSON 解析版本、说明与 APK 下载地址。 */
 fun parseLatestRelease(json: String): LatestRelease? {
     val obj = JSONObject(json)

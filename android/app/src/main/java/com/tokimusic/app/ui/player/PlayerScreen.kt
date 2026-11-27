@@ -33,6 +33,7 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -82,6 +83,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -706,7 +710,11 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
         coverColors = coverColors,
         liked = liked,
         castActive = castActive,
-        onToggleLike = { vm.toggleLike(song.id); showMore = false },
+        isPlaying = state.isPlaying,
+        // 本轮第 2 条：喜欢移进面板底栏（常驻控制），点按就地切换
+        // 星标、不再关面板（与播放/暂停同为底栏控制的语义）。
+        onToggleLike = { vm.toggleLike(song.id) },
+        onTogglePlay = { vm.player.toggle() },
         onPlayNext = {
             vm.playNext(song)
             Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
@@ -984,7 +992,9 @@ private fun MoreSheet(
     coverColors: CoverColors,
     liked: Boolean,
     castActive: Boolean,
+    isPlaying: Boolean,
     onToggleLike: () -> Unit,
+    onTogglePlay: () -> Unit,
     onPlayNext: () -> Unit,
     // 第 18 项：打开安卓原生投放窗（调用方先关弹窗再执行）。
     onCast: () -> Unit,
@@ -1012,7 +1022,7 @@ private fun MoreSheet(
                 moreSheetGlassVeil(coverColors.top, coverColors.bottom, lightMode = !LocalDarkTheme.current),
             ),
         ) {
-        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(32.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
             }
@@ -1047,56 +1057,81 @@ private fun MoreSheet(
                     }
                 }
             }
-            // 第六轮第 28 项：歌词 / 队列已恢复到底部按钮行，这里去重，只留
-            // 投放 / 喜欢 / 下一首播放；投放图标沿用投放中实心 / 未投放空心
-            // 的状态含义。
-            MoreAction(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
-            MoreAction(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (liked) "取消喜欢" else "喜欢", onToggleLike)
-            MoreAction(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
-            // 0.1.15 第 5 项：歌词设置放进更多页（与设置 → 歌词同一开关，
-            // 改完立即生效）；第 6 项：逐字时序偏移滑杆。
-            // 0.1.17 第 1 项：“歌词”小标题去掉（开关本身保留）。
-            // 0.1.21 第 8 项：原标题行后与设定组前的两处 Spacer(12) 删除
-            // ——行距统一由行高 + Column 的 spacedBy(4) 决定（见 MoreAction
-            // / MoreSwitch 的等高改法），不再有组间大间隔。
-            // 0.1.17 第 6 项：四个设定行各加一个 icon，与上面 MoreAction
-            // 的行对齐（Icon + 16dp 间隔 + label）。
-            MoreSwitch(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
-            MoreSwitch(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
-            MoreSwitch(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
-            // 0.1.17 第 6 项：时序行也加 Timer icon，与三行对齐。
-            // 0.1.21 第 8 项：本行与 MoreAction / MoreSwitch 统一为
-            // 52dp 定高（改前三组行高各不同：动作行 48、开关行约 40、
-            // 时序行约 32，pitch 52/44/36 三种密度，组间还有额外
-            // 12dp Spacer——即用户看到的间距不等）。改后全部行高 52、
-            // pitch 一律 56（52 + spacedBy 4）。
-            Row(
-                Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Icon(Icons.Rounded.Timer, contentDescription = null)
-                Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            // 本轮第 2 条：列表按「我的」页的分组方式重排（Gboard 式
+            // 分组列表：一组一容器、组内细分割线、组间留距）——容器是
+            // 28dp 圆角的半透明 surfaceContainer，压在主题色玻璃上仍
+            // 透得出磨砂；行高维持 0.1.21 第 8 项定的 52dp 等高。
+            // 操作组：投放 / 下一首播放（喜欢移去底栏，见下；第六轮
+            // 第 28 项定的去重不变——歌词 / 队列在播放页底部按钮行）。
+            Spacer(Modifier.height(12.dp))
+            MoreGroup {
+                MoreAction(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
+                MoreGroupDivider()
+                MoreAction(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
+            }
+            // 歌词设定组（0.1.15 第 5/6 项的四个设定）：翻译 / 罗马音 /
+            // 逐字高亮三个开关 + 逐字时序（行 + 滑杆 + 说明同属一项，
+            // 项内不再加分割线）。与设置 → 歌词同一批开关，改完立即生效。
+            Spacer(Modifier.height(12.dp))
+            MoreGroup {
+                MoreSwitch(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
+                MoreGroupDivider()
+                MoreSwitch(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
+                MoreGroupDivider()
+                MoreSwitch(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+                MoreGroupDivider()
+                Row(
+                    Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Icon(Icons.Rounded.Timer, contentDescription = null)
+                    Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        formatTimingOffset(vm.store.lyricTimingOffsetMs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Slider(
+                    value = vm.store.lyricTimingOffsetMs.toFloat(),
+                    onValueChange = { vm.store.lyricTimingOffsetMs = ((it / 50f).roundToInt() * 50).coerceIn(-500, 500) },
+                    valueRange = -500f..500f,
+                    steps = 19,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                )
                 Text(
-                    formatTimingOffset(vm.store.lyricTimingOffsetMs),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
+                    "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
                 )
             }
-            Slider(
-                value = vm.store.lyricTimingOffsetMs.toFloat(),
-                onValueChange = { vm.store.lyricTimingOffsetMs = ((it / 50f).roundToInt() * 50).coerceIn(-500, 500) },
-                valueRange = -500f..500f,
-                steps = 19,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            )
-            Text(
-                "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            // 本轮第 2 条：底栏——与「我的」页同家族的 56dp 按钮行，
+            // 放最主要的两个动作：喜欢（次按钮）与播放/暂停（主按钮）。
+            // 都是常驻控制：点按就地生效、不关面板（喜欢的星标随
+            // likedIds 就地翻转）。每个动作只出现一次：喜欢只在底栏、
+            // 不再在上面的操作组里重复。
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilledTonalButton(
+                    onClick = onToggleLike,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                ) {
+                    Icon(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (liked) "取消喜欢" else "喜欢")
+                }
+                Button(
+                    onClick = onTogglePlay,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                ) {
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isPlaying) "暂停" else "播放")
+                }
+            }
         }
         }
     }
@@ -1123,9 +1158,9 @@ fun formatPublishDate(epochMs: Long): String {
 @Composable
 private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        // 0.1.21 第 8 项：与 MoreAction 统一 52dp 定高（原上下 padding
-        // 4dp、行高约 40dp，与动作行的 48dp 不等距）。
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCheckedChange(!checked) }.height(52.dp).padding(horizontal = 12.dp),
+        // 0.1.21 第 8 项：与 MoreAction 统一 52dp 定高。本轮第 2 条：
+        // 行进组后不再自带圆角裁剪——涟漪由组容器的 28dp 形状统一裁。
+        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.height(52.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -1138,15 +1173,38 @@ private fun MoreSwitch(icon: ImageVector, label: String, checked: Boolean, onChe
 @Composable
 private fun MoreAction(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
-        // 0.1.21 第 8 项：52dp 定高，与 MoreSwitch / 时序行统一行高、
-        // 统一 pitch（原上下 padding 12dp、行高 48dp）。
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).height(52.dp).padding(horizontal = 12.dp),
+        // 0.1.21 第 8 项：52dp 定高，与 MoreSwitch / 时序行统一行高。
+        // 本轮第 2 条：同 MoreSwitch，圆角裁剪交给组容器。
+        Modifier.fillMaxWidth().clickable(onClick = onClick).height(52.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Icon(icon, contentDescription = null)
         Text(label, style = MaterialTheme.typography.titleMedium)
     }
+}
+
+/**
+ * 本轮第 2 条：「更多」面板的分组容器——与「我的」页的分组卡同
+ * 语言（28dp 圆角、一组一容器、容器负责裁剪组内行的涟漪）；底色
+ * 用半透明 surfaceContainer 压在主题色玻璃上，保留磨砂透出感。
+ */
+@Composable
+private fun MoreGroup(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f)),
+        content = content,
+    )
+}
+
+/** 组内细分割线：从行文本左缘（行内边距 12 + 图标 24 + 间隔 16 = 52dp）起到右缘内 12dp。 */
+@Composable
+private fun MoreGroupDivider() {
+    HorizontalDivider(
+        Modifier.padding(start = 52.dp, end = 12.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+    )
 }
 
 private fun formatClock(ms: Long): String {

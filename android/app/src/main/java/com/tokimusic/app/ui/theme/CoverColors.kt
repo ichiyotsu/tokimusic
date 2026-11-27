@@ -144,6 +144,16 @@ fun moreSheetGlassVeil(top: Color, bottom: Color, lightMode: Boolean): Color {
     }
 }
 
+/**
+ * 「我的」页（原账户与设置弹窗）的玻璃底色（本轮第 1 条，纯函数，
+ * 可单测）：与播放页「更多」面板同一套配方（[moreSheetGlassVeil]），
+ * 让两页同属一个视觉家族。没有主题色时（无当前歌曲、取不到封面
+ * 取色）返回 null，调用方回退到该页原底色（不透明
+ * surfaceContainerLow），不硬套一个无关颜色。
+ */
+fun settingsSheetGlassVeil(coverColors: CoverColors?, lightMode: Boolean): Color? =
+    coverColors?.let { moreSheetGlassVeil(it.top, it.bottom, lightMode) }
+
 val CoverColorsFallback: CoverColors = CoverColors(TokiWarmTop, TokiWarmBottom)
 
 /**

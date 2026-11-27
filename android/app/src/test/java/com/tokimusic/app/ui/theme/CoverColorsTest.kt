@@ -191,6 +191,26 @@ class CoverColorsTest {
     }
 
     @Test
+    fun settingsSheetVeilIsNullWithoutCoverColors() {
+        // 本轮第 1 条：没有主题色（无当前歌曲）时返回 null，调用方
+        // 回退「我的」页原底色；有主题色时与更多面板同配方。
+        assertEquals(null, settingsSheetGlassVeil(null, lightMode = false))
+        assertEquals(null, settingsSheetGlassVeil(null, lightMode = true))
+        val colors = CoverColors(
+            androidx.compose.ui.graphics.Color(0xFF8A4A22),
+            androidx.compose.ui.graphics.Color(0xFF3A2010),
+        )
+        assertEquals(
+            moreSheetGlassVeil(colors.top, colors.bottom, lightMode = false),
+            settingsSheetGlassVeil(colors, lightMode = false),
+        )
+        assertEquals(
+            moreSheetGlassVeil(colors.top, colors.bottom, lightMode = true),
+            settingsSheetGlassVeil(colors, lightMode = true),
+        )
+    }
+
+    @Test
     fun totalDurationKeepsMinutesPastOneHour() {
         // 第二轮第 8 项：满 1 小时仍写“x 分 y 秒”，不用“x 小时 y 分”。
         assertEquals("72分20秒", com.tokimusic.app.ui.components.formatTotalDurationMs(4_340_000L))

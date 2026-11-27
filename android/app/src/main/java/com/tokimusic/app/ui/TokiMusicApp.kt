@@ -585,7 +585,7 @@ fun TokiMusicApp(
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
                                             {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TokiLongPressLabel(if (profile == null) "登录" else "账户与设置") {
+                                                    TokiLongPressLabel(if (profile == null) "登录" else "我的") {
                                                         IconButton(onClick = { showSettings = true }) {
                                                             Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 48)
                                                         }
@@ -841,7 +841,14 @@ fun TokiMusicApp(
         // 底部弹窗（第二轮第 4 项）：设置是 ModalBottomSheet，浮在页面与
         // 底栏之上；chrome 在弹窗下保持可见。搜索自 0.1.20 第 11 项起是
         // 独立一级页，不再有搜索弹窗。
-        if (showSettings) SettingsSheet(vm, theme, updateTheme, onClose = { showSettings = false })
+        // 本轮第 1 条：设置页改名「我的」，并把采样状态与当前歌曲
+        // 主题色传进去做玻璃底色（无当前歌曲时传 null，页内回退实色）。
+        if (showSettings) SettingsSheet(
+            vm, theme, updateTheme,
+            onClose = { showSettings = false },
+            hazeState = hazeState,
+            coverColors = if (playerSong != null) playerCoverColors else null,
+        )
         // 第 6 项：长按歌曲的底部弹窗；“添加”只列我创建的歌单。
         val songActions by vm.songActions.collectAsState()
         val likedIds by vm.likedIds.collectAsState()

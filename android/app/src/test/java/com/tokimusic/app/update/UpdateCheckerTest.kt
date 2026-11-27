@@ -5,6 +5,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -30,6 +31,22 @@ class UpdateCheckerTest {
         // -aN/-bN 后缀不参与比较（预发布与正式版同号时不提示更新）。
         assertEquals(0, compareVersions("0.1.6", "0.1.6-b1"))
         assertTrue(compareVersions("0.1.7", "0.1.6") < 0)
+    }
+
+    @Test fun isTestVersionDetectsBetaAndAlpha() {
+        // 本轮第 3 条：新格式 x.x.x-betax / x.x.x-alphax 是测试版本。
+        assertTrue(isTestVersion("0.2.0-beta1"))
+        assertTrue(isTestVersion("0.2.0-alpha1"))
+        assertTrue(isTestVersion("v0.2.0-beta2"))
+        assertTrue(isTestVersion("1.0.0-alpha"))
+    }
+
+    @Test fun isTestVersionFalseForStable() {
+        assertFalse(isTestVersion("0.1.22"))
+        assertFalse(isTestVersion("0.2.0"))
+        assertFalse(isTestVersion("v0.1.22"))
+        // 旧 -bN 后缀不是 beta/alpha 词，不算测试版本标记。
+        assertFalse(isTestVersion("0.1.6-b1"))
     }
 
     private fun sampleJson(tag: String) = """
