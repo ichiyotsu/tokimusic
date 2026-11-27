@@ -471,6 +471,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
                                 // 0.1.13 第 5 项：逐字高亮默认开（设置里的
                                 // karaokeHighlight），话筒开关按钮已删。
                                 karaokeHighlight = vm.store.karaokeHighlight,
+                                // 本轮（0124）第 17 项：歌词距离模糊开关。
+                                distanceBlurEnabled = vm.store.lyricDistanceBlur,
                                 // 0.1.15 第 6 项：逐字时序偏移（更多页可调，
                                 // -500..+500ms，0 = 跟随原时间轴）。
                                 timingOffsetMs = vm.store.lyricTimingOffsetMs,

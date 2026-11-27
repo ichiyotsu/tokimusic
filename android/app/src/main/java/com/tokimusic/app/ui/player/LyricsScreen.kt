@@ -62,8 +62,6 @@ import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.ui.components.TokiLongPressLabel
-import com.tokimusic.app.ui.components.bounceTranslation
-import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.theme.CoverColors
 import com.tokimusic.app.ui.theme.InterFamily
 import com.tokimusic.app.ui.theme.TokiBlurCapability
@@ -105,6 +103,9 @@ import kotlin.math.roundToInt
     // 与设置里的 karaokeHighlight 同源）。关时当前行整行实色，
     // 不逐字扫过（歌词逐字不存在时也整行实色，见 LyricLineRow）。
     karaokeHighlight: Boolean = true,
+    // 本轮（0124）第 17 项：歌词距离模糊开关（「更多」面板歌词设定组）。
+    // 关时只关距离模糊，alpha 淡化/逐字扫光/平滑滚动不受影响。
+    distanceBlurEnabled: Boolean = true,
     coverColors: CoverColors? = null,
     hazeState: HazeState? = null,
     // 第三轮第 8 项：切页时首屏行 stagger 入场（只触发一次）。
@@ -240,12 +241,10 @@ import kotlin.math.roundToInt
         }
     }
     Box(modifier.fillMaxSize()) {
-        // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-        val bounce = rememberBounceOverscrollEffect()
+        // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().bounceTranslation(bounce).onSizeChanged { viewportH = it.height },
-            overscrollEffect = bounce,
+            modifier = Modifier.fillMaxSize().onSizeChanged { viewportH = it.height },
             contentPadding = PaddingValues(
                 top = if (viewportH > 0) with(density) { anchorPx.toDp() } else 120.dp,
                 bottom = if (viewportH > 0) with(density) { (viewportH * 0.6f).toInt().toDp() } else 240.dp,
@@ -274,8 +273,10 @@ import kotlin.math.roundToInt
                     // 第六轮第 26 项：位置淡化（行中心在渐隐带内才淡）；
                     // 滚动中模糊分量归 0（见上）。
                     fade = if (listState.isScrollInProgress) 0f to rawFade.second else rawFade,
-                    // 手动翻看期间距离模糊整体关（恢复跟随后才回来）。
-                    suppressDistanceBlur = userBrowsing,
+                    // 手动翻看期间距离模糊整体关（恢复跟随后才回来）；
+                    // 本轮（0124）第 17 项：歌词模糊开关关时同样整体关
+                    // （只关模糊，alpha 淡化等其余效果不受影响）。
+                    suppressDistanceBlur = userBrowsing || !distanceBlurEnabled,
                     // 第六轮第 16 项：弹簧期间当前行进度保持 0。
                     freezeProgress = springRunning,
                     // 首行才接弹簧入场（其余行只走 stagger 入场）。

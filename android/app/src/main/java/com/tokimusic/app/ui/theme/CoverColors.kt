@@ -151,8 +151,17 @@ fun moreSheetGlassVeil(top: Color, bottom: Color, lightMode: Boolean): Color {
  * 取色）返回 null，调用方回退到该页原底色（不透明
  * surfaceContainerLow），不硬套一个无关颜色。
  */
-fun settingsSheetGlassVeil(coverColors: CoverColors?, lightMode: Boolean): Color? =
-    coverColors?.let { moreSheetGlassVeil(it.top, it.bottom, lightMode) }
+fun settingsSheetGlassVeil(coverColors: CoverColors?, lightMode: Boolean): Color? {
+    val c = coverColors ?: return null
+    if (lightMode) return moreSheetGlassVeil(c.top, c.bottom, lightMode = true)
+    // 本轮（0124）第 2 项：深色模式下旧配方（中点色压向纯黑 0.45）出的底色与
+    // 页面底（TokiBlack 纯黑）太接近，玻璃面与背景糊成一片。改法：先轻压
+    // （0.2 向黑）保留封面色相，再向深灰 #2C2C2E 混 0.5——结果是带封面色调
+    // 的深灰，与纯黑底拉开一档明度差，分隔清楚但仍克制（不发亮、不发灰白）。
+    val mid = lerp(c.top, c.bottom, 0.5f)
+    val darkened = lerp(mid, Color.Black, 0.2f)
+    return lerp(darkened, Color(0xFF2C2C2E), 0.5f).copy(alpha = 0.78f)
+}
 
 val CoverColorsFallback: CoverColors = CoverColors(TokiWarmTop, TokiWarmBottom)
 

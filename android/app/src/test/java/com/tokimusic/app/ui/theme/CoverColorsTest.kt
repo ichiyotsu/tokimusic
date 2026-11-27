@@ -193,7 +193,8 @@ class CoverColorsTest {
     @Test
     fun settingsSheetVeilIsNullWithoutCoverColors() {
         // 本轮第 1 条：没有主题色（无当前歌曲）时返回 null，调用方
-        // 回退「我的」页原底色；有主题色时与更多面板同配方。
+        // 回退「我的」页原底色。浅色模式与更多面板同配方；深色模式
+        // 自 0124 第 2 项起走单独配方（向深灰混色，与纯黑页底拉开）。
         assertEquals(null, settingsSheetGlassVeil(null, lightMode = false))
         assertEquals(null, settingsSheetGlassVeil(null, lightMode = true))
         val colors = CoverColors(
@@ -201,13 +202,18 @@ class CoverColorsTest {
             androidx.compose.ui.graphics.Color(0xFF3A2010),
         )
         assertEquals(
-            moreSheetGlassVeil(colors.top, colors.bottom, lightMode = false),
-            settingsSheetGlassVeil(colors, lightMode = false),
-        )
-        assertEquals(
             moreSheetGlassVeil(colors.top, colors.bottom, lightMode = true),
             settingsSheetGlassVeil(colors, lightMode = true),
         )
+        val settingsDark = settingsSheetGlassVeil(colors, lightMode = false)!!
+        val moreDark = moreSheetGlassVeil(colors.top, colors.bottom, lightMode = false)
+        assertEquals(0.78f, settingsDark.alpha, 0.001f)
+        // 深灰配方比更多面板的纯黑压法明显更亮（与页底分隔），但仍是深色。
+        assertTrue(settingsDark.red > moreDark.red + 0.03f)
+        assertTrue(settingsDark.green > moreDark.green + 0.03f)
+        assertTrue(settingsDark.red < 0.35f && settingsDark.green < 0.35f && settingsDark.blue < 0.35f)
+        // 封面色相仍在（暖棕：red > green）。
+        assertTrue(settingsDark.red > settingsDark.green)
     }
 
     @Test

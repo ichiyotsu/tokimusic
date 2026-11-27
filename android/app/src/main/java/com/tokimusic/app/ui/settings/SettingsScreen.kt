@@ -87,6 +87,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
@@ -132,8 +133,6 @@ import com.tokimusic.app.ui.AuthState
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.TokiDialog
-import com.tokimusic.app.ui.components.bounceTranslation
-import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiLongPressLabel
@@ -376,6 +375,14 @@ fun SettingsSheet(
         modifier = Modifier.sheetTopOutline(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
         ),
+        // 本轮（0124）第 6 项：二级页里按返回键被 sheet 自己的返回关闭
+        // 抢先（ModalBottomSheet 内建 BackHandler 先于内容层注册的
+        // BackHandler 执行），整页被关而不是退回一级。二级页在场时
+        // 禁用 sheet 的返回关闭，返回交给内容层 BackHandler（sub=null）；
+        // 一级页保持返回关闭整页。
+        properties = androidx.compose.material3.ModalBottomSheetProperties(
+            shouldDismissOnBackPress = sub == null,
+        ),
     ) {
         // 本轮第 1 条：玻璃态把玻璃挂在内容 Box 上（容器已透明），
         // 与 MoreSheet 同结构；回退态 Box 无额外修饰、容器实色照旧。
@@ -400,7 +407,11 @@ fun SettingsSheet(
             // （X），位置（标题行右侧、36dp）不变；子页里点 X 回主列表，
             // 主列表点 X 关弹窗。
             Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+                // 本轮（0124）第 8 项：标题行与列表卡片左右对齐——列表
+                // 卡片在 24dp 列内边距之外还有 4dp 自身横向边距（卡片
+                // 实际边缘在 28dp），标题行补同样的 4dp，视觉缩进一致；
+                // 右侧关闭钮同理与卡片右缘对齐。
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 4.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -453,15 +464,10 @@ fun SettingsSheet(
             // 大排查 B3：本页的滚动状态从 sheet 作用域的 map 里取（没有
             // 就新建一个记进去），进出二级页不再丢位置。
             val listState = remember(targetSub) { listStates.getOrPut(targetSub) { LazyListState() } }
-            // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-            // 本轮口径（用户最终定）：回弹全局统一一套组件与参数，
-            // 不给任何页面单独调参——设置页与其它页同款（早先给这页
-            // 单独调小的特殊处理已按最终口径取消）。
-            val settingsBounce = rememberBounceOverscrollEffect()
+            // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().bounceTranslation(settingsBounce),
-                overscrollEffect = settingsBounce,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
                 // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
                 // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
@@ -500,11 +506,20 @@ fun SettingsSheet(
                 )
             }
             if (targetSub == null) {
-                Box(
-                    Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
-                        Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
-                    ),
-                )
+                // 本轮（0124）第 3 项：底部淡出带原先无条件绘制——主页面
+                // 内容不满一屏（不用滚）时，列表底也压着一条 24dp 的
+                // Transparent→sheetBg 渐变带，玻璃模式下 sheetBg 是半透明
+                //  veil 色、带下又透出 85dp 玻璃模糊，视觉上就是页底一条
+                // 「莫名的条」。与顶带同口径：仅当列表还能向下滚
+                // （canScrollForward）时才画，内容到底/不满屏不画。
+                val showBottomFade by remember { derivedStateOf { listState.canScrollForward } }
+                if (showBottomFade) {
+                    Box(
+                        Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
+                            Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                        ),
+                    )
+                }
             }
             }
             }

@@ -74,8 +74,6 @@ import com.tokimusic.app.data.model.Playlist
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.PlaylistCard
-import com.tokimusic.app.ui.components.bounceTranslation
-import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.SmallRoundPlayButton
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
@@ -180,15 +178,12 @@ fun HomeScreen(
     // 第三轮第 14 项：列表上下边缘 32dp 淡出（内容滑到悬浮标题 / 底栏
     // 下方时柔和消失，与歌单详情同款；淡出层不处理触摸，不挡滚动）。
     Box(Modifier.fillMaxSize()) {
-    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）——主页顶部
-    // 有下拉刷新（PullToRefreshBox），顶边不吸收过冲（applyTop =
-    // false，与下拉刷新不冲突），底边照常回弹。
-    val homeBounce = rememberBounceOverscrollEffect(applyTop = false)
+    // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll
+    // （主页顶部仍有下拉刷新 PullToRefreshBox，互不影响）。
     LazyColumn(
-        Modifier.fillMaxSize().bounceTranslation(homeBounce).graphicsLayer { alpha = enterAlpha },
+        Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha },
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        overscrollEffect = homeBounce,
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
         // 头像入口在标题行右侧（见 TokiMusicApp）。

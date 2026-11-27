@@ -110,14 +110,11 @@ fun DetailScaffold(
             errorContent()
         } else {
             Box(Modifier.fillMaxSize()) {
-                // 0.1.21：列表回弹（官方 OverscrollEffect 自实现，
-                // 见 BounceOverscroll.kt）——详情页（歌单/歌手/专辑共用本脚手架）统一生效。
-                val bounce = rememberBounceOverscrollEffect()
+                // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().bounceTranslation(bounce),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = bottomPadding),
-                    overscrollEffect = bounce,
                 ) {
                     collapsingCoverItem(coverUrl, coverName, coverHeight, coverFadeTo)
                     item {

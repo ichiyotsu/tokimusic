@@ -54,6 +54,14 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         get() = showRomajiState.value
         set(v) { showRomajiState.value = v; prefs.edit().putBoolean("show_romaji", v).apply() }
     private val showRomajiState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("show_romaji", false))
+    /** 歌词距离模糊开关（本轮 0124 第 17 项，放在「更多」面板的歌词
+     * 设定组）：关时只关距离模糊（远处行保持清晰），位置淡化带的
+     * alpha 淡化、逐字扫光、平滑滚动等其余效果不受影响。默认开
+     * （保持既有观感）。状态驱动，与其他歌词开关同口径。 */
+    var lyricDistanceBlur: Boolean
+        get() = lyricDistanceBlurState.value
+        set(v) { lyricDistanceBlurState.value = v; prefs.edit().putBoolean("lyric_distance_blur", v).apply() }
+    private val lyricDistanceBlurState = androidx.compose.runtime.mutableStateOf(prefs.getBoolean("lyric_distance_blur", true))
     /** 歌词逐字时序偏移（毫秒，0.1.15 第 6 项）：逐字高亮与播放之间的时间
      * 偏移，正值让高亮延后（字比声音晚出现）、负值提前；0 = 跟随原时间轴。
      * 范围 -500..+500，步进 50；状态驱动。 */

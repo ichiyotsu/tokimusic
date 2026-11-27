@@ -73,8 +73,6 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.LocalBadgeBackground
 import com.tokimusic.app.ui.components.NeteaseBadgeBackground
 import com.tokimusic.app.ui.components.QqBadgeBackground
-import com.tokimusic.app.ui.components.bounceTranslation
-import com.tokimusic.app.ui.components.rememberBounceOverscrollEffect
 import com.tokimusic.app.ui.components.TokiCardRow
 import com.tokimusic.app.ui.components.SectionTitle
 import com.tokimusic.app.ui.components.SongRow
@@ -208,13 +206,11 @@ fun LibraryScreen(
         // 不走下面的 LazyListScope 分区函数。
         LocalLibraryPage(vm, topPadding, bottomPadding, onOpenPlaylist)
     } else {
-    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-    val libraryBounce = rememberBounceOverscrollEffect()
+    // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
     LazyColumn(
-        Modifier.fillMaxSize().bounceTranslation(libraryBounce),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        overscrollEffect = libraryBounce,
     ) {
         // 页内大标题已删（第二轮第 3 项）：标题走 TokiUI 悬浮模糊标题，
         // 头像入口在标题行右侧（见 TokiMusicApp）。
@@ -708,13 +704,11 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         LocalBucket.QQ -> qqTracks
         LocalBucket.DOWNLOAD -> deviceTracks
     }
-    // 0.1.21：列表回弹（官方 OverscrollEffect 自实现）。
-    val localBounce = rememberBounceOverscrollEffect()
+    // 本轮（0124）第 1 项：自研回弹已移除，列表回到平台默认 overscroll。
     LazyColumn(
-        Modifier.fillMaxSize().bounceTranslation(localBounce),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        overscrollEffect = localBounce,
     ) {
         item {
             Text(
