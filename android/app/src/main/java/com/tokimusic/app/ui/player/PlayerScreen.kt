@@ -86,7 +86,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -714,12 +713,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
         vm = vm,
         hazeState = hazeState,
         coverColors = coverColors,
-        liked = liked,
         castActive = castActive,
-        // 本轮第 2 条：喜欢移进面板底栏（常驻控制），点按就地切换
-        // 星标、不再关面板。本轮（0124）第 4 项：底栏只留喜欢，
-        // 播放/暂停按钮已去掉（播放器主界面有控制）。
-        onToggleLike = { vm.toggleLike(song.id) },
         onPlayNext = {
             vm.playNext(song)
             Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
@@ -1001,9 +995,7 @@ private fun MoreSheet(
     vm: AppViewModel,
     hazeState: HazeState,
     coverColors: CoverColors,
-    liked: Boolean,
     castActive: Boolean,
-    onToggleLike: () -> Unit,
     onPlayNext: () -> Unit,
     // 第 18 项：打开安卓原生投放窗（调用方先关弹窗再执行）。
     onCast: () -> Unit,
@@ -1032,10 +1024,15 @@ private fun MoreSheet(
             ),
         ) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+            // 本轮（0126）第 6 项：封面的上边距与左边距对齐——左边距是
+            // 本列的 24dp 横向 padding；上边距 = 拖柄区 16（上）+ 4
+            // （柄高）+ 4（下）= 24dp，两边相等，封面在角上视觉平衡。
+            Box(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(32.dp, 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 第 6 项：右侧信息列顶端与封面顶端对齐（原为居中对齐，
+            // 两行文字会比封面顶低一截）。
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(song.picUrl, song.name, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f)) {
                     Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1070,14 +1067,26 @@ private fun MoreSheet(
             // TokiSettingsCard 分段卡（First/Middle/Last + 4dp 细缝）
             // + 64dp 图标行（与设置页行同规格）；容器底色仍用半透明
             // surfaceContainer 压在主题色玻璃上，保留磨砂透出感。
-            // 操作组：投放 / 下一首播放（喜欢只在底栏，见下）。
+            // 操作组：本轮（0126）第 4 项——动作按钮改两列网格
+            // （一张 Single 卡内两格 + 中间细分隔线），不再单列两行；
+            // 格高与单列行同为 64dp（第 7 项行高标准）。喜欢按钮已
+            // 按第 4 项整体移除（底栏随之取消），喜欢走播放器主
+            // 界面的星标按钮。
             Spacer(Modifier.height(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MoreSheetCard(SegmentPosition.First) {
-                    MoreSheetActionRow(if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast)
-                }
-                MoreSheetCard(SegmentPosition.Last) {
-                    MoreSheetActionRow(Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext)
+            MoreSheetCard(SegmentPosition.Single) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MoreSheetActionCell(
+                        if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast,
+                        Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier.width(1.dp).height(32.dp)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)),
+                    )
+                    MoreSheetActionCell(
+                        Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext,
+                        Modifier.weight(1f).padding(start = 16.dp),
+                    )
                 }
             }
             // 歌词设定组：翻译 / 罗马音 / 逐字高亮 / 歌词模糊四个开关
@@ -1100,8 +1109,11 @@ private fun MoreSheet(
                     MoreSheetSwitchRow(Icons.Rounded.BlurOn, "歌词模糊", vm.store.lyricDistanceBlur) { vm.store.lyricDistanceBlur = it }
                 }
                 MoreSheetCard(SegmentPosition.Last) {
+                    // 本轮（0126）第 5 项：调时差（逐字时序）保持独立
+                    // 整行，不进两列网格；第 7 项：行高由 56dp 统一
+                    // 到面板/「我的」页的行高标准 64dp。
                     Row(
-                        Modifier.fillMaxWidth().height(56.dp),
+                        Modifier.fillMaxWidth().height(64.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -1129,18 +1141,8 @@ private fun MoreSheet(
                     )
                 }
             }
-            // 本轮（0124）第 4 项：底栏只留收藏/喜欢——播放/暂停按钮
-            // 按用户口径去掉（播放器主界面有控制）。喜欢是常驻控制：
-            // 点按就地生效、不关面板（星标随 likedIds 就地翻转）。
-            Spacer(Modifier.height(16.dp))
-            FilledTonalButton(
-                onClick = onToggleLike,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                Icon(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (liked) "取消喜欢" else "喜欢")
-            }
+            // 本轮（0126）第 4 项：喜欢按钮与底栏已整体移除（0124
+            // 时底栏只剩喜欢一颗）；面板到歌词设定组结束。
         }
         }
     }
@@ -1182,11 +1184,15 @@ private fun MoreSheetCard(
     )
 }
 
-/** 「更多」面板动作行：与设置页行同规格——64dp、24dp 图标、titleMedium。 */
+/**
+ * 「更多」面板两列动作格（本轮 0126 第 4 项）：与单列行同规格——
+ * 64dp 高（第 7 项行高标准，与「我的」页设置行一致）、24dp 图标、
+ * titleMedium；整格可点，宽度由调用方 weight 分配。
+ */
 @Composable
-private fun MoreSheetActionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun MoreSheetActionCell(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        Modifier.fillMaxWidth().height(64.dp).clickable(onClick = onClick),
+        modifier.height(64.dp).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

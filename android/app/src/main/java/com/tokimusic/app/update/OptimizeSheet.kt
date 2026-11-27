@@ -35,13 +35,14 @@ fun OptimizeSheet(
         if (result == null) {
             Text("优化软件", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "检测到已更新到新版本，旧安装包占用了空间，是否现在优化？（只清旧安装包，图片与播放缓存不动）",
+                "检测到已更新到新版本，是否现在优化？将清理上个版本的旧安装包与播放、图片等缓存（已下载歌曲、歌单与歌词不受影响）",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OptimizeRow("缓存占用", AppOptimizer.formatBytes(snapshot.cacheTotalBytes))
-                OptimizeRow("其中旧安装包", AppOptimizer.formatBytes(snapshot.updateApkBytes))
+                OptimizeRow("其中旧安装包", AppOptimizer.formatBytes(snapshot.staleUpdateApkBytes))
+                OptimizeRow("其中播放等缓存", AppOptimizer.formatBytes(snapshot.otherCacheBytes))
                 OptimizeRow("预计可清理", AppOptimizer.formatBytes(snapshot.estimatedCleanBytes))
             }
             Button(

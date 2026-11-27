@@ -165,7 +165,7 @@ fun TokiMusicApp(
         val lastCode = vm.store.lastLaunchedVersionCode
         val currentCode = BuildConfig.VERSION_CODE
         if (AppOptimizer.isUpgrade(lastCode, currentCode)) {
-            optimizeSnapshot = AppOptimizer.measure(context)
+            optimizeSnapshot = AppOptimizer.measure(context, BuildConfig.VERSION_NAME)
         } else if (lastCode == 0) {
             vm.store.lastLaunchedVersionCode = currentCode
         }
@@ -946,7 +946,7 @@ fun TokiMusicApp(
                     if (optimizeCleaning) return@OptimizeSheet
                     optimizeCleaning = true
                     optimizeScope.launch {
-                        val result = AppOptimizer.clean(context)
+                        val result = AppOptimizer.clean(context, BuildConfig.VERSION_NAME)
                         optimizeResult = result
                         optimizeCleaning = false
                         vm.store.lastLaunchedVersionCode = BuildConfig.VERSION_CODE

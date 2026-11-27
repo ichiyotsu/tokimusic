@@ -296,7 +296,7 @@ fun LibraryScreen(
                         minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                         onMinutesClick = onOpenListeningStats,
                         onLevelClick = onOpenLevelDetail,
-                        levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
+                        levelBadge = "beta",
                         leadingIconRes = R.drawable.ic_local_music,
                     )
                     LibraryStatsSource.LOCAL -> StatsPair(
@@ -305,7 +305,7 @@ fun LibraryScreen(
                         // 0.1.17 第 14 项补：本地模式的 tokimusic 行同样点进听歌时长页。
                         onMinutesClick = onOpenListeningStats,
                         onLevelClick = onOpenLevelDetail,
-                        levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
+                        levelBadge = "beta",
                         leadingIconRes = R.drawable.ic_local_music,
                     )
                     LibraryStatsSource.BOTH -> Column(
@@ -325,7 +325,7 @@ fun LibraryScreen(
                             minutes = localStats.minutes?.let { formatHours(it) } ?: "—",
                             onMinutesClick = onOpenListeningStats,
                             onLevelClick = onOpenLevelDetail,
-                            levelSnapshot = remember(localStats) { vm.musicLevelSnapshot() },
+                            levelBadge = "beta",
                             leadingIconRes = R.drawable.ic_local_music,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -995,10 +995,11 @@ private fun StatsPair(
     minutes: String,
     onMinutesClick: (() -> Unit)? = null,
     onLevelClick: (() -> Unit)? = null,
-    // 本轮（0124）第 15 项：TokiMusic 行的等级进度，非空时显示在等级卡下方。
-    // 本轮（0125）第 2 项：等级块不显示具体积分数字——只留进度条，
-    // 数字（今日积分 / 还差多少分）只在等级详情页出现。
-    levelSnapshot: com.tokimusic.app.player.MusicLevelSnapshot? = null,
+    // 本轮（0126）第 3 项：资料库等级块不再放进度条（0125 时只留了
+    // 进度条），进度与积分只在等级详情页出现；块里只剩线条图标、
+    // Lv.x 与「音乐等级」标签，标签后加与详情页标题栏同款 beta
+    // 小徽章（levelBadge 非空时显示，仅 TokiMusic 等级行传）。
+    levelBadge: String? = null,
     leadingIconRes: Int? = null,
     modifier: Modifier = Modifier.fillMaxWidth().padding(24.dp),
 ) {
@@ -1007,17 +1008,11 @@ private fun StatsPair(
             StatCard(
                 "音乐等级", level, Modifier.fillMaxWidth(),
                 onClick = onLevelClick,
+                labelBadge = levelBadge,
                 leadingIcon = if (leadingIconRes != null) {
                     { Icon(painterResource(leadingIconRes), contentDescription = null, modifier = Modifier.size(28.dp)) }
                 } else null,
             )
-            if (levelSnapshot != null) {
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.LinearProgressIndicator(
-                    progress = { levelSnapshot.progress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                )
-            }
         }
         // 第 7 项：资料库顶部“歌单”卡换成音乐等级（/api/user/level
         // 的真实等级）；未登录 / 未取到时显示 —。
@@ -1038,6 +1033,9 @@ private fun StatCard(
     value: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    // 本轮（0126）第 3 项：标签文字正后方的小徽章（与悬浮标题栏
+    // titleBadge 同款：surfaceContainerHigh 底、6dp 圆角、labelSmall）。
+    labelBadge: String? = null,
     leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val click = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
@@ -1046,7 +1044,22 @@ private fun StatCard(
             if (leadingIcon != null) leadingIcon()
             Text(value, style = MaterialTheme.typography.headlineLarge)
         }
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (labelBadge != null) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        labelBadge,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
