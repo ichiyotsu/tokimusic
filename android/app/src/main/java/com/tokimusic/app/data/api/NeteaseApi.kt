@@ -47,4 +47,4 @@ interface NeteaseApi {
     suspend fun lyric(id: Long): LyricPayload         // /lyric/new preferred, /lyric fallback (also when /lyric/new answers empty)
 }
 data class QrCheck(val code: Int, val cookie: String = "", val message: String = "")
-data class LyricPayload(val yrc: String? = null, val lrc: String? = null, val tlyric: String? = null, val romalrc: String? = null)
+data class LyricPayload(val yrc: String? = null, val lrc: String? = null, val tlyric: String? = null, val romalrc: String? = null, val qrc: String? = null)

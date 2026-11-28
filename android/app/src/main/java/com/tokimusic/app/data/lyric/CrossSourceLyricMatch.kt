@@ -3,13 +3,18 @@ package com.tokimusic.app.data.lyric
 import com.tokimusic.app.data.model.Song
 
 /**
-* 本轮（0128）第 5 条：YouTubeMusic 跨源借歌词的严格匹配器（纯函数）。
+* 跨源借歌词的严格匹配器（纯函数）。0128 第 5 条初版（YT 借词），
+* 本轮（0129）换门：借来的逐字歌词经行锚定适配后（见
+* [LineAnchoredAdapt]），总时长一致不再是安全前提——±2s 硬门
+* 换成时长比粗筛，只挡「根本不是同一首歌」级别的错误；真正的
+* 时间轴安全由行锚定的覆盖率 + 逐行 scale 检查保证。
 *
-* YT 歌词只有纯文本（无时间轴）；播放 YT 歌时按 标题 + 歌手 + 时长
-* 去网易云（QQ 次选）找同一首歌，命中才借它的 YRC 逐字歌词 + 官方
-* 翻译。匹配必须严格——借错歌词比没有逐字更糟，所以：
-* - 时长两边都已知且差 ≤ [DURATION_TOLERANCE_MS]（±2s），任一未知
-* 直接不借（YT 时长偶有 0 值，不能凭标题单独命中）。
+* 借词按 标题 + 歌手 + 时长 去网易云/QQ 找同一首歌，命中才借
+* 它的逐字歌词（YRC/QRC）+ 翻译。身份匹配必须严格——借错歌
+* 比没有逐字更糟，所以：
+* - 时长两边都已知（任一未知直接不借，YT 时长偶有 0 值，不能
+* 凭标题单独命中），且比值落在 [MIN_DURATION_RATIO]–
+* [MAX_DURATION_RATIO]（约 ±25–33%）。
 * - 标题归一化后必须完全相等（归一化剥括号段、feat. 尾巴与
 * remaster/official/mv 等软装饰词，见 [normalizeTitle]）。
 * - 硬版本标签（live/remix/acoustic/sped up/slowed/cover/现场/
@@ -17,7 +22,9 @@ import com.tokimusic.app.data.model.Song
 * - 歌手归一化后相等或互含（YT 频道名先剥 " - Topic"/VEVO 等后缀）。
 */
 object CrossSourceLyricMatch {
-const val DURATION_TOLERANCE_MS = 2000L
+/** 时长比粗筛下限/上限（候选时长 ÷ 目标时长），只挡灾难性错歌。 */
+const val MIN_DURATION_RATIO = 0.75
+const val MAX_DURATION_RATIO = 1.33
 
 /** 只出现在一边就判不同版本的硬标签（在原始标题小写串上查）。 */
 private val HARD_TAGS = listOf(
@@ -79,17 +86,19 @@ if (a.isEmpty() || b.isEmpty()) return false
 return a == b || a.contains(b) || b.contains(a)
 }
 
-/** 候选是否与 YT 歌是同一首歌的同一版本（全部条件都要过）。 */
-fun isConfidentMatch(yt: Song, candidate: Song): Boolean {
-if (yt.durationMs <= 0 || candidate.durationMs <= 0) return false
-if (kotlin.math.abs(yt.durationMs - candidate.durationMs) > DURATION_TOLERANCE_MS) return false
-val ytTitle = normalizeTitle(yt.name)
-if (ytTitle.isEmpty() || ytTitle!= normalizeTitle(candidate.name)) return false
-if (hardTags(yt.name)!= hardTags(candidate.name)) return false
-return artistMatches(yt.artistText, candidate.artistText)
+/** 候选是否与目标歌是同一首歌的同一版本（身份 + 时长比粗筛，全过才借）。 */
+fun isBorrowMatch(target: Song, candidate: Song): Boolean {
+if (target.durationMs <= 0 || candidate.durationMs <= 0) return false
+val ratio = candidate.durationMs.toDouble() / target.durationMs.toDouble()
+if (ratio < MIN_DURATION_RATIO || ratio > MAX_DURATION_RATIO) return false
+val targetTitle = normalizeTitle(target.name)
+if (targetTitle.isEmpty() || targetTitle != normalizeTitle(candidate.name)) return false
+if (hardTags(target.name) != hardTags(candidate.name)) return false
+return artistMatches(target.artistText, candidate.artistText)
 }
 
-/** 严格命中的候选里取时长差最小者（同差保搜索序，稳定）。 */
-fun bestMatch(yt: Song, candidates: List<Song>): Song? =
-candidates.filter { isConfidentMatch(yt, it) }.minByOrNull { kotlin.math.abs(it.durationMs - yt.durationMs) }
+/** 命中候选里取时长比最接近 1 者（同距保搜索序，稳定）。 */
+fun bestBorrowMatch(target: Song, candidates: List<Song>): Song? =
+candidates.filter { isBorrowMatch(target, it) }
+.minByOrNull { kotlin.math.abs(it.durationMs.toDouble() / target.durationMs.toDouble() - 1.0) }
 }

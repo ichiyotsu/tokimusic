@@ -507,21 +507,28 @@ class QqClient(
     }
 
     /**
-     * QQ lyrics via the PlayLyricInfo CGI (0.1.15, item 5):
-     * `music.musichallSong.PlayLyricInfo` / `GetPlayLyricInfo`
-     * (crypt=1, qrc=0, roma=1, trans=1). The CGI returns the lyric /
-     * trans / roma fields as encrypted hex; each is decrypted with
-     * [QrcDecrypt] and lands in [LyricPayload] as lrc / tlyric /
-     * romalrc (trans/roma are empty for Chinese songs, and only a
-     * Japanese song on a real device can show whether the server ever
-     * fills them). The CGI works anonymously (probe-verified code 0);
-     * when logged in, [cgi] attaches the credential + session like any
-     * other content call. When the CGI call fails or returns no lyric,
-     * this falls back to the web GET endpoint ([lyricViaWeb]).
+     * QQ lyrics via the PlayLyricInfo CGI (0.1.15, item 5; 0129 轮升
+     * 级为 QRC 逐字): `music.musichallSong.PlayLyricInfo` /
+     * `GetPlayLyricInfo` (crypt=1, qrc=1, roma=1, trans=1). The CGI
+     * returns the lyric / trans / roma fields as encrypted hex; each
+     * is decrypted with [QrcDecrypt]. With qrc=1 the lyric field is
+     * QRC XML (word-by-word) and lands in [LyricPayload.qrc]; the
+     * payload is sniffed (see [com.tokimusic.app.data.lyric.QrcParser.isQrc])
+     * so a song the server only has as plaintext LRC still lands in
+     * lrc via the same path. trans stays line-level LRC (that channel
+     * has no word-level translation); roma for Japanese songs is
+     * word-level QRC XML and is passed through raw in romalrc —
+     * [com.tokimusic.app.data.lyric.QrcParser] takes its line texts
+     * (before 0129 the XML was fed to the LRC aligner and Japanese
+     * songs' romaji silently came out empty). The CGI works
+     * anonymously (probe-verified code 0); when logged in, [cgi]
+     * attaches the credential + session like any other content call.
+     * When the CGI call fails or returns no lyric, this falls back
+     * to the web GET endpoint ([lyricViaWeb], line level only).
      * Returns an empty payload when the server has no lyrics.
      */
     suspend fun lyric(songmid: String): LyricPayload = withContext(Dispatchers.IO) {
-        runCatching { lyricViaCgi(songmid) }.getOrNull()?.takeIf { it.lrc != null }
+        runCatching { lyricViaCgi(songmid) }.getOrNull()?.takeIf { it.lrc != null || it.qrc != null }
             ?: lyricViaWeb(songmid)
     }
 
@@ -533,7 +540,7 @@ class QqClient(
             param = JSONObject()
                 .put("crypt", 1)
                 .put("lrc_t", 0)
-                .put("qrc", 0)
+                .put("qrc", 1)
                 .put("qrc_t", 0)
                 .put("roma", 1)
                 .put("roma_t", 0)
@@ -545,13 +552,27 @@ class QqClient(
         )
         if (resp.optInt("code", -1) != 0) return null
         val data = resp.optJSONObject("data") ?: return null
-        val lrc = QrcDecrypt.decryptQrcHex(data.optString("lyric", ""))
+        val lyricText = QrcDecrypt.decryptQrcHex(data.optString("lyric", ""))
             ?.takeIf { it.isNotBlank() } ?: return null
         val tlyric = QrcDecrypt.decryptQrcHex(data.optString("trans", ""))
             ?.takeIf { it.isNotBlank() }
-        val romalrc = QrcDecrypt.decryptQrcHex(data.optString("roma", ""))
+        val romaRaw = QrcDecrypt.decryptQrcHex(data.optString("roma", ""))
             ?.takeIf { it.isNotBlank() }
-        return LyricPayload(lrc = lrc, tlyric = tlyric, romalrc = romalrc)
+        // 内容嗅探优先于 data.qrc 标志：标志说 1 但正文是明文 LRC
+        // 的歌（服务端无 QRC）按 LRC 走，不让解析器对着明文扑空。
+        if (com.tokimusic.app.data.lyric.QrcParser.isQrc(lyricText)) {
+            return LyricPayload(qrc = lyricText, tlyric = tlyric, romalrc = romaRaw)
+        }
+        // 明文回退：roma 若仍是 XML，转成行级 LRC 文本再交给既有
+        // 对齐（QrcParser 的罗马音贴附只在 qrc 主路径上跑）。
+        val romalrc = romaRaw?.let {
+            if (com.tokimusic.app.data.lyric.QrcParser.isQrc(it)) {
+                com.tokimusic.app.data.lyric.QrcParser.toLrcText(it).takeIf { s -> s.isNotBlank() }
+            } else {
+                it
+            }
+        }
+        return LyricPayload(lrc = lyricText, tlyric = tlyric, romalrc = romalrc)
     }
 
     /**

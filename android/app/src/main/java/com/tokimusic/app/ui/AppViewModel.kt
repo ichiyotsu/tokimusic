@@ -899,6 +899,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun localLyricPayload(song: Song): com.tokimusic.app.data.api.LyricPayload {
         val empty = com.tokimusic.app.data.api.LyricPayload()
         val track = _localTracks.value.firstOrNull { it.uri == song.sourceId } ?: return empty
+        // 本轮（0129）：App 下载落盘的 QQ 歌词（dl_qq_ 文件）是旧
+        // 行级文本——非本地模式且 QQ 源开着时先在线重拉（现在是
+        // QRC 逐字），拉不到再回落文件。用户旁挂/嵌入的歌词文件
+        // 不在此列，仍以文件为准；本地模式不联网，口径不变。
+        if (track.originSource == "QQ" && track.lyric.isNotBlank() &&
+            java.io.File(track.lyric).name.startsWith("dl_qq_") &&
+            !isLocalModeNow() && track.originId.isNotBlank() && !isSourceDisabled(MusicSource.QQ)
+        ) {
+            runCatching { qqClient.lyric(track.originId) }.getOrNull()
+                ?.takeIf { it.qrc != null || it.lrc != null }?.let { return it }
+        }
         if (track.lyric.isNotBlank()) {
             val text = withContext(Dispatchers.IO) {
                 runCatching { java.io.File(track.lyric).readText(Charsets.UTF_8) }.getOrNull()
@@ -1775,11 +1786,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }.getOrDefault("")
             }
-            // 歌词（尽力）：纯文本落 local_lyrics（网易云 LRC/YRC、QQ LRC）。
+            // 歌词（尽力）：纯文本落 local_lyrics（网易云 LRC/YRC；
+            // QQ 自 0129 起源头是 QRC 逐字，落盘降级为行级 LRC
+            // 文本——本地副本离线可用即可，逐字走在线重拉）。
             var lyricPath = ""
             val lyricText = when (song.source) {
                 MusicSource.NETEASE -> runCatching { api.lyric(song.id) }.getOrNull()?.let { it.lrc ?: it.yrc }
-                MusicSource.QQ -> runCatching { qqClient.lyric(song.sourceId) }.getOrNull()?.lrc
+                MusicSource.QQ -> runCatching { qqClient.lyric(song.sourceId) }.getOrNull()
+                    ?.let { p -> p.lrc ?: p.qrc?.let { q -> com.tokimusic.app.data.lyric.QrcParser.toLrcText(q) } }
                 MusicSource.YOUTUBEMUSIC -> runCatching { ytClient.lyric(song.sourceId) }.getOrNull()?.lrc
                 else -> null
             }
@@ -2096,31 +2110,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
         val parsedLyrics = runCatching {
-            if (song.source == MusicSource.YOUTUBEMUSIC) {
-                // 本轮（0128）第 5 条：YT 歌词只有纯文本——先试跨源
-                // 借歌词（网易云优先、QQ 次选，严格匹配 + 缓存，见
-                // borrowedLyricPayload）；借到就走对方的 YRC 逐字 +
-                // 官方翻译，没借到保持原来的纯文本降级，行为不变。
-                val borrowed = borrowedLyricPayload(song)
-                if (borrowed != null) {
-                    YrcParser.parse(borrowed.yrc, borrowed.lrc, borrowed.tlyric, borrowed.romalrc)
-                } else {
-                    val p = ytClient.lyric(song.sourceId)
-                    YrcParser.parsePlainText(p.lrc, song.durationMs)
+            when (song.source) {
+                MusicSource.YOUTUBEMUSIC -> {
+                    // 跨源借歌词（网易云优先、QQ 次选，身份匹配 + 行
+                    // 锚定适配 + 缓存，见 borrowedLyricLines）；借到
+                    // 就走对方的逐字 + 翻译，没借到保持原来的纯文本
+                    // 降级（0128 第 5 条；0129 换门 + QQ 升逐字）。
+                    borrowedLyricLines(song) ?: run {
+                        val p = ytClient.lyric(song.sourceId)
+                        YrcParser.parsePlainText(p.lrc, song.durationMs)
+                    }
                 }
-            } else {
-                val p = when (song.source) {
-                    // Sixth round, QQ playback: QQ lyrics are LRC line level
-                    // (web GET plaintext); they feed the same line-level sweep
-                    // the item-30 fallback uses for YRC-less songs.
-                    MusicSource.QQ -> qqClient.lyric(song.sourceId)
-                    MusicSource.NETEASE -> api.lyric(song.id)
-                    MusicSource.YOUTUBEMUSIC -> ytClient.lyric(song.sourceId) // 不可达（上方已分流），保 when 穷尽
-                    // 本地歌：本地歌词文件优先，其次按登记的源身份在线
-                    // 回落（本地模式不回落），见 localLyricPayload。
-                    MusicSource.LOCAL -> localLyricPayload(song)
-                }
-                YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
+                // QQ 歌词自 0129 起是 QRC 逐字（payload.qrc），
+                // parseLyricPayload 按内容分流 QrcParser/YrcParser。
+                MusicSource.QQ -> parseLyricPayload(qqClient.lyric(song.sourceId))
+                MusicSource.NETEASE -> neteaseLyricLines(song)
+                // 本地歌：本地歌词文件优先，其次按登记的源身份在线
+                // 回落（本地模式不回落），见 localLyricPayload。
+                MusicSource.LOCAL -> parseLyricPayload(localLyricPayload(song))
             }
         }.getOrDefault(emptyList())
         _lyrics.value = parsedLyrics
@@ -2133,45 +2140,122 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val lyricBorrowCache = com.tokimusic.app.data.LyricBorrowCache(getApplication())
 
+    /** 歌词 payload 按内容分流：带 qrc 走 QRC 逐字解析，其余走 YRC/LRC。 */
+    private fun parseLyricPayload(p: com.tokimusic.app.data.api.LyricPayload): List<com.tokimusic.app.data.lyric.LyricLine> =
+        if (p.qrc != null) {
+            com.tokimusic.app.data.lyric.QrcParser.parse(p.qrc, p.tlyric, p.romalrc)
+        } else {
+            YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
+        }
+
     /**
-     * 本轮（0128）第 5 条：给 YT 歌跨源借歌词。先查缓存（命中直用、
-     * 未命中标记在有效期内不重试）；未缓存才按 标题+歌手 搜网易云
-     * （源关闭时跳过）、QQ 次选，候选过 CrossSourceLyricMatch 的
-     * 严格匹配（标题归一化相等 + 歌手对上 + 时长 ±2s + 版本标签
-     * 一致）才取其歌词并写缓存。任何失败/无命中返回 null，调用方
-     * 回落 YT 纯文本歌词——借错/借不到都不冒充有逐字歌词。
+     * 借来的 payload → 目标时间轴上的逐字行（本轮 0129 行锚定）：
+     * 锚取借出方自己的行级行轴（有 lrc 用 lrc 解析；没有就用逐字
+     * 行的行骨架），借词只贡献行内相对词位（见 LineAnchoredAdapt）。
+     * 适配被拒（借出方自身 LRC 与逐字行结构对不上）时回落借出方
+     * 逐字行原样——身份已由匹配器把关，这里只是时间轴降级。
+     * YT 目标没有自己的行轴，锚只能取借出方的，这正是 spike 口径。
      */
-    private suspend fun borrowedLyricPayload(song: Song): com.tokimusic.app.data.api.LyricPayload? {
+    private fun parseBorrowedPayload(donor: com.tokimusic.app.data.api.LyricPayload): List<com.tokimusic.app.data.lyric.LyricLine> {
+        val donorLines = parseLyricPayload(donor)
+        if (donorLines.isEmpty()) return emptyList()
+        val anchors = donor.lrc?.let { YrcParser.parse(null, it, donor.tlyric, donor.romalrc) }
+            ?.takeIf { it.isNotEmpty() }
+            ?: donorLines.map { l ->
+                com.tokimusic.app.data.lyric.LyricLine(
+                    l.startMs, l.durationMs,
+                    listOf(com.tokimusic.app.data.lyric.LyricWord(l.startMs, 0, l.text)),
+                    l.translation, l.romaji,
+                )
+            }
+        return com.tokimusic.app.data.lyric.LineAnchoredAdapt.adapt(anchors, donorLines) ?: donorLines
+    }
+
+    /**
+     * 给 YT 歌跨源借歌词（0128 第 5 条；0129 换门 + QQ 升逐字）。
+     * 先查缓存（命中直用、未命中标记在有效期内不重试）；未缓存才
+     * 按 标题+歌手 搜网易云（源关闭时跳过）、QQ 次选，候选过
+     * CrossSourceLyricMatch 的新门（身份严格匹配 + 时长比粗筛
+     * 0.75–1.33）才取其歌词并写缓存，解析时经行锚定适配。任何
+     * 失败/无命中返回 null，调用方回落 YT 纯文本歌词——借错/
+     * 借不到都不冒充有逐字歌词。
+     */
+    private suspend fun borrowedLyricLines(song: Song): List<com.tokimusic.app.data.lyric.LyricLine>? {
         val videoId = song.sourceId
         if (videoId.isBlank()) return null
         when (val cached = lyricBorrowCache.get(videoId)) {
-            is com.tokimusic.app.data.LyricBorrowCache.Entry.Hit -> return cached.payload
+            is com.tokimusic.app.data.LyricBorrowCache.Entry.Hit ->
+                return parseBorrowedPayload(cached.payload).takeIf { it.isNotEmpty() }
             com.tokimusic.app.data.LyricBorrowCache.Entry.Miss -> return null
             null -> Unit
         }
         val query = "${song.name} ${song.artistText}".trim()
         if (!isSourceDisabled(MusicSource.NETEASE)) {
             val candidates = runCatching { api.search(query, 1, 10) }.getOrDefault(emptyList())
-            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestMatch(song, candidates)?.let { m ->
+            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestBorrowMatch(song, candidates)?.let { m ->
                 val payload = runCatching { api.lyric(m.id) }.getOrNull()
                 if (payload != null && (payload.yrc != null || payload.lrc != null)) {
                     lyricBorrowCache.putHit(videoId, MusicSource.NETEASE.name, payload)
-                    return payload
+                    val lines = parseBorrowedPayload(payload)
+                    if (lines.isNotEmpty()) return lines
                 }
             }
         }
         if (!isSourceDisabled(MusicSource.QQ)) {
             val candidates = runCatching { qqClient.searchSongs(query, 10) }.getOrDefault(emptyList())
-            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestMatch(song, candidates)?.let { m ->
+            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestBorrowMatch(song, candidates)?.let { m ->
                 val payload = runCatching { qqClient.lyric(m.sourceId) }.getOrNull()
-                if (payload != null && (payload.yrc != null || payload.lrc != null)) {
+                if (payload != null && (payload.qrc != null || payload.lrc != null)) {
                     lyricBorrowCache.putHit(videoId, MusicSource.QQ.name, payload)
-                    return payload
+                    val lines = parseBorrowedPayload(payload)
+                    if (lines.isNotEmpty()) return lines
                 }
             }
         }
         lyricBorrowCache.putMiss(videoId)
         return null
+    }
+
+    /** 网易云歌的歌词行：有 YRC 直接用；只有 LRC 时试借 QQ QRC。 */
+    private suspend fun neteaseLyricLines(song: Song): List<com.tokimusic.app.data.lyric.LyricLine> {
+        val p = api.lyric(song.id)
+        if (p.yrc != null || p.lrc == null) return parseLyricPayload(p)
+        return borrowedQqLinesForNetease(song, p) ?: parseLyricPayload(p)
+    }
+
+    /**
+     * 本轮（0129）：网易云无 YRC 的歌借 QQ QRC 逐字——锚是目标歌
+     * 自己的 LRC 行首（目标版本本身，可信），适配不过（覆盖率/
+     * scale 检查）整首回落目标自身行级。借词结果按 "n:<网易云id>"
+     * 进同一借词缓存（含未命中标记），不重复搜索。
+     */
+    private suspend fun borrowedQqLinesForNetease(
+        song: Song,
+        targetPayload: com.tokimusic.app.data.api.LyricPayload,
+    ): List<com.tokimusic.app.data.lyric.LyricLine>? {
+        if (isSourceDisabled(MusicSource.QQ)) return null
+        val targetLines = YrcParser.parse(null, targetPayload.lrc, targetPayload.tlyric, targetPayload.romalrc)
+        if (targetLines.isEmpty()) return null
+        val key = "n:${song.id}"
+        when (val cached = lyricBorrowCache.get(key)) {
+            is com.tokimusic.app.data.LyricBorrowCache.Entry.Hit ->
+                return com.tokimusic.app.data.lyric.LineAnchoredAdapt.adapt(targetLines, parseLyricPayload(cached.payload))
+            com.tokimusic.app.data.LyricBorrowCache.Entry.Miss -> return null
+            null -> Unit
+        }
+        val query = "${song.name} ${song.artistText}".trim()
+        val candidates = runCatching { qqClient.searchSongs(query, 10) }.getOrDefault(emptyList())
+        val match = com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestBorrowMatch(song, candidates)
+        val payload = match?.let { m -> runCatching { qqClient.lyric(m.sourceId) }.getOrNull() }
+        if (payload?.qrc == null) {
+            lyricBorrowCache.putMiss(key)
+            return null
+        }
+        lyricBorrowCache.putHit(key, MusicSource.QQ.name, payload)
+        return com.tokimusic.app.data.lyric.LineAnchoredAdapt.adapt(
+            targetLines,
+            com.tokimusic.app.data.lyric.QrcParser.parse(payload.qrc, payload.tlyric, payload.romalrc),
+        )
     }
     fun startQrLogin() {
         qrJob?.cancel()

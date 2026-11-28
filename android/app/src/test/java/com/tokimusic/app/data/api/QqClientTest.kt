@@ -238,9 +238,11 @@ class QqClientTest {
     @Test
     fun lyricCgiDecryptsLyricTransRoma() = runBlocking {
         // 0.1.15, item 5: CGI 首选，lyric/trans/roma 三个加密 hex 字段
-        // 各自解密进 lrc/tlyric/romalrc。手头只有晴天 qrc=0 这一份
-        // 真实密文，trans/roma 也用同一份密文，只为证明三字段都走了
-        // 解密 + 路由（中文歌的 trans/roma 本来就是空串）。
+        // 各自解密。手头只有晴天 qrc=0 这一份真实密文，trans/roma
+        // 也用同一份密文，只为证明三字段都走了解密 + 路由（中文歌
+        // 的 trans/roma 本来就是空串）。0129 起请求参数 qrc=1，但
+        // 本夹具解密后是明文 LRC——正好同时覆盖内容嗅探回退路径
+        // （服务端无 QRC 的歌同样走这里进 lrc）。
         val hex = javaClass.classLoader!!.getResourceAsStream("qq-lyric-qrc0-hex.txt")!!
             .bufferedReader(Charsets.UTF_8).readText().trim()
         val cgiBody = JSONObject().put("code", 0).put(
@@ -256,6 +258,7 @@ class QqClientTest {
         assertEquals(1388, payload.lrc!!.length)
         assertEquals(payload.lrc, payload.tlyric)
         assertEquals(payload.lrc, payload.romalrc)
+        assertNull(payload.qrc)
         assertEquals(1, server.requestCount) // CGI 命中，不走网页回退
         val req = server.takeRequest()
         assertTrue(req.path!!.startsWith("/cgi-bin/musicu.fcg"))
@@ -264,11 +267,35 @@ class QqClientTest {
         assertEquals("GetPlayLyricInfo", req0.getString("method"))
         val param = req0.getJSONObject("param")
         assertEquals(1, param.getInt("crypt"))
-        assertEquals(0, param.getInt("qrc"))
+        assertEquals(1, param.getInt("qrc"))
         assertEquals(1, param.getInt("roma"))
         assertEquals(1, param.getInt("trans"))
         assertEquals(1, param.getInt("type"))
         assertEquals("0039MnYb0qxYhV", param.getString("songMid"))
+    }
+
+    @Test
+    fun lyricCgiQrc1LandsInQrcField() = runBlocking {
+        // 本轮（0129）：qrc=1 的真实密文（晴天 QRC）解密后是 QRC
+        // XML，按嗅探进 payload.qrc、lrc 保持 null；trans/roma 同
+        // 密文只为证明三字段各自解密、roma 原样透传 XML。
+        val hex = javaClass.classLoader!!.getResourceAsStream("qq-lyric-qrc1-hex.txt")!!
+            .bufferedReader(Charsets.UTF_8).readText().trim()
+        val cgiBody = JSONObject().put("code", 0).put(
+            "req_0",
+            JSONObject().put("code", 0).put(
+                "data",
+                JSONObject().put("lyric", hex).put("trans", hex).put("roma", hex),
+            ),
+        ).toString()
+        server.enqueue(json(cgiBody))
+        val payload = client.lyric("0039MnYb0qxYhV")
+        assertNull(payload.lrc)
+        assertTrue(payload.qrc!!.startsWith("<?xml"))
+        assertTrue(payload.qrc!!.contains("LyricContent"))
+        assertEquals(payload.qrc, payload.tlyric)
+        assertEquals(payload.qrc, payload.romalrc)
+        assertEquals(1, server.requestCount)
     }
 
     @Test
