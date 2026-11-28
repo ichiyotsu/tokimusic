@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.player.nextModeAfterSingleButtonTap
@@ -145,8 +147,10 @@ fun ArtistScreen(
         }
     }
     val a = artist
+    // 0127 第 9 条：LaunchedEffect 不是组合作用域，兜底标题先在这里解析。
+    val artistFallbackTitle = stringResource(R.string.artist_title)
     LaunchedEffect(a?.name) {
-        onTitle(a?.name ?: "歌手")
+        onTitle(a?.name ?: artistFallbackTitle)
         // 本轮（0124）第 13 项：歌手页浏览记入口味训练信号。
         a?.name?.takeIf { it.isNotBlank() }?.let { vm.recordArtistView(it) }
     }
@@ -169,9 +173,9 @@ fun ArtistScreen(
         // 0.1.21：迁统一弹窗 TokiDialog（确认钮走危险色）。
         TokiDialog(
             icon = Icons.Rounded.PersonRemove,
-            title = "取消关注${a.name}？",
+            title = stringResource(R.string.artist_unfollow_confirm, a.name),
             onDismiss = { showUnfollowConfirm = false },
-            confirmText = "取消关注",
+            confirmText = stringResource(R.string.artist_unfollow),
             onConfirm = { showUnfollowConfirm = false; vm.toggleFollowArtist(artistId) },
             confirmDestructive = true,
         )
@@ -216,24 +220,24 @@ fun ArtistScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("歌手加载失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
+                Text(stringResource(R.string.artist_load_failed), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.common_check_network_retry), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text(stringResource(R.string.common_retry)) }
             }
         },
         titleBlock = {
-            DetailTitle(a?.name ?: "加载中…", coverColors.onCoverText())
+            DetailTitle(a?.name ?: stringResource(R.string.common_loading), coverColors.onCoverText())
             val counts = a?.let {
                 listOf(
-                    if (it.musicSize > 0) "${it.musicSize} 首歌曲" else "",
-                    if (it.albumSize > 0) "${it.albumSize} 张专辑" else "",
+                    if (it.musicSize > 0) stringResource(R.string.artist_song_count, it.musicSize) else "",
+                    if (it.albumSize > 0) stringResource(R.string.artist_album_count, it.albumSize) else "",
                     // 0.1.18 第 21 项 a：已关注（仅网易云；QQ 无关注接口）
                     // 时在统计行末尾加"已关注 X 天"——天数按本地记录的
                     // 关注时间算（服务端 sublist 没有关注时间字段，见
                     // SettingsStore.artistFollowTimeMs 的注释）。
                     if (isFollowed && !isQq) {
                         val followMs = vm.artistFollowTimeMs(it.id)
-                        if (followMs > 0L) "已关注 ${followDays(followMs, System.currentTimeMillis())} 天" else ""
+                        if (followMs > 0L) stringResource(R.string.artist_followed_days, followDays(followMs, System.currentTimeMillis())) else ""
                     } else "",
                 ).filter { s -> s.isNotBlank() }.joinToString(" · ")
             } ?: ""
@@ -260,7 +264,7 @@ fun ArtistScreen(
                     if (overflow) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            if (expanded) "收起" else "展开",
+                            if (expanded) stringResource(R.string.artist_collapse) else stringResource(R.string.artist_expand),
                             style = MaterialTheme.typography.bodySmall,
                             color = coverColors.onCoverTextDim(),
                         )
@@ -292,7 +296,7 @@ fun ArtistScreen(
                     Spacer(Modifier.width(16.dp))
                 }
                 Text(
-                    "${allSongs.size} 首 · ${formatTotalDurationMs(totalMs)}",
+                    stringResource(R.string.playlist_count_duration, allSongs.size, formatTotalDurationMs(totalMs)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = coverColors.onCoverTextDim(),
                     maxLines = 1,
@@ -307,13 +311,13 @@ fun ArtistScreen(
                     SectionPill(
                         // QQ 歌手没有网易云听歌榜交集（x 恒为 0），
                         // 只显示全部歌曲数（0.1.15 第 2 项）。
-                        text = if (isQq) "歌曲 $totalCount" else "歌曲 $listenedCount/$totalCount",
+                        text = if (isQq) stringResource(R.string.artist_songs_total, totalCount) else stringResource(R.string.artist_songs_listened, listenedCount, totalCount),
                         selected = section == ArtistSection.Songs,
                         coverColors = coverColors,
                         onClick = { section = ArtistSection.Songs },
                     )
                     SectionPill(
-                        text = "专辑",
+                        text = stringResource(R.string.artist_albums_tab),
                         selected = section == ArtistSection.Albums,
                         coverColors = coverColors,
                         onClick = { section = ArtistSection.Albums },
@@ -338,7 +342,7 @@ fun ArtistScreen(
                 if (a != null && songsLoaded && allSongs.isEmpty()) {
                     item {
                         Text(
-                            "暂无歌曲",
+                            stringResource(R.string.common_no_songs),
                             Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = coverColors.onCoverTextDim(),
@@ -369,7 +373,7 @@ fun ArtistScreen(
                 // 空白、无任何提示，补一行空态文案。
                 item {
                     Text(
-                        "暂无专辑",
+                        stringResource(R.string.artist_no_albums),
                         Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = coverColors.onCoverTextDim(),
@@ -409,7 +413,7 @@ private fun AlbumCard(album: Album, textColor: Color, dimColor: Color, onClick: 
         )
         Spacer(Modifier.height(8.dp))
         Text(album.name, style = MaterialTheme.typography.bodyMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(album.name), color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        val albumCardSubtitle = if (album.trackCount > 0) "${album.trackCount} 首" else album.artistText
+        val albumCardSubtitle = if (album.trackCount > 0) stringResource(R.string.common_song_count, album.trackCount) else album.artistText
         Text(
             albumCardSubtitle,
             style = MaterialTheme.typography.bodySmall,

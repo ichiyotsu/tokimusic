@@ -199,16 +199,19 @@ fun TokiMusicApp(
     ) {
         var dest by remember { mutableStateOf(Dest.Home) }
         var playlistId by remember { mutableStateOf<Long?>(null) }
-        var playlistTitle by remember { mutableStateOf("歌单") }
+        val defaultPlaylistTitle = stringResource(R.string.app_playlist)
+        var playlistTitle by remember { mutableStateOf(defaultPlaylistTitle) }
         // Round 3 item 12: artist + album detail pages (same level as
         // playlistId). Stacking: opening an artist from a playlist keeps
         // the playlist underneath (back returns to it); opening an album
         // from an artist keeps the artist underneath. The pageKey/onBack
         // priority is album > artist > playlist > search > stats > section.
         var artistId by remember { mutableStateOf<Long?>(null) }
-        var artistTitle by remember { mutableStateOf("歌手") }
+        val defaultArtistTitle = stringResource(R.string.app_artist)
+        var artistTitle by remember { mutableStateOf(defaultArtistTitle) }
         var albumId by remember { mutableStateOf<Long?>(null) }
-        var albumTitle by remember { mutableStateOf("专辑") }
+        val defaultAlbumTitle = stringResource(R.string.app_album)
+        var albumTitle by remember { mutableStateOf(defaultAlbumTitle) }
         // 0.1.15 第 2 项：QQ 歌手 / 专辑页按 mid 路由（与网易云
         // 的 Long id 不是同一空间，另起两个导航状态；QQ 歌手与
         // 网易云歌手互斥——打开一个时清掉另一个，下同专辑）。
@@ -227,9 +230,11 @@ fun TokiMusicApp(
         var statsNoteVisible by remember { mutableStateOf(false) }
         LaunchedEffect(statsOpen) { if (!statsOpen) statsNoteVisible = false }
         // Round 3 item 20: Home's floating title follows the scrolled section.
-        var homeSectionTitle by remember { mutableStateOf("主页") }
+        val defaultHomeSectionTitle = stringResource(R.string.home_title)
+        var homeSectionTitle by remember { mutableStateOf(defaultHomeSectionTitle) }
         // 0.1.20 第 4 项：资料库的悬浮标题同款跟随（最近添加 / 听歌排行）。
-        var libraryTitle by remember { mutableStateOf("资料库") }
+        val defaultLibraryTitle = stringResource(R.string.library_title)
+        var libraryTitle by remember { mutableStateOf(defaultLibraryTitle) }
         // 第六轮第 29 项：播放器页开关可保存——进程重建 / 从通知点进后仍回到
         // 播放器页；歌词视图与沉浸态在 PlayerScreen 里同样可保存。
         var showPlayer by rememberSaveable { mutableStateOf(openPlayerInitially) }
@@ -337,16 +342,16 @@ fun TokiMusicApp(
                 if (showPlayer) (playerSong != null && playerCoverColors.isLight()) else theme.lightMode
         }
         val pageTitle = when {
-            showPlayer -> "正在播放"
+            showPlayer -> stringResource(R.string.app_now_playing)
             albumId != null -> albumTitle
             qqAlbumMid != null -> albumTitle
             artistId != null -> artistTitle
             qqArtistMid != null -> artistTitle
             playlistId != null -> playlistTitle
-            statsOpen -> "听歌时长"
-            levelOpen -> "音乐等级"
-            neteaseReportOpen -> "收听报告"
-            librarySection != null -> librarySection!!.title
+            statsOpen -> stringResource(R.string.app_listening_time)
+            levelOpen -> stringResource(R.string.app_music_level)
+            neteaseReportOpen -> stringResource(R.string.app_listen_report)
+            librarySection != null -> stringResource(librarySection!!.titleRes)
             dest == Dest.Home -> homeSectionTitle
             // 0.1.20 第 4 项：资料库一级页的悬浮标题跟随页内分区滚动。
             dest == Dest.Library -> libraryTitle
@@ -536,7 +541,7 @@ fun TokiMusicApp(
                                                 // 磨砂圆钮（TokiGlassIconButton）。
                                                 TokiGlassIconButton(
                                                     icon = Icons.Rounded.PriorityHigh,
-                                                    label = "查看 NeteaseMusic 统计估算",
+                                                    label = stringResource(R.string.app_view_netease_estimate),
                                                                     hazeState = hazeState,
                                                     onClick = { statsNoteVisible = !statsNoteVisible },
                                                 )
@@ -550,7 +555,7 @@ fun TokiMusicApp(
                                                 val (isFav, toggleFav) = playlistFavAction!!
                                                 TokiGlassIconButton(
                                                     icon = if (isFav) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                                                    label = if (isFav) "取消收藏" else "收藏歌单",
+                                                    label = if (isFav) stringResource(R.string.app_unfavorite_playlist) else stringResource(R.string.app_favorite_playlist),
                                                                     hazeState = hazeState,
                                                     onClick = toggleFav,
                                                 )
@@ -564,7 +569,7 @@ fun TokiMusicApp(
                                                 val (isFollowed, toggleFollow) = artistFollowAction!!
                                                 TokiGlassIconButton(
                                                     icon = if (isFollowed) Icons.Rounded.Check else Icons.Rounded.PersonAdd,
-                                                    label = if (isFollowed) "取消关注" else "关注",
+                                                    label = if (isFollowed) stringResource(R.string.app_unfollow) else stringResource(R.string.app_follow),
                                                                     hazeState = hazeState,
                                                     onClick = toggleFollow,
                                                 )
@@ -649,7 +654,7 @@ fun TokiMusicApp(
                                         playlistId == null && artistId == null && albumId == null && librarySection == null && !statsOpen && !neteaseReportOpen -> {
                                             {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TokiLongPressLabel(if (profile == null) "登录" else "我的") {
+                                                    TokiLongPressLabel(if (profile == null) stringResource(R.string.app_login) else stringResource(R.string.settings_my)) {
                                                         IconButton(onClick = { showSettings = true }) {
                                                             Avatar(customAvatarPath.ifBlank { profile?.avatarUrl ?: "" }, 48)
                                                         }

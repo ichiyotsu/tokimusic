@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.components.TokiSheetContainer
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 
 /**
  * 第五轮第 15 项：更新完首次启动的优化二次确认（底部弹窗）。
@@ -33,37 +35,37 @@ fun OptimizeSheet(
 ) {
     TokiSheetContainer(onDismiss = onDecline) {
         if (result == null) {
-            Text("优化软件", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.optimize_title), style = MaterialTheme.typography.headlineSmall)
             Text(
-                "检测到已更新到新版本，是否现在优化？将清理上个版本的旧安装包与播放、图片等缓存（已下载歌曲、歌单与歌词不受影响）",
+                stringResource(R.string.optimize_prompt),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                OptimizeRow("缓存占用", AppOptimizer.formatBytes(snapshot.cacheTotalBytes))
-                OptimizeRow("其中旧安装包", AppOptimizer.formatBytes(snapshot.staleUpdateApkBytes))
-                OptimizeRow("其中播放等缓存", AppOptimizer.formatBytes(snapshot.otherCacheBytes))
-                OptimizeRow("预计可清理", AppOptimizer.formatBytes(snapshot.estimatedCleanBytes))
+                OptimizeRow(stringResource(R.string.optimize_cache_size), AppOptimizer.formatBytes(snapshot.cacheTotalBytes))
+                OptimizeRow(stringResource(R.string.optimize_old_package), AppOptimizer.formatBytes(snapshot.staleUpdateApkBytes))
+                OptimizeRow(stringResource(R.string.optimize_play_cache), AppOptimizer.formatBytes(snapshot.otherCacheBytes))
+                OptimizeRow(stringResource(R.string.optimize_estimated), AppOptimizer.formatBytes(snapshot.estimatedCleanBytes))
             }
             Button(
                 onClick = onConfirm,
                 enabled = !cleaning,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
-                Text(if (cleaning) "正在优化…" else "立即优化")
+                Text(if (cleaning) stringResource(R.string.optimize_running) else stringResource(R.string.optimize_now))
             }
             TextButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                Text("暂不优化")
+                Text(stringResource(R.string.optimize_skip))
             }
         } else {
-            Text("优化完成", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.optimize_done), style = MaterialTheme.typography.headlineSmall)
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                OptimizeRow("已清理", AppOptimizer.formatBytes(result.cleanedBytes))
-                OptimizeRow("优化前缓存", AppOptimizer.formatBytes(result.before.cacheTotalBytes))
-                OptimizeRow("优化后缓存", AppOptimizer.formatBytes(result.cacheTotalAfterBytes))
+                OptimizeRow(stringResource(R.string.optimize_cleaned), AppOptimizer.formatBytes(result.cleanedBytes))
+                OptimizeRow(stringResource(R.string.optimize_cache_before), AppOptimizer.formatBytes(result.before.cacheTotalBytes))
+                OptimizeRow(stringResource(R.string.optimize_cache_after), AppOptimizer.formatBytes(result.cacheTotalAfterBytes))
             }
             Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                Text("知道了")
+                Text(stringResource(R.string.optimize_ok))
             }
         }
     }

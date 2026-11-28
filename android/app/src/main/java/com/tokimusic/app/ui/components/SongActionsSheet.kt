@@ -39,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Playlist
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.theme.TokiPlayKey
 import com.tokimusic.app.ui.theme.TokiPlayKeyIcon
@@ -89,16 +91,16 @@ fun SongActionsSheet(
             SongActionsStep.Actions -> {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SongActionButton(
-                        label = if (liked) "已收藏" else "收藏",
+                        label = if (liked) stringResource(R.string.sheet_favorited) else stringResource(R.string.sheet_favorite),
                         icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         tint = if (liked) MaterialTheme.colorScheme.primary else TokiPlayKeyIcon,
                         onClick = onToggleLike,
                     )
-                    SongActionButton(label = "关于", icon = Icons.Rounded.Info, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.About })
-                    SongActionButton(label = "添加", icon = Icons.Rounded.PlaylistAdd, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.Add })
+                    SongActionButton(label = stringResource(R.string.sheet_about), icon = Icons.Rounded.Info, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.About })
+                    SongActionButton(label = stringResource(R.string.sheet_add), icon = Icons.Rounded.PlaylistAdd, tint = TokiPlayKeyIcon, onClick = { step = SongActionsStep.Add })
                     if (context.isOwnPlaylist) {
                         SongActionButton(
-                            label = "删除",
+                            label = stringResource(R.string.sheet_delete),
                             icon = Icons.Rounded.Delete,
                             tint = MaterialTheme.colorScheme.error,
                             onClick = onRemoveFromPlaylist,
@@ -107,10 +109,10 @@ fun SongActionsSheet(
                 }
             }
             SongActionsStep.Add -> {
-                SongActionsSubHeader(title = "添加到歌单", onBack = { step = SongActionsStep.Actions })
+                SongActionsSubHeader(title = stringResource(R.string.sheet_add_to_playlist), onBack = { step = SongActionsStep.Actions })
                 if (myPlaylists.isEmpty()) {
                     Text(
-                        "还没有自己创建的歌单",
+                        stringResource(R.string.sheet_no_created_playlists),
                         Modifier.padding(vertical = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -125,18 +127,18 @@ fun SongActionsSheet(
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(pl.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(pl.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${pl.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.common_song_count, pl.trackCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
             }
             SongActionsStep.About -> {
-                SongActionsSubHeader(title = "关于", onBack = { step = SongActionsStep.Actions })
-                SongInfoRow("歌名", song.name)
-                SongInfoRow("歌手", song.artists.joinToString(" / ") { it.name }.ifBlank { "—" })
-                SongInfoRow("专辑", song.albumName.ifBlank { "—" })
-                SongInfoRow("时长", if (song.durationMs > 0) formatDuration(song.durationMs) else "—")
+                SongActionsSubHeader(title = stringResource(R.string.sheet_about), onBack = { step = SongActionsStep.Actions })
+                SongInfoRow(stringResource(R.string.sheet_field_title), song.name)
+                SongInfoRow(stringResource(R.string.sheet_field_artist), song.artists.joinToString(" / ") { it.name }.ifBlank { "—" })
+                SongInfoRow(stringResource(R.string.sheet_field_album), song.albumName.ifBlank { "—" })
+                SongInfoRow(stringResource(R.string.sheet_field_duration), if (song.durationMs > 0) formatDuration(song.durationMs) else "—")
             }
         }
     }
@@ -161,7 +163,7 @@ private fun SongActionButton(label: String, icon: ImageVector, tint: androidx.co
 private fun SongActionsSubHeader(title: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, Modifier.size(40.dp)) {
-            Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回")
+            Icon(Icons.Rounded.ChevronLeft, contentDescription = stringResource(R.string.common_back))
         }
         Text(title, style = MaterialTheme.typography.titleMedium)
     }

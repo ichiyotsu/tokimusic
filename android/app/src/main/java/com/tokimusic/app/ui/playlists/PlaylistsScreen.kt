@@ -17,6 +17,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.tokimusic.app.data.model.*
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.playlistFavoriteKey
 import com.tokimusic.app.player.DetailPlayButtonState
 import com.tokimusic.app.player.detailPlayButtonState
@@ -102,6 +104,9 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
     // 第 6 项：加歌 / 删歌成功后 AppViewModel  bump playlistVersion，这里重新拉取。
     val playlistVersion by vm.playlistVersion.collectAsState()
     val profile by vm.profile.collectAsState()
+    // 0127 第 9 条：虚拟歌单名在组合作用域先解析（LaunchedEffect 里不能调 stringResource）。
+    val dailyLabel = stringResource(R.string.playlist_daily)
+    val radarLabel = stringResource(R.string.playlist_radar)
     LaunchedEffect(playlistId, reloadKey, playlistVersion) {
         loadError = false
         // 第三轮第 4 项：虚拟歌单（每日推荐 -1 / 私人雷达 -2）不调用任何
@@ -120,8 +125,8 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 // 网易云 -1/-2 仍叫每日推荐 / 私人雷达。
                 -3L -> "Daily 30"
                 -4L -> "For You"
-                -1L -> "每日推荐"
-                else -> "私人雷达"
+                -1L -> dailyLabel
+                else -> radarLabel
             }
             val isQq = playlistId == -3L || playlistId == -4L
             detail = Playlist(
@@ -136,7 +141,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
             detail = runCatching { vm.playlistDetail(playlistId) }.onFailure { loadError = true }.getOrNull()
         }
     }
-    val (pl, tracks) = detail ?: (Playlist(playlistId, "加载中…") to emptyList())
+    val (pl, tracks) = detail ?: (Playlist(playlistId, stringResource(R.string.common_loading)) to emptyList())
     // 0.1.21 播放门控的展示侧：源开关 / 本地登记变化时重算每首的
     // 不可播标注；可播子集保持原序（播放全部 / 点播都只走子集，
     // 被挡的歌不进队列，也不会在队列里触发联网取址）。
@@ -207,9 +212,9 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("歌单加载失败", style = MaterialTheme.typography.titleMedium)
-                Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
+                Text(stringResource(R.string.playlist_load_failed), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.common_check_network_retry), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text(stringResource(R.string.common_retry)) }
             }
         },
         titleBlock = { titleFraction ->
@@ -252,7 +257,7 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
             }
             // 曲目统计移到控制行下方做描述行（参考图同款位置）。
             Text(
-                "$count 首 · ${formatTotalDurationMs(totalMs)}",
+                stringResource(R.string.playlist_count_duration, count, formatTotalDurationMs(totalMs)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = coverColors.onCoverTextDimAt(titleFraction),
                 maxLines = 1,
@@ -315,10 +320,10 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when {
-                            progress != null -> "下载中 ${progress.done}/${progress.total}"
-                            state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED -> "已下载 $have 首"
-                            state == com.tokimusic.app.data.local.PlaylistDownloadState.PARTIAL -> "已下载 $have/${entry?.trackUris?.size ?: 0} 首 · 继续下载"
-                            else -> "下载歌单"
+                            progress != null -> stringResource(R.string.playlist_downloading, progress.done, progress.total)
+                            state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED -> stringResource(R.string.playlist_downloaded, have)
+                            state == com.tokimusic.app.data.local.PlaylistDownloadState.PARTIAL -> stringResource(R.string.playlist_downloaded_continue, have, entry?.trackUris?.size ?: 0)
+                            else -> stringResource(R.string.playlist_download)
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = coverColors.onCoverTextAt(titleFraction),
@@ -332,9 +337,9 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                 item {
                     Text(
                         when {
-                            playlistId == LOCAL_NETEASE_PLAYLIST_ID || playlistId == LOCAL_QQ_PLAYLIST_ID || playlistId == LOCAL_DOWNLOAD_PLAYLIST_ID -> "暂无导入歌曲"
-                            vm.isSourceDisabled(pl.source) -> "暂无本地缓存曲目"
-                            else -> "暂无歌曲"
+                            playlistId == LOCAL_NETEASE_PLAYLIST_ID || playlistId == LOCAL_QQ_PLAYLIST_ID || playlistId == LOCAL_DOWNLOAD_PLAYLIST_ID -> stringResource(R.string.playlist_no_imported)
+                            vm.isSourceDisabled(pl.source) -> stringResource(R.string.playlist_no_cached)
+                            else -> stringResource(R.string.common_no_songs)
                         },
                         Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,

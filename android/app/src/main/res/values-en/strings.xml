@@ -1,0 +1,547 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TokiMusic</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_search">Search</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_back">Back</string>
+    <string name="common_play">Play</string>
+    <string name="common_pause">Pause</string>
+    <string name="common_play_all">Play all</string>
+    <string name="common_no_songs">No songs yet</string>
+    <string name="common_check_network_retry">Check your network connection and try again</string>
+    <string name="common_login_to_view">Log in to view</string>
+    <string name="common_song_count">%1$d songs</string>
+    <string name="common_song_count_with">%1$d songs · %2$s</string>
+    <string name="login_expired_qr">Login expired. Please scan the QR code to log in again</string>
+    <string name="network_error">Network error</string>
+
+    <!-- Settings framework -->
+    <string name="settings_my">My</string>
+    <string name="settings_close">Close</string>
+    <string name="settings_general">General</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_design">Design</string>
+    <string name="settings_audio">Audio</string>
+    <string name="settings_lyrics">Lyrics</string>
+    <string name="settings_achievements">Achievements</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_avatar_changed">Avatar changed</string>
+    <string name="settings_avatar_change_failed">Failed to change avatar</string>
+    <string name="settings_change_avatar">Change avatar</string>
+    <string name="settings_not_logged_in">Not logged in</string>
+    <string name="settings_login_hint_qr">Tap the button below to log in to NeteaseMusic by QR code</string>
+    <string name="settings_collapse">Collapse</string>
+    <string name="settings_edit">Edit</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_qr_login">QR code login</string>
+    <string name="settings_logged_in">Logged in</string>
+    <string name="settings_no_login_needed">No login needed</string>
+    <string name="settings_logout">Log out</string>
+    <string name="settings_login">Log in</string>
+
+    <!-- Settings · Achievements -->
+    <string name="settings_companion_toki_title">Time with TokiMusic</string>
+    <string name="settings_companion_toki_desc">Days counted from your first login in TokiMusic.</string>
+    <string name="settings_companion_netease_title">Time with NeteaseMusic</string>
+    <string name="settings_companion_netease_desc">Days since you registered on NeteaseMusic, as returned by NeteaseMusic.</string>
+    <string name="settings_joined_days">Joined %1$d days ago</string>
+    <string name="settings_joined_days_unknown">Joined — days ago</string>
+    <string name="settings_achieved">Achieved</string>
+    <string name="settings_achieved_days_unknown">Achieved (days unknown)</string>
+    <string name="settings_join_days">Days joined</string>
+    <string name="settings_join_days_login_hint">Log in to see your days joined</string>
+    <string name="settings_achievement_progress">Progress: %1$s</string>
+    <string name="settings_achievement_status">Status: %1$s</string>
+    <string name="settings_more_achievements">More achievements coming soon</string>
+
+    <!-- Settings · General -->
+    <string name="settings_live_updates">Live notification</string>
+    <string name="settings_live_updates_desc">Shows the system media player in the notification shade, lock screen and quick settings while playing, with direct playback controls. When off, no notification is shown and background playback may be stopped by the system. Requires notification permission.</string>
+    <string name="settings_scrobble">Report listening history</string>
+    <string name="settings_scrobble_desc">When on, songs you play from NeteaseMusic are synced to your NeteaseMusic listening history. Only NeteaseMusic songs are reported, and NeteaseMusic login is required.</string>
+    <string name="settings_algo_unavailable">Algorithmic recommendations unavailable</string>
+    <string name="settings_algo">Algorithmic recommendations</string>
+    <string name="settings_algo_desc">When off, recommended playlists and new songs follow the selected source\'s default content and order. When on, they are reordered to your taste. Play records are always kept only on this device (never uploaded) for your taste profile and retrospective playlists; profile data lives in internal storage, survives updates, and is compacted into monthly summaries regularly so it does not grow without limit.</string>
+    <string name="settings_check_update_on_start">Check for updates on launch</string>
+    <string name="settings_check_update_on_start_desc">Checks for a new version once each time you open the app. When off, checks happen only manually in Settings.</string>
+    <string name="settings_update_latest">You are on the latest version</string>
+    <string name="settings_update_check_failed">Check failed. Please try again later</string>
+    <string name="settings_check_update">Check for updates</string>
+    <string name="settings_current_version">Current version %1$s</string>
+    <string name="settings_about">About TokiMusic</string>
+    <string name="settings_about_version">Version %1$s · TokiUI %2$s</string>
+    <string name="settings_no_crash_log">No crash logs</string>
+    <string name="settings_export_crash_log">Export crash logs</string>
+    <string name="settings_crash_count">%1$d crash records saved</string>
+    <string name="settings_no_crash_records">No crash records</string>
+
+    <!-- Settings · Design -->
+    <string name="settings_light_mode">Light mode</string>
+    <string name="settings_reduce_motion">Reduce motion</string>
+    <string name="settings_language">Language</string>
+
+    <!-- Settings · Audio -->
+    <string name="settings_quality_standard">Standard</string>
+    <string name="settings_quality_higher">Higher</string>
+    <string name="settings_quality_exhigh">Extreme</string>
+    <string name="settings_quality_lossless">Lossless</string>
+    <string name="settings_play_quality">Playback quality</string>
+    <string name="settings_quality_lossless_note">Lossless requires the song itself to offer a lossless version; otherwise a lower quality is used automatically. Changes take effect from the next song.</string>
+    <string name="settings_spatial_audio">Spatial audio</string>
+    <string name="settings_spatial_audio_note">Applies system-level spatialization to stereo content, from the next song. Requires device support for spatial audio; no effect on unsupported devices.</string>
+
+    <!-- Settings · Storage -->
+    <string name="settings_storage_total">Total usage</string>
+    <string name="settings_computing">Calculating…</string>
+    <string name="settings_cache">Cache</string>
+    <string name="settings_clear_cache">Clear cache</string>
+    <string name="settings_storage_bucket">%1$d songs · %2$s</string>
+    <string name="settings_storage_note">Total usage includes the app itself and all internal data. The three buckets are tallied from actual file sizes of imported entries; files that cannot be measured count as 0. Clearing the cache only deletes the cache directories and does not affect imported songs or play records.</string>
+
+    <!-- Settings · Lyrics -->
+    <string name="settings_lyric_translation">Show translation</string>
+    <string name="settings_lyric_romaji">Show romaji</string>
+    <string name="settings_live_lyrics">Live lyrics</string>
+    <string name="settings_live_lyrics_desc">When on, the notification title shows the lyric line currently being sung while playing; the song title is shown when there are no lyrics. Requires Live notification to be on first.</string>
+    <string name="settings_floating_lyrics">Floating lyrics</string>
+    <string name="settings_floating_no_permission">Overlay permission not granted; floating lyrics cannot be turned on</string>
+    <string name="settings_floating_color">Color</string>
+    <string name="settings_color_white">White</string>
+    <string name="settings_color_black">Black</string>
+    <string name="settings_floating_size">Size</string>
+    <string name="settings_floating_position_hint">Position: drag in the preview below; the lyrics stay where you release (the floating window itself cannot be dragged)</string>
+    <string name="settings_floating_preview">Floating lyrics preview</string>
+
+    <!-- Settings · QR login -->
+    <string name="settings_login_success">Logged in</string>
+    <string name="settings_qr_login_netease">Log in to NeteaseMusic by QR code</string>
+    <string name="settings_qr_code">Login QR code</string>
+    <string name="settings_qr_generating">Generating QR code…</string>
+    <string name="settings_qr_regenerate">Regenerate</string>
+    <string name="settings_qr_waiting">Waiting for scan</string>
+    <string name="settings_qr_scanned">Scanned. Please confirm on your phone</string>
+    <string name="settings_qr_expired_regenerating">QR code expired. Regenerating…</string>
+    <string name="settings_qr_use_app">Scan with the NeteaseMusic app</string>
+
+    <!-- Settings · Source toggles / logout confirm -->
+    <string name="settings_enable_source_title">Enable %1$s?</string>
+    <string name="settings_enable_source_desc">Home, Library and Search will show content from %1$s.</string>
+    <string name="settings_disable_source_title">Disable %1$s?</string>
+    <string name="settings_disable_source_desc">Content from this source will no longer be shown. Local playback is unaffected.</string>
+    <string name="settings_logout_source_title">Log out of %1$s?</string>
+    <string name="settings_logout_source_desc">Playlists and favorites from this source will no longer be shown. Local playback is unaffected.</string>
+
+    <!-- Settings · QQ SMS login -->
+    <string name="settings_qq_login_success">QQ login succeeded</string>
+    <string name="settings_qq_sms_login">Phone SMS login</string>
+    <string name="settings_phone">Phone number</string>
+    <string name="settings_phone_hint">11-digit phone number</string>
+    <string name="settings_sms_code">Verification code</string>
+    <string name="settings_sms_resend_after">Resend in %1$ds</string>
+    <string name="settings_sms_resend">Resend</string>
+    <string name="settings_sms_send">Send code</string>
+    <string name="settings_sms_phone_note">The phone number must be the one bound to your QQMusic account.</string>
+    <string name="settings_captcha">Human verification</string>
+    <string name="settings_captcha_hint">Complete the verification below, then come back and send the code again.</string>
+
+    <!-- Account (Google binding / Drive sync) -->
+    <string name="account_google">Google account</string>
+    <string name="account_not_configured">Not configured: create an OAuth client in Google Cloud Console and fill in the client ID before binding.</string>
+    <string name="account_google_unavailable">Google sign-in unavailable: %1$s</string>
+    <string name="account_bind_desc">After binding, sync your settings, level and playlist structure to your own Google Drive.</string>
+    <string name="account_binding">Binding…</string>
+    <string name="account_bind_google">Bind Google</string>
+    <string name="account_unbind">Unbind</string>
+    <string name="account_drive_sync">Drive sync</string>
+    <string name="account_bind_first">Please bind a Google account first.</string>
+    <string name="account_drive_scope_note">Sync requires access to your Drive app-specific folder (drive.appdata).</string>
+    <string name="account_authorize_drive">Authorize Drive sync</string>
+    <string name="account_status">Status: %1$s</string>
+    <string name="account_not_synced_yet">Not synced yet</string>
+    <string name="account_last_sync">Last sync: %1$s</string>
+    <string name="account_sync_now">Sync now</string>
+    <string name="account_auto_sync">Auto sync</string>
+    <string name="account_auto_sync_desc">Syncs automatically when your level or settings change (silent on failure)</string>
+    <string name="account_sync_data_note">Sync data is stored in your own Google Drive app-specific folder (tokimusic-sync.json). It includes settings preferences, music level, taste records, downloaded playlist structure and liked-song identities. It contains no audio files and no login credentials. Delete that file to clear the cloud sync data.</string>
+    <string name="account_unbind_title">Unbind Google account?</string>
+    <string name="account_unbind_desc">Drive sync will stop. Data already synced to Drive will not be deleted, and local app data is unaffected.</string>
+
+    <!-- Home -->
+    <string name="home_title">Home</string>
+    <string name="home_recommend_playlists">Recommended playlists</string>
+    <string name="home_recommend_songs">Recommended new songs</string>
+    <string name="home_daily">Daily recommendations</string>
+    <string name="home_radar">Private radar</string>
+    <string name="home_retrospective">Retrospective</string>
+    <string name="home_memory">Music Memory</string>
+    <string name="home_memory_empty_title">OCT\'26 Music Memory</string>
+    <string name="home_no_play_records">No play records yet</string>
+    <string name="home_connect_failed_netease">Cannot connect to NeteaseMusic</string>
+    <string name="home_go_login">Log in</string>
+    <string name="home_login_to_view">Log in to view</string>
+    <string name="home_local_music">Local music</string>
+    <string name="home_local_both_sources_off">Both sources are off; showing local music only</string>
+    <string name="home_local_grant">Allow access to local music</string>
+    <string name="home_local_empty">No local songs yet</string>
+    <string name="home_local_rescan">Rescan</string>
+    <string name="home_device_song_count">%1$d songs · Device</string>
+    <string name="home_memory_creator_count">%1$d songs · TokiMusic</string>
+    <string name="home_artist_separator">, </string>
+    <string name="home_more_artists_suffix">, etc.</string>
+
+    <!-- Library -->
+    <string name="library_title">Library</string>
+    <string name="library_liked">Liked</string>
+    <string name="library_playlists">Playlists</string>
+    <string name="library_artists">Artists</string>
+    <string name="library_albums">Albums</string>
+    <string name="library_songs">Songs</string>
+    <string name="library_local">Local</string>
+    <string name="library_ranking">Top played</string>
+    <string name="library_recently_added">Recently added</string>
+    <string name="library_followed_days">Followed for %1$d days</string>
+    <string name="library_liked_count">%1$d songs</string>
+    <string name="library_playlist_count">%1$d playlists</string>
+    <string name="library_my_artists">Artists I follow</string>
+    <string name="library_my_albums">Albums I saved</string>
+    <string name="library_recent_count">%1$d recently played</string>
+    <string name="library_local_desc">Reads local files from NeteaseMusic / QQMusic and Device</string>
+    <string name="library_local_imported">%1$d imported</string>
+    <string name="library_play_count">%1$d plays</string>
+    <string name="library_no_liked">No liked songs yet. Tap the star in the player to like a song</string>
+    <string name="library_no_playlists">No playlists yet</string>
+    <string name="library_no_artists">No followed artists yet</string>
+    <string name="library_no_albums">No saved albums yet</string>
+    <string name="library_no_recent">No songs played yet</string>
+    <string name="library_local_permission_denied">Local music permission not granted; cannot read files. You will be asked again next time you tap a source.</string>
+    <string name="library_download_dir_set">Download folder: selected, tap to change</string>
+    <string name="library_download_dir_unset">Download folder: not selected, tap to choose</string>
+    <string name="library_reading">Reading…</string>
+    <string name="library_imported">Imported %1$d songs</string>
+    <string name="library_import_failed_suffix">, %1$d failed</string>
+    <string name="library_imported_count">Imported · %1$d songs</string>
+    <string name="library_source_netease_creator">Cloud Music</string>
+    <string name="library_source_qq_creator">QQ Music</string>
+    <string name="library_device_count">Device · %1$d songs</string>
+    <string name="library_remove">Remove</string>
+    <string name="library_downloaded_playlists">Downloaded playlists</string>
+    <string name="library_imported_tap_scan">%1$d imported · Tap to scan and import</string>
+    <string name="library_music_level">Music level</string>
+    <string name="library_listening_time">Listening time</string>
+
+    <!-- Music level -->
+    <string name="level_max_suffix">Lv.%1$d · Max</string>
+    <string name="level_max">Max level</string>
+    <string name="level_requirements">How to earn</string>
+    <string name="level_today_total">Today: %1$d / %2$d pts (daily cap)</string>
+    <string name="level_rule_listen_title">Listening time</string>
+    <string name="level_rule_listen_desc">+%1$d pt for each full minute listened</string>
+    <string name="level_rule_listen_progress">%1$d pts earned today</string>
+    <string name="level_rule_complete_title">Full-song bonus</string>
+    <string name="level_rule_complete_desc">Finish a whole song (90%% played): +%1$d pts per song</string>
+    <string name="level_rule_complete_progress">%1$d songs completed today · +%2$d pts</string>
+    <string name="memory_cover_subtitle">Music Memory · %1$d</string>
+    <string name="memory_playlist_name">%1$s Music Memory</string>
+    <string name="retrospective_playlist_name">%1$d-%2$d Retrospective</string>
+
+    <!-- Player / MiniPlayer / More sheet -->
+    <string name="player_favorite">Favorite</string>
+    <string name="player_no_current_song">No song playing</string>
+    <string name="player_qq_artist_unsupported">QQ artist pages are not supported yet</string>
+    <string name="player_prev">Previous</string>
+    <string name="player_next">Next</string>
+    <string name="player_back_to_cover">Back to cover</string>
+    <string name="player_lyrics_label">Lyrics</string>
+    <string name="player_volume">Volume</string>
+    <string name="player_queue_label">Play queue</string>
+    <string name="player_added_next">Added to play next</string>
+    <string name="player_cast_failed">Failed to open the cast window. Please try again</string>
+    <string name="player_cast_unavailable">Casting is not available yet</string>
+    <string name="player_unlike">Unlike</string>
+    <string name="player_like">Like</string>
+    <string name="player_more">More</string>
+    <string name="player_mode_sequence">Sequential</string>
+    <string name="player_mode_shuffle">Shuffle</string>
+    <string name="player_mode_reverse">Reverse</string>
+    <string name="player_queue_title">Up next</string>
+    <string name="player_from_source">From %1$s</string>
+    <string name="player_cast">Cast</string>
+    <string name="player_play_next">Play next</string>
+    <string name="player_lyric_translation">Translation</string>
+    <string name="player_lyric_romaji">Romaji</string>
+    <string name="player_lyric_karaoke">Word-by-word highlight</string>
+    <string name="player_lyric_blur">Lyric blur</string>
+    <string name="player_lyric_timing">Word timing</string>
+    <string name="player_lyric_timing_hint">Positive values delay the word-by-word highlight, negative values advance it; 0 follows the original timeline.</string>
+    <string name="player_date_pattern">MMM d, yyyy</string>
+    <string name="lyrics_empty">No lyrics</string>
+    <string name="lyrics_back_to_current">Back to current line</string>
+
+    <!-- Search -->
+    <string name="search_tab_songs">Songs</string>
+    <string name="search_tab_playlists">Playlists</string>
+    <string name="search_tab_artists">Artists</string>
+    <string name="search_tab_lyrics">Lyrics</string>
+    <string name="search_hint">Search songs, artists, playlists</string>
+    <string name="search_hint_local_mode">Search is unavailable in local mode</string>
+    <string name="search_local_mode_note">Search is unavailable in local mode. Browse local songs on Home.</string>
+    <string name="search_searching">Searching…</string>
+    <string name="search_results">Search results</string>
+    <string name="search_qq_artist_unsupported">QQ artist pages are not supported yet</string>
+    <string name="search_qq_lyrics_unsupported">QQMusic does not support lyric search yet.</string>
+    <string name="search_lyric_search">Lyric search</string>
+    <string name="search_no_results">No results found</string>
+    <string name="search_with_source">Search with %1$s</string>
+
+    <!-- Playlist detail -->
+    <string name="playlist_group_liked">Music I like</string>
+    <string name="playlist_group_created">Playlists I created</string>
+    <string name="playlist_group_subscribed">Playlists I saved</string>
+    <string name="playlist_daily">Daily recommendations</string>
+    <string name="playlist_radar">Private radar</string>
+    <string name="playlist_liked_music">Liked music</string>
+    <string name="playlist_load_failed">Failed to load playlist</string>
+    <string name="playlist_count_duration">%1$d songs · %2$s</string>
+    <string name="playlist_downloading">Downloading %1$d/%2$d</string>
+    <string name="playlist_downloaded">%1$d downloaded</string>
+    <string name="playlist_downloaded_continue">Downloaded %1$d/%2$d · Continue</string>
+    <string name="playlist_download">Download playlist</string>
+    <string name="playlist_no_imported">No imported songs yet</string>
+    <string name="playlist_no_cached">No locally cached tracks</string>
+
+    <!-- Artist / Album detail -->
+    <string name="artist_title">Artist</string>
+    <string name="artist_unfollow_confirm">Unfollow %1$s?</string>
+    <string name="artist_unfollow">Unfollow</string>
+    <string name="artist_follow">Follow</string>
+    <string name="artist_load_failed">Failed to load artist</string>
+    <string name="artist_song_count">%1$d songs</string>
+    <string name="artist_album_count">%1$d albums</string>
+    <string name="artist_followed_days">Followed for %1$d days</string>
+    <string name="artist_collapse">Collapse</string>
+    <string name="artist_expand">Expand</string>
+    <string name="artist_songs_total">Songs %1$d</string>
+    <string name="artist_songs_listened">Songs %1$d/%2$d</string>
+    <string name="artist_albums_tab">Albums</string>
+    <string name="artist_no_albums">No albums yet</string>
+    <string name="album_load_failed">Failed to load album</string>
+
+    <!-- Stats -->
+    <string name="stats_day">Day</string>
+    <string name="stats_month">Month</string>
+    <string name="stats_year">Year</string>
+    <string name="stats_week">Week</string>
+    <string name="stats_today">Today</string>
+    <string name="stats_date_full">%2$d/%3$d/%1$d</string>
+    <string name="stats_month_label">%2$d/%1$d</string>
+    <string name="stats_year_label">%1$d</string>
+    <string name="stats_this_month">This month</string>
+    <string name="stats_this_year">This year</string>
+    <string name="stats_prev_period">Previous</string>
+    <string name="stats_next_period">Next</string>
+    <string name="stats_local_total_label">tokimusic time · on-device total</string>
+    <string name="stats_local_note">Counts only playback time on this device since installation; uninstalling or clearing data resets it.</string>
+    <string name="stats_distribution">Time distribution</string>
+    <string name="stats_top_songs">Most played songs</string>
+    <string name="stats_no_records">No play records yet</string>
+    <string name="stats_no_records_hint">No records yet. Stats start after you play something</string>
+    <string name="stats_play_times">%1$d plays</string>
+    <string name="stats_estimate_note">Estimated from play count × duration</string>
+    <string name="stats_month_day">%1$d/%2$d</string>
+    <string name="stats_day_of_month">%1$d</string>
+    <string name="stats_month_only">%1$d</string>
+    <string name="stats_last_7_days">Last 7 days</string>
+    <string name="stats_last_30_days">Last 30 days</string>
+    <string name="stats_last_12_months">Last 12 months</string>
+    <string name="stats_range_total">%1$s · %2$s total</string>
+    <string name="stats_empty_buckets">%1$d periods have no records and take no space</string>
+    <string name="stats_all_buckets_filled">Every day / month has records</string>
+    <string name="stats_minutes">%1$d min</string>
+    <string name="stats_report_title">Listening report</string>
+    <string name="stats_week_estimate">Estimated listening this week</string>
+    <string name="stats_total_estimate">Estimated listening, all time</string>
+    <string name="stats_no_listen_records">No listening records yet</string>
+
+    <!-- Components -->
+    <string name="sheet_favorited">Favorited</string>
+    <string name="sheet_favorite">Favorite</string>
+    <string name="sheet_about">About</string>
+    <string name="sheet_add">Add</string>
+    <string name="sheet_delete">Delete</string>
+    <string name="sheet_add_to_playlist">Add to playlist</string>
+    <string name="sheet_no_created_playlists">No playlists created by you yet</string>
+    <string name="sheet_field_title">Title</string>
+    <string name="sheet_field_artist">Artist</string>
+    <string name="sheet_field_album">Album</string>
+    <string name="sheet_field_duration">Duration</string>
+    <string name="detail_toggle_play_mode">Toggle sequential / shuffle</string>
+    <string name="common_avatar">Avatar</string>
+    <string name="common_duration_min_sec">%1$dm %2$02ds</string>
+    <string name="app_playlist">Playlist</string>
+    <string name="app_artist">Artist</string>
+    <string name="app_album">Album</string>
+    <string name="app_now_playing">Now playing</string>
+    <string name="app_listening_time">Listening time</string>
+    <string name="app_music_level">Music level</string>
+    <string name="app_listen_report">Listening report</string>
+    <string name="app_view_netease_estimate">View NeteaseMusic estimates</string>
+    <string name="app_unfavorite_playlist">Unfavorite</string>
+    <string name="app_favorite_playlist">Favorite playlist</string>
+    <string name="app_unfollow">Unfollow</string>
+    <string name="app_follow">Follow</string>
+    <string name="app_login">Log in</string>
+
+    <!-- Update -->
+    <string name="update_found_new">New version %1$s</string>
+    <string name="update_found_test">Test version %1$s</string>
+    <string name="update_version_arrow">Current version %1$s → %2$s %3$s</string>
+    <string name="update_package_size">Package size: about %1$s</string>
+    <string name="update_download_failed">Download failed. Please try again later</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Remind me later</string>
+    <string name="update_allow_install">Allow installing unknown apps, then try again</string>
+    <string name="update_downloaded_bytes">Downloaded %1$s</string>
+    <string name="optimize_title">Optimize app</string>
+    <string name="optimize_prompt">You have updated to a new version. Optimize now? This clears the previous version\'s installer and playback/image caches (downloaded songs, playlists and lyrics are unaffected).</string>
+    <string name="optimize_cache_size">Cache usage</string>
+    <string name="optimize_old_package">Old installer</string>
+    <string name="optimize_play_cache">Playback and other caches</string>
+    <string name="optimize_estimated">Estimated savings</string>
+    <string name="optimize_running">Optimizing…</string>
+    <string name="optimize_now">Optimize now</string>
+    <string name="optimize_skip">Not now</string>
+    <string name="optimize_done">Optimization complete</string>
+    <string name="optimize_cleaned">Cleaned</string>
+    <string name="optimize_cache_before">Cache before</string>
+    <string name="optimize_cache_after">Cache after</string>
+    <string name="optimize_ok">Got it</string>
+
+    <!-- ViewModel / data-layer messages (via AppStrings) -->
+    <string name="msg_google_unbound">Google account unbound</string>
+    <string name="msg_drive_auth_confirm_needed">Drive authorization needs confirmation</string>
+    <string name="msg_drive_auth_failed">Drive authorization failed: %1$s</string>
+    <string name="msg_sync_bind_first">Bind Google and authorize Drive sync first</string>
+    <string name="msg_sync_done">Sync complete</string>
+    <string name="msg_sync_failed">Sync failed</string>
+    <string name="msg_sync_failed_reason">Sync failed: %1$s</string>
+    <string name="msg_qq_unfavorite_in_app">Unfavorite QQ playlists inside QQMusic</string>
+    <string name="msg_favorite_failed">Favorite failed. Check your network and try again</string>
+    <string name="msg_refresh_failed">Refresh failed. Please try again</string>
+    <string name="msg_playlist">Playlist</string>
+    <string name="msg_download_empty">No downloadable tracks in this playlist</string>
+    <string name="msg_download_local_mode">Cannot download in local mode. Enable a source first</string>
+    <string name="msg_download_source_off">This source is off; cannot download</string>
+    <string name="msg_login_qq_first">Please log in to QQMusic first</string>
+    <string name="msg_download_done">Download complete: %1$d songs</string>
+    <string name="msg_download_all_failed">Download failed: none of the %1$d songs could be downloaded</string>
+    <string name="msg_download_partial">Download complete: %1$d succeeded, %2$d failed</string>
+    <string name="msg_local_file_unavailable">Local file unavailable</string>
+    <string name="msg_qq_no_permission">QQMusic has no playback permission for this song (login or VIP may be required)</string>
+    <string name="msg_no_play_url">No playback URL for this song (possibly no license or VIP required)</string>
+    <string name="msg_no_play_url_retry">Could not get the playback URL. Please try again</string>
+    <string name="msg_yt_no_play_url">YouTubeMusic has no playback URL (%1$s)</string>
+    <string name="msg_trial_only">This song is preview-only; no full playback URL</string>
+    <string name="msg_like_failed">Like failed. Please try again</string>
+    <string name="msg_added_to_playlist">Added to “%1$s”</string>
+    <string name="msg_add_to_playlist_failed">Failed to add to playlist. Please try again</string>
+    <string name="msg_removed_from_playlist">Removed from playlist</string>
+    <string name="msg_remove_failed">Remove failed. Please try again</string>
+    <string name="msg_qr_generate_failed">Failed to generate QR code. Check your network and try again</string>
+    <string name="msg_qr_expired">QR code expired. Please generate a new one</string>
+    <string name="msg_phone_invalid">Enter an 11-digit phone number</string>
+    <string name="msg_too_frequent">Requests too frequent. Please try again later</string>
+    <string name="msg_sms_send_failed">Failed to send the code. Check your network and try again</string>
+    <string name="msg_sms_code_empty">Enter the verification code</string>
+    <string name="msg_login_failed">Login failed. Please try again</string>
+    <string name="msg_unfollowed">Unfollowed</string>
+    <string name="msg_followed">Followed</string>
+    <string name="msg_login_netease_first">Please log in to NeteaseMusic first</string>
+    <string name="msg_follow_failed">Follow failed. Please try again</string>
+    <string name="msg_local_mode_unavailable">Unavailable in local mode</string>
+    <string name="msg_source_off_unavailable">Source is off; unavailable</string>
+
+    <!-- Data-layer errors (via AppStrings) -->
+    <string name="err_netease_unreachable">Cannot reach NetEase Cloud Music. Check your network and try again</string>
+    <string name="err_netease_http">NetEase returned an error (HTTP %1$d)</string>
+    <string name="err_netease_rate_limited">Requests too frequent; NetEase has temporarily limited you. Try again later</string>
+    <string name="err_request_failed">Request failed. Please try again</string>
+    <string name="err_netease_unparsable">NetEase returned content that could not be parsed</string>
+    <string name="err_login_no_credential">Login succeeded but no credential was returned. Please scan again</string>
+    <string name="err_like_code">Like failed (code %1$d)</string>
+    <string name="err_add_playlist_code">Failed to add to playlist (code %1$d)</string>
+    <string name="err_remove_playlist_code">Failed to remove from playlist (code %1$d)</string>
+    <string name="err_qq_auth_expired">Login authorization expired</string>
+    <string name="err_qq_login_param">Login parameter error</string>
+    <string name="err_qq_sms_code">Incorrect verification code</string>
+    <string name="err_qq_bind_abnormal">Account binding problem</string>
+    <string name="err_qq_bind_missing">Account binding missing</string>
+    <string name="err_qq_account_restricted">Account restricted</string>
+    <string name="err_qq_device_limit">Too many logged-in devices</string>
+    <string name="err_qq_account_banned">Account banned</string>
+    <string name="err_qq_too_frequent">Too frequent. Please try again later</string>
+    <string name="err_qq_no_credential">%1$s: the server returned no credential</string>
+    <string name="err_qq_sms_need_captcha">Failed to send code: human verification is required but no verification URL was returned</string>
+    <string name="err_qq_sms_send_code">Failed to send code (%1$d)</string>
+    <string name="err_qq_phone_login_failed">Phone login failed</string>
+    <string name="err_qq_default_user">QQ user</string>
+    <string name="err_qq_lyric_failed">Failed to fetch QQ lyrics</string>
+    <string name="err_qq_playlist_empty">QQ playlist detail is empty</string>
+    <string name="err_qq_request_failed">QQ request failed</string>
+    <string name="err_yt_no_stream">No playable audio stream</string>
+    <string name="err_yt_network">Network error</string>
+    <string name="err_drive_list">Drive list failed HTTP %1$d</string>
+    <string name="err_drive_download">Drive download failed HTTP %1$d</string>
+    <string name="err_drive_upload">Drive upload failed HTTP %1$d</string>
+    <string name="err_drive_update">Drive update failed HTTP %1$d</string>
+    <string name="err_google_cm_unavailable">Credential Manager unavailable</string>
+    <string name="err_google_no_account">No Google account available on this device</string>
+    <string name="err_google_login_unavailable">Google sign-in unavailable</string>
+    <string name="err_google_login_failed">Google sign-in failed</string>
+    <string name="err_google_auth_no_page">Authorization needs confirmation, but the system provided no confirmation page</string>
+    <string name="err_google_auth_no_token">Authorization returned no access token</string>
+    <string name="err_drive_auth_failed">Drive authorization failed</string>
+    <string name="err_connect_play_service">Failed to connect to the playback service</string>
+    <string name="err_play_service_failed">Playback service connection failed. Restart the app and try again</string>
+    <string name="err_play_failed_network">Playback failed. Check your network and try again</string>
+    <string name="err_play_skipped_no_url">This song has no playback URL (possibly no license or VIP required); skipped</string>
+
+    <!-- Local import (via AppStrings) -->
+    <string name="local_selected_dir">Selected folder</string>
+    <string name="local_open_dir_failed">Cannot open folder</string>
+    <string name="local_qq_format_unsupported">QQ encrypted formats cannot be decrypted yet</string>
+    <string name="local_read_failed">Cannot read the file</string>
+    <string name="local_decrypt_failed">Decryption failed: %1$s</string>
+    <string name="local_decrypt_verify_failed">Decrypted audio failed verification</string>
+    <string name="local_unknown_song">Unknown song</string>
+    <string name="local_unknown_artist">Unknown artist</string>
+    <string name="ncm_too_small">File too small</string>
+    <string name="ncm_bad_magic">Not an .ncm file (bad magic)</string>
+    <string name="ncm_key_length">Abnormal key segment length</string>
+    <string name="ncm_key_decrypt_failed">Key decryption failed</string>
+    <string name="ncm_truncated">File truncated</string>
+    <string name="ncm_cover_length">Abnormal cover length</string>
+    <string name="ncm_no_audio">Missing audio segment</string>
+    <string name="ncm_audio_verify_failed">Decrypted audio header verification failed</string>
+    <string name="update_downloaded_so_far">Downloaded %1$s</string>
+    <string name="update_kind_test">test version</string>
+    <string name="update_kind_new">new version</string>
+    <string name="err_login_expired">Session expired. Please sign in again.</string>
+    <string name="err_qq_qr_login_failed">QQMusic QR sign-in failed</string>
+    <string name="err_qq_missing_req">QQ response is missing req_0</string>
+    <string name="err_qq_session_no_data">QQ GetSession returned no data</string>
+    <string name="err_qq_session_no_session">QQ GetSession returned no session</string>
+    <string name="err_yt_empty_id">Empty videoId</string>
+    <string name="err_yt_vr_failed">ANDROID_VR failed</string>
+    <string name="err_unknown">Unknown error</string>
+    <string name="msg_retrospective_name">Retrospective %2$d/%1$d</string>
+    <string name="err_network">Network error</string>
+    <string name="stats_netease_hours">Netease %1$s</string>
+    <string name="detail_resume">Resume</string>
+</resources>

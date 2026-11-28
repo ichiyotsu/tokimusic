@@ -1,0 +1,547 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TokiMusic</string>
+    <string name="nav_home">ホーム</string>
+    <string name="nav_library">ライブラリ</string>
+    <string name="nav_search">検索</string>
+
+    <!-- 共通 -->
+    <string name="common_cancel">キャンセル</string>
+    <string name="common_confirm">確認</string>
+    <string name="common_retry">再試行</string>
+    <string name="common_loading">読み込み中…</string>
+    <string name="common_back">戻る</string>
+    <string name="common_play">再生</string>
+    <string name="common_pause">一時停止</string>
+    <string name="common_play_all">すべて再生</string>
+    <string name="common_no_songs">曲がありません</string>
+    <string name="common_check_network_retry">ネットワーク接続を確認して再試行してください</string>
+    <string name="common_login_to_view">ログインすると表示</string>
+    <string name="common_song_count">%1$d曲</string>
+    <string name="common_song_count_with">%1$d曲 · %2$s</string>
+    <string name="login_expired_qr">ログインの有効期限が切れました。QRコードを再度スキャンしてログインしてください</string>
+    <string name="network_error">ネットワークエラー</string>
+
+    <!-- 設定フレーム -->
+    <string name="settings_my">マイページ</string>
+    <string name="settings_close">閉じる</string>
+    <string name="settings_general">一般</string>
+    <string name="settings_storage">ストレージ</string>
+    <string name="settings_design">デザイン</string>
+    <string name="settings_audio">オーディオ</string>
+    <string name="settings_lyrics">歌詞</string>
+    <string name="settings_achievements">実績</string>
+    <string name="settings_account">アカウント</string>
+    <string name="settings_avatar_changed">アバターを変更しました</string>
+    <string name="settings_avatar_change_failed">アバターの変更に失敗しました</string>
+    <string name="settings_change_avatar">アバターを変更</string>
+    <string name="settings_not_logged_in">未ログイン</string>
+    <string name="settings_login_hint_qr">下のボタンからQRコードでNeteaseMusicにログイン</string>
+    <string name="settings_collapse">折りたたむ</string>
+    <string name="settings_edit">編集</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_qr_login">QRコードログイン</string>
+    <string name="settings_logged_in">ログイン済み</string>
+    <string name="settings_no_login_needed">ログイン不要</string>
+    <string name="settings_logout">ログアウト</string>
+    <string name="settings_login">ログイン</string>
+
+    <!-- 設定 · 実績 -->
+    <string name="settings_companion_toki_title">TokiMusicとの日々</string>
+    <string name="settings_companion_toki_desc">TokiMusicに初めてログインした日から数えた日数です。</string>
+    <string name="settings_companion_netease_title">NeteaseMusicとの日々</string>
+    <string name="settings_companion_netease_desc">NeteaseMusicの登録日数（NeteaseMusicから取得）。</string>
+    <string name="settings_joined_days">加入して %1$d 日</string>
+    <string name="settings_joined_days_unknown">加入して — 日</string>
+    <string name="settings_achieved">達成済み</string>
+    <string name="settings_achieved_days_unknown">達成済み（日数不明）</string>
+    <string name="settings_join_days">加入日数</string>
+    <string name="settings_join_days_login_hint">ログインすると加入日数が表示されます</string>
+    <string name="settings_achievement_progress">進捗：%1$s</string>
+    <string name="settings_achievement_status">状態：%1$s</string>
+    <string name="settings_more_achievements">実績は今後も追加されます</string>
+
+    <!-- 設定 · 一般 -->
+    <string name="settings_live_updates">ライブ通知</string>
+    <string name="settings_live_updates_desc">再生中に通知バー、ロック画面、クイック設定にシステムのメディアプレーヤーを表示し、直接操作できます。オフにすると通知は表示されず、バックグラウンド再生がシステムに停止される場合があります。通知権限が必要です。</string>
+    <string name="settings_scrobble">再生履歴を送信</string>
+    <string name="settings_scrobble_desc">オンにすると、NeteaseMusicで聴いた曲があなたのNeteaseMusic再生履歴に同期されます。送信されるのはNeteaseMusicの曲のみで、NeteaseMusicへのログインが必要です。</string>
+    <string name="settings_algo_unavailable">アルゴリズム推薦は現在利用できません</string>
+    <string name="settings_algo">アルゴリズム推薦</string>
+    <string name="settings_algo_desc">オフの場合、おすすめプレイリストとおすすめ新曲は選択中の音楽ソースの既定の内容と順序になります。オンにすると、あなたの好みに合わせて並び替えます。再生記録は常にこの端末内にのみ保存され（アップロードされません）、好みプロファイルと振り返りプレイリストに使われます。プロファイルデータは内部ストレージに保存され、更新しても消えず、月次サマリーに定期的に自動整理されるため無制限に増え続けません。</string>
+    <string name="settings_check_update_on_start">起動時にアップデートを確認</string>
+    <string name="settings_check_update_on_start_desc">アプリを開くたびに新しいバージョンを1回確認します。オフの場合は設定から手動でのみ確認します。</string>
+    <string name="settings_update_latest">最新バージョンです</string>
+    <string name="settings_update_check_failed">確認に失敗しました。しばらくしてから再試行してください</string>
+    <string name="settings_check_update">アップデートを確認</string>
+    <string name="settings_current_version">現在のバージョン %1$s</string>
+    <string name="settings_about">TokiMusicについて</string>
+    <string name="settings_about_version">バージョン %1$s · TokiUI %2$s</string>
+    <string name="settings_no_crash_log">クラッシュログはありません</string>
+    <string name="settings_export_crash_log">クラッシュログをエクスポート</string>
+    <string name="settings_crash_count">クラッシュ記録が %1$d 件あります</string>
+    <string name="settings_no_crash_records">クラッシュ記録はありません</string>
+
+    <!-- 設定 · デザイン -->
+    <string name="settings_light_mode">ライトモード</string>
+    <string name="settings_reduce_motion">モーションを減らす</string>
+    <string name="settings_language">言語</string>
+
+    <!-- 設定 · オーディオ -->
+    <string name="settings_quality_standard">標準</string>
+    <string name="settings_quality_higher">高音質</string>
+    <string name="settings_quality_exhigh">最高音質</string>
+    <string name="settings_quality_lossless">ロスレス</string>
+    <string name="settings_play_quality">再生音質</string>
+    <string name="settings_quality_lossless_note">ロスレスは曲自体にロスレス版がある場合のみ有効で、ない場合は自動的に低い音質が使われます。変更は次の曲から反映されます。</string>
+    <string name="settings_spatial_audio">空間オーディオ</string>
+    <string name="settings_spatial_audio_note">ステレオコンテンツにシステムレベルの空間化を適用します。次の曲から反映されます。端末が空間オーディオに対応している必要があり、非対応の端末では効果がありません。</string>
+
+    <!-- 設定 · ストレージ -->
+    <string name="settings_storage_total">合計使用量</string>
+    <string name="settings_computing">計算中…</string>
+    <string name="settings_cache">キャッシュ</string>
+    <string name="settings_clear_cache">キャッシュを消去</string>
+    <string name="settings_storage_bucket">%1$d曲 · %2$s</string>
+    <string name="settings_storage_note">合計使用量にはアプリ本体とすべての内部データが含まれます。3つの分類はインポート済み登録ごとに実際のファイルサイズを集計し、測定できないファイルは0として数えます。キャッシュの消去はキャッシュディレクトリのみを削除し、インポート済みの曲や再生記録には影響しません。</string>
+
+    <!-- 設定 · 歌詞 -->
+    <string name="settings_lyric_translation">翻訳を表示</string>
+    <string name="settings_lyric_romaji">ローマ字を表示</string>
+    <string name="settings_live_lyrics">ライブ歌詞</string>
+    <string name="settings_live_lyrics_desc">オンにすると、再生中に通知のタイトルへ現在歌っている歌詞行がリアルタイムで表示されます。歌詞がない場合は曲名が表示されます。先にライブ通知をオンにする必要があります。</string>
+    <string name="settings_floating_lyrics">フローティング歌詞</string>
+    <string name="settings_floating_no_permission">オーバーレイ権限がないため、フローティング歌詞をオンにできません</string>
+    <string name="settings_floating_color">色</string>
+    <string name="settings_color_white">白</string>
+    <string name="settings_color_black">黒</string>
+    <string name="settings_floating_size">サイズ</string>
+    <string name="settings_floating_position_hint">位置：下のプレビューでドラッグすると、離した場所に歌詞が固定されます（フローティングウィンドウ自体はドラッグできません）</string>
+    <string name="settings_floating_preview">フローティング歌詞プレビュー</string>
+
+    <!-- 設定 · QRログイン -->
+    <string name="settings_login_success">ログインしました</string>
+    <string name="settings_qr_login_netease">QRコードでNeteaseMusicにログイン</string>
+    <string name="settings_qr_code">ログインQRコード</string>
+    <string name="settings_qr_generating">QRコードを生成中…</string>
+    <string name="settings_qr_regenerate">再生成</string>
+    <string name="settings_qr_waiting">スキャン待ち</string>
+    <string name="settings_qr_scanned">スキャン済み。スマートフォンで確認してください</string>
+    <string name="settings_qr_expired_regenerating">QRコードの有効期限が切れました。再生成中…</string>
+    <string name="settings_qr_use_app">NeteaseMusicアプリでスキャン</string>
+
+    <!-- 設定 · ソース切替/ログアウト確認 -->
+    <string name="settings_enable_source_title">%1$s を有効にしますか？</string>
+    <string name="settings_enable_source_desc">有効にすると、ホーム、ライブラリ、検索に %1$s の内容が表示されます。</string>
+    <string name="settings_disable_source_title">%1$s を無効にしますか？</string>
+    <string name="settings_disable_source_desc">無効にすると、このソースの内容は表示されなくなります。ローカル再生には影響しません。</string>
+    <string name="settings_logout_source_title">%1$s からログアウトしますか？</string>
+    <string name="settings_logout_source_desc">ログアウトすると、このソースのプレイリストとお気に入りは表示されなくなります。ローカル再生には影響しません。</string>
+
+    <!-- 設定 · QQ SMSログイン -->
+    <string name="settings_qq_login_success">QQログインに成功しました</string>
+    <string name="settings_qq_sms_login">電話番号SMSログイン</string>
+    <string name="settings_phone">電話番号</string>
+    <string name="settings_phone_hint">11桁の電話番号</string>
+    <string name="settings_sms_code">認証コード</string>
+    <string name="settings_sms_resend_after">%1$d秒後に再送信</string>
+    <string name="settings_sms_resend">再送信</string>
+    <string name="settings_sms_send">コードを送信</string>
+    <string name="settings_sms_phone_note">電話番号はQQMusicアカウントに紐づいたものが必要です。</string>
+    <string name="settings_captcha">本人確認</string>
+    <string name="settings_captcha_hint">下の確認を完了してから、戻ってコードを再送信してください。</string>
+
+    <!-- アカウント（Google連携 / Drive同期） -->
+    <string name="account_google">Googleアカウント</string>
+    <string name="account_not_configured">未設定：Google Cloud ConsoleでOAuthクライアントを作成し、クライアントIDを入力すると連携できます。</string>
+    <string name="account_google_unavailable">Googleログインを利用できません：%1$s</string>
+    <string name="account_bind_desc">連携すると、設定、レベル、プレイリスト構成をあなたのGoogle Driveに同期できます。</string>
+    <string name="account_binding">連携中…</string>
+    <string name="account_bind_google">Googleと連携</string>
+    <string name="account_unbind">連携解除</string>
+    <string name="account_drive_sync">Drive同期</string>
+    <string name="account_bind_first">先にGoogleアカウントを連携してください。</string>
+    <string name="account_drive_scope_note">同期には、あなたのDriveのアプリ専用フォルダ（drive.appdata）へのアクセス許可が必要です。</string>
+    <string name="account_authorize_drive">Drive同期を許可</string>
+    <string name="account_status">状態：%1$s</string>
+    <string name="account_not_synced_yet">未同期</string>
+    <string name="account_last_sync">前回の同期：%1$s</string>
+    <string name="account_sync_now">今すぐ同期</string>
+    <string name="account_auto_sync">自動同期</string>
+    <string name="account_auto_sync_desc">レベルや設定が変わると自動で同期します（失敗しても通知しません）</string>
+    <string name="account_sync_data_note">同期データはあなたのGoogle Driveのアプリ専用フォルダ（tokimusic-sync.json）に保存されます。含まれるのは設定、音楽レベル、好みの記録、ダウンロード済みプレイリストの構成、お気に入り曲の識別情報で、音声ファイルやログイン認証情報は含まれません。そのファイルを削除するとクラウド側の同期データを消去できます。</string>
+    <string name="account_unbind_title">Googleアカウントの連携を解除しますか？</string>
+    <string name="account_unbind_desc">Drive同期は停止します。すでにDriveへ同期済みのデータは削除されず、アプリ内のローカルデータにも影響しません。</string>
+
+    <!-- ホーム -->
+    <string name="home_title">ホーム</string>
+    <string name="home_recommend_playlists">おすすめプレイリスト</string>
+    <string name="home_recommend_songs">おすすめ新曲</string>
+    <string name="home_daily">デイリーおすすめ</string>
+    <string name="home_radar">プライベートレーダー</string>
+    <string name="home_retrospective">振り返り</string>
+    <string name="home_memory">音楽の記憶</string>
+    <string name="home_memory_empty_title">10\'26 音楽の記憶</string>
+    <string name="home_no_play_records">再生記録はまだありません</string>
+    <string name="home_connect_failed_netease">NeteaseMusicに接続できません</string>
+    <string name="home_go_login">ログインへ</string>
+    <string name="home_login_to_view">ログインすると表示</string>
+    <string name="home_local_music">ローカル音楽</string>
+    <string name="home_local_both_sources_off">両方のソースがオフのため、ローカル音楽のみ表示しています</string>
+    <string name="home_local_grant">ローカル音楽へのアクセスを許可</string>
+    <string name="home_local_empty">ローカルの曲はまだありません</string>
+    <string name="home_local_rescan">再スキャン</string>
+    <string name="home_device_song_count">%1$d曲 · Device</string>
+    <string name="home_memory_creator_count">%1$d曲 · TokiMusic</string>
+    <string name="home_artist_separator">、</string>
+    <string name="home_more_artists_suffix">ほか</string>
+
+    <!-- ライブラリ -->
+    <string name="library_title">ライブラリ</string>
+    <string name="library_liked">お気に入り</string>
+    <string name="library_playlists">プレイリスト</string>
+    <string name="library_artists">アーティスト</string>
+    <string name="library_albums">アルバム</string>
+    <string name="library_songs">曲</string>
+    <string name="library_local">ローカル</string>
+    <string name="library_ranking">再生ランキング</string>
+    <string name="library_recently_added">最近追加</string>
+    <string name="library_followed_days">フォローして %1$d 日</string>
+    <string name="library_liked_count">%1$d曲</string>
+    <string name="library_playlist_count">%1$d 件のプレイリスト</string>
+    <string name="library_my_artists">フォロー中のアーティスト</string>
+    <string name="library_my_albums">保存したアルバム</string>
+    <string name="library_recent_count">最近再生 %1$d曲</string>
+    <string name="library_local_desc">NeteaseMusic / QQMusic と Device のローカルファイルを読み取ります</string>
+    <string name="library_local_imported">%1$d曲をインポート済み</string>
+    <string name="library_play_count">%1$d回</string>
+    <string name="library_no_liked">お気に入りの曲はまだありません。プレーヤーで星をタップすると追加できます</string>
+    <string name="library_no_playlists">プレイリストはまだありません</string>
+    <string name="library_no_artists">フォロー中のアーティストはまだいません</string>
+    <string name="library_no_albums">保存したアルバムはまだありません</string>
+    <string name="library_no_recent">再生した曲はまだありません</string>
+    <string name="library_local_permission_denied">ローカル音楽の権限がないため読み取れません。次にソースをタップしたときに再び確認します。</string>
+    <string name="library_download_dir_set">ダウンロードフォルダ：選択済み、タップで変更</string>
+    <string name="library_download_dir_unset">ダウンロードフォルダ：未選択、タップで選択</string>
+    <string name="library_reading">読み取り中…</string>
+    <string name="library_imported">%1$d曲をインポートしました</string>
+    <string name="library_import_failed_suffix">、%1$d曲が失敗</string>
+    <string name="library_imported_count">インポート済み · %1$d曲</string>
+    <string name="library_source_netease_creator">クラウド音楽</string>
+    <string name="library_source_qq_creator">QQ音楽</string>
+    <string name="library_device_count">Device · %1$d曲</string>
+    <string name="library_remove">削除</string>
+    <string name="library_downloaded_playlists">ダウンロード済みプレイリスト</string>
+    <string name="library_imported_tap_scan">%1$d曲インポート済み · タップでスキャンしてインポート</string>
+    <string name="library_music_level">音楽レベル</string>
+    <string name="library_listening_time">再生時間</string>
+
+    <!-- 音楽レベル -->
+    <string name="level_max_suffix">Lv.%1$d · 最大</string>
+    <string name="level_max">最大レベル</string>
+    <string name="level_requirements">達成条件</string>
+    <string name="level_today_total">今日の合計 %1$d / %2$d pt（1日の上限）</string>
+    <string name="level_rule_listen_title">再生時間</string>
+    <string name="level_rule_listen_desc">1分聴くごとに +%1$d pt</string>
+    <string name="level_rule_listen_progress">今日は %1$d pt 獲得</string>
+    <string name="level_rule_complete_title">完走ボーナス</string>
+    <string name="level_rule_complete_desc">1曲を最後まで聴く（90%%再生）と +%1$d pt/曲</string>
+    <string name="level_rule_complete_progress">今日は %1$d曲完走 · +%2$d pt</string>
+    <string name="memory_cover_subtitle">音楽の記憶 · %1$d月</string>
+    <string name="memory_playlist_name">%1$s 音楽の記憶</string>
+    <string name="retrospective_playlist_name">%1$d年%2$d月の振り返り</string>
+
+    <!-- プレーヤー / MiniPlayer / その他シート -->
+    <string name="player_favorite">お気に入り</string>
+    <string name="player_no_current_song">再生中の曲はありません</string>
+    <string name="player_qq_artist_unsupported">QQのアーティスト詳細は未対応です</string>
+    <string name="player_prev">前へ</string>
+    <string name="player_next">次へ</string>
+    <string name="player_back_to_cover">ジャケットに戻る</string>
+    <string name="player_lyrics_label">歌詞</string>
+    <string name="player_volume">音量</string>
+    <string name="player_queue_label">再生キュー</string>
+    <string name="player_added_next">次に再生に追加しました</string>
+    <string name="player_cast_failed">キャスト画面を開けませんでした。再試行してください</string>
+    <string name="player_cast_unavailable">キャスト機能はまだ利用できません</string>
+    <string name="player_unlike">お気に入りを解除</string>
+    <string name="player_like">お気に入り</string>
+    <string name="player_more">その他</string>
+    <string name="player_mode_sequence">順次再生</string>
+    <string name="player_mode_shuffle">シャッフル再生</string>
+    <string name="player_mode_reverse">逆順再生</string>
+    <string name="player_queue_title">続けて再生</string>
+    <string name="player_from_source">%1$s から</string>
+    <string name="player_cast">キャスト</string>
+    <string name="player_play_next">次に再生</string>
+    <string name="player_lyric_translation">翻訳</string>
+    <string name="player_lyric_romaji">ローマ字</string>
+    <string name="player_lyric_karaoke">文字単位ハイライト</string>
+    <string name="player_lyric_blur">歌詞ブラー</string>
+    <string name="player_lyric_timing">文字タイミング</string>
+    <string name="player_lyric_timing_hint">正の値で文字ハイライトが遅れ、負の値で早まります。0で元のタイムラインに従います。</string>
+    <string name="player_date_pattern">yyyy年M月d日</string>
+    <string name="lyrics_empty">歌詞はありません</string>
+    <string name="lyrics_back_to_current">現在の行へ戻る</string>
+
+    <!-- 検索 -->
+    <string name="search_tab_songs">曲</string>
+    <string name="search_tab_playlists">プレイリスト</string>
+    <string name="search_tab_artists">アーティスト</string>
+    <string name="search_tab_lyrics">歌詞</string>
+    <string name="search_hint">曲、アーティスト、プレイリストを検索</string>
+    <string name="search_hint_local_mode">ローカルモードでは検索できません</string>
+    <string name="search_local_mode_note">ローカルモードでは検索できません。ローカルの曲はホームで閲覧できます。</string>
+    <string name="search_searching">検索中…</string>
+    <string name="search_results">検索結果</string>
+    <string name="search_qq_artist_unsupported">QQのアーティスト詳細は未対応です</string>
+    <string name="search_qq_lyrics_unsupported">QQMusicは歌詞検索に未対応です。</string>
+    <string name="search_lyric_search">歌詞検索</string>
+    <string name="search_no_results">結果が見つかりませんでした</string>
+    <string name="search_with_source">%1$s で検索</string>
+
+    <!-- プレイリスト詳細 -->
+    <string name="playlist_group_liked">お気に入りの音楽</string>
+    <string name="playlist_group_created">作成したプレイリスト</string>
+    <string name="playlist_group_subscribed">保存したプレイリスト</string>
+    <string name="playlist_daily">デイリーおすすめ</string>
+    <string name="playlist_radar">プライベートレーダー</string>
+    <string name="playlist_liked_music">お気に入りの音楽</string>
+    <string name="playlist_load_failed">プレイリストの読み込みに失敗しました</string>
+    <string name="playlist_count_duration">%1$d曲 · %2$s</string>
+    <string name="playlist_downloading">ダウンロード中 %1$d/%2$d</string>
+    <string name="playlist_downloaded">%1$d曲ダウンロード済み</string>
+    <string name="playlist_downloaded_continue">%1$d/%2$d曲ダウンロード済み · 続ける</string>
+    <string name="playlist_download">プレイリストをダウンロード</string>
+    <string name="playlist_no_imported">インポートされた曲はありません</string>
+    <string name="playlist_no_cached">ローカルにキャッシュされた曲はありません</string>
+
+    <!-- アーティスト / アルバム詳細 -->
+    <string name="artist_title">アーティスト</string>
+    <string name="artist_unfollow_confirm">%1$s のフォローを解除しますか？</string>
+    <string name="artist_unfollow">フォロー解除</string>
+    <string name="artist_follow">フォロー</string>
+    <string name="artist_load_failed">アーティストの読み込みに失敗しました</string>
+    <string name="artist_song_count">%1$d曲</string>
+    <string name="artist_album_count">%1$d 枚のアルバム</string>
+    <string name="artist_followed_days">フォローして %1$d 日</string>
+    <string name="artist_collapse">折りたたむ</string>
+    <string name="artist_expand">展開</string>
+    <string name="artist_songs_total">曲 %1$d</string>
+    <string name="artist_songs_listened">曲 %1$d/%2$d</string>
+    <string name="artist_albums_tab">アルバム</string>
+    <string name="artist_no_albums">アルバムはまだありません</string>
+    <string name="album_load_failed">アルバムの読み込みに失敗しました</string>
+
+    <!-- 統計 -->
+    <string name="stats_day">日</string>
+    <string name="stats_month">月</string>
+    <string name="stats_year">年</string>
+    <string name="stats_week">週</string>
+    <string name="stats_today">今日</string>
+    <string name="stats_date_full">%1$d年%2$d月%3$d日</string>
+    <string name="stats_month_label">%1$d年%2$d月</string>
+    <string name="stats_year_label">%1$d年</string>
+    <string name="stats_this_month">今月</string>
+    <string name="stats_this_year">今年</string>
+    <string name="stats_prev_period">前へ</string>
+    <string name="stats_next_period">次へ</string>
+    <string name="stats_local_total_label">tokimusic 時間 · 端末内累計</string>
+    <string name="stats_local_note">この端末でインストール後に再生した時間のみを集計します。アンインストールやデータ消去でリセットされます。</string>
+    <string name="stats_distribution">時間の分布</string>
+    <string name="stats_top_songs">よく聴く曲</string>
+    <string name="stats_no_records">再生記録はまだありません</string>
+    <string name="stats_no_records_hint">記録はまだありません。再生すると集計が始まります</string>
+    <string name="stats_play_times">%1$d回</string>
+    <string name="stats_estimate_note">再生回数 × 長さによる推定</string>
+    <string name="stats_month_day">%1$d月%2$d日</string>
+    <string name="stats_day_of_month">%1$d日</string>
+    <string name="stats_month_only">%1$d月</string>
+    <string name="stats_last_7_days">最近7日間</string>
+    <string name="stats_last_30_days">最近30日間</string>
+    <string name="stats_last_12_months">最近12か月</string>
+    <string name="stats_range_total">%1$s 合計 %2$s</string>
+    <string name="stats_empty_buckets">うち %1$d 件は記録がなく、ブロックを占有しません</string>
+    <string name="stats_all_buckets_filled">毎日 / 毎月記録があります</string>
+    <string name="stats_minutes">%1$d分</string>
+    <string name="stats_report_title">再生レポート</string>
+    <string name="stats_week_estimate">今週の推定再生時間</string>
+    <string name="stats_total_estimate">累計の推定再生時間</string>
+    <string name="stats_no_listen_records">再生記録はまだありません</string>
+
+    <!-- コンポーネント -->
+    <string name="sheet_favorited">お気に入り済み</string>
+    <string name="sheet_favorite">お気に入り</string>
+    <string name="sheet_about">情報</string>
+    <string name="sheet_add">追加</string>
+    <string name="sheet_delete">削除</string>
+    <string name="sheet_add_to_playlist">プレイリストに追加</string>
+    <string name="sheet_no_created_playlists">自分で作成したプレイリストはまだありません</string>
+    <string name="sheet_field_title">曲名</string>
+    <string name="sheet_field_artist">アーティスト</string>
+    <string name="sheet_field_album">アルバム</string>
+    <string name="sheet_field_duration">長さ</string>
+    <string name="detail_toggle_play_mode">順次 / シャッフルを切り替え</string>
+    <string name="common_avatar">アバター</string>
+    <string name="common_duration_min_sec">%1$d分%2$02d秒</string>
+    <string name="app_playlist">プレイリスト</string>
+    <string name="app_artist">アーティスト</string>
+    <string name="app_album">アルバム</string>
+    <string name="app_now_playing">再生中</string>
+    <string name="app_listening_time">再生時間</string>
+    <string name="app_music_level">音楽レベル</string>
+    <string name="app_listen_report">再生レポート</string>
+    <string name="app_view_netease_estimate">NeteaseMusicの推定統計を見る</string>
+    <string name="app_unfavorite_playlist">お気に入りを解除</string>
+    <string name="app_favorite_playlist">プレイリストをお気に入り</string>
+    <string name="app_unfollow">フォロー解除</string>
+    <string name="app_follow">フォロー</string>
+    <string name="app_login">ログイン</string>
+
+    <!-- アップデート -->
+    <string name="update_found_new">新しいバージョン %1$s があります</string>
+    <string name="update_found_test">テストバージョン %1$s があります</string>
+    <string name="update_version_arrow">現在のバージョン %1$s → %2$s %3$s</string>
+    <string name="update_package_size">パッケージサイズ：約 %1$s</string>
+    <string name="update_download_failed">ダウンロードに失敗しました。しばらくしてから再試行してください</string>
+    <string name="update_now">今すぐ更新</string>
+    <string name="update_later">後で通知</string>
+    <string name="update_allow_install">不明なアプリのインストールを許可してから再試行してください</string>
+    <string name="update_downloaded_bytes">ダウンロード済み %1$s</string>
+    <string name="optimize_title">アプリを最適化</string>
+    <string name="optimize_prompt">新しいバージョンに更新されました。今すぐ最適化しますか？前バージョンのインストーラーと再生・画像などのキャッシュを消去します（ダウンロード済みの曲、プレイリスト、歌詞には影響しません）</string>
+    <string name="optimize_cache_size">キャッシュ使用量</string>
+    <string name="optimize_old_package">うち旧インストーラー</string>
+    <string name="optimize_play_cache">うち再生などのキャッシュ</string>
+    <string name="optimize_estimated">消去見込み</string>
+    <string name="optimize_running">最適化中…</string>
+    <string name="optimize_now">今すぐ最適化</string>
+    <string name="optimize_skip">今はしない</string>
+    <string name="optimize_done">最適化が完了しました</string>
+    <string name="optimize_cleaned">消去済み</string>
+    <string name="optimize_cache_before">最適化前のキャッシュ</string>
+    <string name="optimize_cache_after">最適化後のキャッシュ</string>
+    <string name="optimize_ok">OK</string>
+
+    <!-- ViewModel / データ層メッセージ（AppStrings経由） -->
+    <string name="msg_google_unbound">Googleアカウントの連携を解除しました</string>
+    <string name="msg_drive_auth_confirm_needed">Driveの許可確認が必要です</string>
+    <string name="msg_drive_auth_failed">Driveの許可に失敗しました：%1$s</string>
+    <string name="msg_sync_bind_first">先にGoogleと連携し、Drive同期を許可してください</string>
+    <string name="msg_sync_done">同期が完了しました</string>
+    <string name="msg_sync_failed">同期に失敗しました</string>
+    <string name="msg_sync_failed_reason">同期に失敗しました：%1$s</string>
+    <string name="msg_qq_unfavorite_in_app">QQのプレイリストはQQMusic内でお気に入りを解除してください</string>
+    <string name="msg_favorite_failed">お気に入りに失敗しました。ネットワークを確認して再試行してください</string>
+    <string name="msg_refresh_failed">更新に失敗しました。再試行してください</string>
+    <string name="msg_playlist">プレイリスト</string>
+    <string name="msg_download_empty">このプレイリストにはダウンロードできる曲がありません</string>
+    <string name="msg_download_local_mode">ローカルモードではダウンロードできません。先にソースを有効にしてください</string>
+    <string name="msg_download_source_off">このソースはオフのためダウンロードできません</string>
+    <string name="msg_login_qq_first">先にQQMusicにログインしてください</string>
+    <string name="msg_download_done">ダウンロード完了：%1$d曲</string>
+    <string name="msg_download_all_failed">ダウンロード失敗：%1$d曲すべてダウンロードできませんでした</string>
+    <string name="msg_download_partial">ダウンロード完了：成功 %1$d曲、失敗 %2$d曲</string>
+    <string name="msg_local_file_unavailable">ローカルファイルを利用できません</string>
+    <string name="msg_qq_no_permission">QQMusicにこの曲の再生権限がありません（ログインまたはVIPが必要な場合があります）</string>
+    <string name="msg_no_play_url">この曲の再生URLがありません（ライセンスがない、またはVIPが必要な場合があります）</string>
+    <string name="msg_no_play_url_retry">再生URLを取得できませんでした。再試行してください</string>
+    <string name="msg_yt_no_play_url">YouTubeMusicに再生URLがありません（%1$s）</string>
+    <string name="msg_trial_only">この曲は試聴のみで、完全な再生URLがありません</string>
+    <string name="msg_like_failed">お気に入りに失敗しました。再試行してください</string>
+    <string name="msg_added_to_playlist">「%1$s」に追加しました</string>
+    <string name="msg_add_to_playlist_failed">プレイリストへの追加に失敗しました。再試行してください</string>
+    <string name="msg_removed_from_playlist">プレイリストから削除しました</string>
+    <string name="msg_remove_failed">削除に失敗しました。再試行してください</string>
+    <string name="msg_qr_generate_failed">QRコードの生成に失敗しました。ネットワークを確認して再試行してください</string>
+    <string name="msg_qr_expired">QRコードの有効期限が切れました。再生成してください</string>
+    <string name="msg_phone_invalid">11桁の電話番号を入力してください</string>
+    <string name="msg_too_frequent">リクエストが頻繁すぎます。しばらくしてから再試行してください</string>
+    <string name="msg_sms_send_failed">認証コードの送信に失敗しました。ネットワークを確認して再試行してください</string>
+    <string name="msg_sms_code_empty">認証コードを入力してください</string>
+    <string name="msg_login_failed">ログインに失敗しました。再試行してください</string>
+    <string name="msg_unfollowed">フォローを解除しました</string>
+    <string name="msg_followed">フォローしました</string>
+    <string name="msg_login_netease_first">先にNeteaseMusicにログインしてください</string>
+    <string name="msg_follow_failed">フォローに失敗しました。再試行してください</string>
+    <string name="msg_local_mode_unavailable">ローカルモードでは利用できません</string>
+    <string name="msg_source_off_unavailable">ソースがオフのため利用できません</string>
+
+    <!-- データ層エラー（AppStrings経由） -->
+    <string name="err_netease_unreachable">網易云に接続できません。ネットワークを確認して再試行してください</string>
+    <string name="err_netease_http">網易云がエラーを返しました（HTTP %1$d）</string>
+    <string name="err_netease_rate_limited">リクエストが頻繁すぎるため、網易云に一時的に制限されました。しばらくしてから再試行してください</string>
+    <string name="err_request_failed">リクエストに失敗しました。再試行してください</string>
+    <string name="err_netease_unparsable">網易云から解析できない内容が返されました</string>
+    <string name="err_login_no_credential">ログインは成功しましたが認証情報が取得できませんでした。再度スキャンしてください</string>
+    <string name="err_like_code">お気に入りに失敗しました（code %1$d）</string>
+    <string name="err_add_playlist_code">プレイリストへの追加に失敗しました（code %1$d）</string>
+    <string name="err_remove_playlist_code">プレイリストからの削除に失敗しました（code %1$d）</string>
+    <string name="err_qq_auth_expired">ログイン認証の有効期限が切れました</string>
+    <string name="err_qq_login_param">ログインパラメータエラー</string>
+    <string name="err_qq_sms_code">認証コードが正しくありません</string>
+    <string name="err_qq_bind_abnormal">アカウント連携に異常があります</string>
+    <string name="err_qq_bind_missing">アカウント連携がありません</string>
+    <string name="err_qq_account_restricted">アカウントが制限されています</string>
+    <string name="err_qq_device_limit">ログイン端末数の上限を超えました</string>
+    <string name="err_qq_account_banned">アカウントが停止されています</string>
+    <string name="err_qq_too_frequent">操作が頻繁すぎます。しばらくしてから再試行してください</string>
+    <string name="err_qq_no_credential">%1$s：サーバーから認証情報が返されませんでした</string>
+    <string name="err_qq_sms_need_captcha">コード送信に失敗：本人確認が必要ですが、確認用URLが返されませんでした</string>
+    <string name="err_qq_sms_send_code">コードの送信に失敗しました（%1$d）</string>
+    <string name="err_qq_phone_login_failed">電話番号ログインに失敗しました</string>
+    <string name="err_qq_default_user">QQユーザー</string>
+    <string name="err_qq_lyric_failed">QQの歌詞取得に失敗しました</string>
+    <string name="err_qq_playlist_empty">QQプレイリストの詳細が空です</string>
+    <string name="err_qq_request_failed">QQリクエストに失敗しました</string>
+    <string name="err_yt_no_stream">利用できる音声ストリームがありません</string>
+    <string name="err_yt_network">ネットワークエラー</string>
+    <string name="err_drive_list">Driveの一覧取得に失敗 HTTP %1$d</string>
+    <string name="err_drive_download">Driveのダウンロードに失敗 HTTP %1$d</string>
+    <string name="err_drive_upload">Driveのアップロードに失敗 HTTP %1$d</string>
+    <string name="err_drive_update">Driveの更新に失敗 HTTP %1$d</string>
+    <string name="err_google_cm_unavailable">Credential Managerを利用できません</string>
+    <string name="err_google_no_account">この端末で利用できるGoogleアカウントがありません</string>
+    <string name="err_google_login_unavailable">Googleログインを利用できません</string>
+    <string name="err_google_login_failed">Googleログインに失敗しました</string>
+    <string name="err_google_auth_no_page">許可の確認が必要ですが、システムから確認画面が提供されませんでした</string>
+    <string name="err_google_auth_no_token">許可でアクセストークンが返されませんでした</string>
+    <string name="err_drive_auth_failed">Driveの許可に失敗しました</string>
+    <string name="err_connect_play_service">再生サービスへの接続に失敗しました</string>
+    <string name="err_play_service_failed">再生サービスへの接続に失敗しました。アプリを再起動して再試行してください</string>
+    <string name="err_play_failed_network">再生に失敗しました。ネットワークを確認して再試行してください</string>
+    <string name="err_play_skipped_no_url">この曲の再生URLがないため（ライセンスがない、またはVIPが必要な場合があります）スキップしました</string>
+
+    <!-- ローカルインポート（AppStrings経由） -->
+    <string name="local_selected_dir">選択したフォルダ</string>
+    <string name="local_open_dir_failed">フォルダを開けません</string>
+    <string name="local_qq_format_unsupported">QQの暗号化形式はまだ復号に対応していません</string>
+    <string name="local_read_failed">ファイルを読み取れません</string>
+    <string name="local_decrypt_failed">復号に失敗しました：%1$s</string>
+    <string name="local_decrypt_verify_failed">復号後の音声検証に失敗しました</string>
+    <string name="local_unknown_song">不明な曲</string>
+    <string name="local_unknown_artist">不明なアーティスト</string>
+    <string name="ncm_too_small">ファイルが小さすぎます</string>
+    <string name="ncm_bad_magic">.ncmファイルではありません（マジック不一致）</string>
+    <string name="ncm_key_length">キー部の長さが異常です</string>
+    <string name="ncm_key_decrypt_failed">キーの復号に失敗しました</string>
+    <string name="ncm_truncated">ファイルが途中で切れています</string>
+    <string name="ncm_cover_length">ジャケットの長さが異常です</string>
+    <string name="ncm_no_audio">音声部がありません</string>
+    <string name="ncm_audio_verify_failed">復号後の音声ヘッダー検証に失敗しました</string>
+    <string name="update_downloaded_so_far">%1$s ダウンロード済み</string>
+    <string name="update_kind_test">テストバージョン</string>
+    <string name="update_kind_new">新しいバージョン</string>
+    <string name="err_login_expired">ログインの有効期限が切れました。再度ログインしてください</string>
+    <string name="err_qq_qr_login_failed">QQMusicのQRログインに失敗しました</string>
+    <string name="err_qq_missing_req">QQの応答に req_0 がありません</string>
+    <string name="err_qq_session_no_data">QQ GetSession が data を返しませんでした</string>
+    <string name="err_qq_session_no_session">QQ GetSession が session を返しませんでした</string>
+    <string name="err_yt_empty_id">videoId が空です</string>
+    <string name="err_yt_vr_failed">ANDROID_VR に失敗しました</string>
+    <string name="err_unknown">不明なエラー</string>
+    <string name="msg_retrospective_name">%1$d年%2$d月の振り返り</string>
+    <string name="err_network">ネットワークエラー</string>
+    <string name="stats_netease_hours">Netease %1$s</string>
+    <string name="detail_resume">再開</string>
+</resources>

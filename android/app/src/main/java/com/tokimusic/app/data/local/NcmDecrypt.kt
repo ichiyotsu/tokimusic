@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.local
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import org.json.JSONObject
 import java.util.Base64
@@ -90,8 +92,8 @@ object NcmDecrypt {
 
     /** 解密一个 .ncm 文件的全部字节；格式不对/解密失败抛 IllegalArgumentException。 */
     fun decryptNcm(bytes: ByteArray): NcmResult {
-        require(bytes.size > 16) { "文件太小" }
-        require(String(bytes, 0, 8, Charsets.ISO_8859_1) == "CTENFDAM") { "不是 .ncm 文件（魔数不符）" }
+        require(bytes.size > 16) { AppStrings.getOrFallback(R.string.ncm_too_small, "文件太小") }
+        require(String(bytes, 0, 8, Charsets.ISO_8859_1) == "CTENFDAM") { AppStrings.getOrFallback(R.string.ncm_bad_magic, "不是 .ncm 文件（魔数不符）") }
         var offset = 10
         fun u32le(): Int {
             val v = (bytes[offset].toInt() and 0xFF) or
@@ -103,12 +105,12 @@ object NcmDecrypt {
         }
         // 密钥段
         val keyLen = u32le()
-        require(keyLen in 1..4096 && offset + keyLen <= bytes.size) { "密钥段长度异常" }
+        require(keyLen in 1..4096 && offset + keyLen <= bytes.size) { AppStrings.getOrFallback(R.string.ncm_key_length, "密钥段长度异常") }
         val keyData = ByteArray(keyLen) { (bytes[offset + it].toInt() xor 0x64).toByte() }
         offset += keyLen
         val keyPlain = aesEcbDecrypt(CORE_KEY, keyData)
         val prefix = "neteasecloudmusic"
-        require(keyPlain.size > prefix.length) { "密钥解密失败" }
+        require(keyPlain.size > prefix.length) { AppStrings.getOrFallback(R.string.ncm_key_decrypt_failed, "密钥解密失败") }
         val audioKey = keyPlain.copyOfRange(prefix.length, keyPlain.size)
         val box = buildKeyBox(audioKey)
         // 元数据段
@@ -144,16 +146,16 @@ object NcmDecrypt {
         }
         // CRC(4) + 间隔(5) + 封面长度(4) + 封面
         offset += 4 + 5
-        if (offset + 4 > bytes.size) throw IllegalArgumentException("文件截断")
+        if (offset + 4 > bytes.size) throw IllegalArgumentException(AppStrings.getOrFallback(R.string.ncm_truncated, "文件截断"))
         val imageLen = u32le()
-        require(imageLen in 0..bytes.size) { "封面长度异常" }
+        require(imageLen in 0..bytes.size) { AppStrings.getOrFallback(R.string.ncm_cover_length, "封面长度异常") }
         offset += imageLen
-        require(offset < bytes.size) { "缺少音频段" }
+        require(offset < bytes.size) { AppStrings.getOrFallback(R.string.ncm_no_audio, "缺少音频段") }
         val audio = ByteArray(bytes.size - offset)
         for (i in audio.indices) {
             audio[i] = (bytes[offset + i].toInt() xor maskAt(box, i)).toByte()
         }
-        val sniffed = sniffAudioFormat(audio) ?: throw IllegalArgumentException("解密后音频头校验失败")
+        val sniffed = sniffAudioFormat(audio) ?: throw IllegalArgumentException(AppStrings.getOrFallback(R.string.ncm_audio_verify_failed, "解密后音频头校验失败"))
         return NcmResult(
             audio = audio,
             format = metaFormat.ifBlank { sniffed },

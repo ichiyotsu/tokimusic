@@ -54,6 +54,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
+import com.tokimusic.app.data.model.PlaylistGroup
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -61,6 +64,7 @@ import coil.compose.AsyncImage
 import com.tokimusic.app.R
 import com.tokimusic.app.data.local.LocalBucket
 import com.tokimusic.app.data.local.displayName
+import com.tokimusic.app.data.AppStrings
 import com.tokimusic.app.data.local.localBucketOf
 import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Artist
@@ -85,7 +89,7 @@ import com.tokimusic.app.ui.theme.tokiPageColor
 // pages get the floating OverlayTitleHeader; was private + internal state.
 // 0.1.13 第 24 项：“艺人”改名“歌手”。
 // 0.1.20 第 7 项：新增「本地」分区（读取网易云/QQ 本地文件并解密导入）。
-enum class LibrarySection(val title: String) { Liked("收藏"), Playlists("歌单"), Artists("歌手"), Albums("专辑"), Songs("歌曲"), Local("本地") }
+enum class LibrarySection(@StringRes val titleRes: Int) { Liked(R.string.library_liked), Playlists(R.string.library_playlists), Artists(R.string.library_artists), Albums(R.string.library_albums), Songs(R.string.library_songs), Local(R.string.library_local) }
 
 /** 0.1.13 第 23 项：资料库等级 / 听歌时长的显示源——两源都开时默认全部（BOTH），单源时只显示该源，无源时显示本地。 */
 enum class LibraryStatsSource { NETEASE, QQ, BOTH, LOCAL }
@@ -233,12 +237,16 @@ fun LibraryScreen(
     var recentTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     var recordTitleY by remember { mutableStateOf(Float.MAX_VALUE) }
     val topBarBottomPx = with(density) { topPadding.toPx() }
+    // 0127 第 9 条：标题文案先在组合作用域解析（derivedStateOf 内不能调 stringResource）。
+    val sectionTitleRanking = stringResource(R.string.library_ranking)
+    val sectionTitleRecent = stringResource(R.string.library_recently_added)
+    val sectionTitleLibrary = stringResource(R.string.library_title)
     val activeLibraryTitle by remember {
         androidx.compose.runtime.derivedStateOf {
             when {
-                recordTitleY <= topBarBottomPx -> "听歌排行"
-                recentTitleY <= topBarBottomPx -> "最近添加"
-                else -> "资料库"
+                recordTitleY <= topBarBottomPx -> sectionTitleRanking
+                recentTitleY <= topBarBottomPx -> sectionTitleRecent
+                else -> sectionTitleLibrary
             }
         }
     }
@@ -265,7 +273,7 @@ fun LibraryScreen(
                 LibrarySection.Liked -> likedSongsSection(sectionLikedSongs, { id -> resolveArtistTap(sectionLikedSongs, id, onOpenArtist, onOpenQqArtist) }, false, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
                     val playable = sectionLikedSongs.filter { vm.songBlockedLabel(it) == null }
                     val idx = playable.indexOf(song)
-                    if (idx >= 0) vm.play(playable, idx, "收藏")
+                    if (idx >= 0) vm.play(playable, idx, AppStrings.getOrFallback(R.string.library_liked, "收藏"))
                 }
                 LibrarySection.Playlists -> playlistsSection(sectionPlaylists, profile?.uid ?: 0, false, onOpenPlaylist)
                 LibrarySection.Artists -> artistsSection(
@@ -280,7 +288,7 @@ fun LibraryScreen(
                         // QQ/YouTubeMusic 恒不显示。
                         if (sectionSource == MusicSource.NETEASE) {
                             val followMs = vm.artistFollowTimeMs(artist.id)
-                            if (followMs > 0L) "已关注 ${com.tokimusic.app.ui.artist.followDays(followMs, System.currentTimeMillis())} 天" else null
+                            if (followMs > 0L) AppStrings.getOrFallback(R.string.library_followed_days, "已关注 %1\$d 天", com.tokimusic.app.ui.artist.followDays(followMs, System.currentTimeMillis())) else null
                         } else {
                             null
                         }
@@ -290,7 +298,7 @@ fun LibraryScreen(
                 LibrarySection.Songs -> songsSection(mine.recent, { id -> resolveArtistTap(mine.recent, id, onOpenArtist, onOpenQqArtist) }, showSourceBadge, onLongPressSong = { vm.openSongActions(it) }, blockedLabel = { vm.songBlockedLabel(it) }) { song ->
                     val playable = mine.recent.filter { vm.songBlockedLabel(it) == null }
                     val idx = playable.indexOf(song)
-                    if (idx >= 0) vm.play(playable, idx, "歌曲")
+                    if (idx >= 0) vm.play(playable, idx, AppStrings.getOrFallback(R.string.library_songs, "歌曲"))
                 }
                 null -> {}
             }
@@ -373,35 +381,35 @@ fun LibraryScreen(
             // 0.1.17 第 8 项：Monet 已删——五个分区卡不再按色板取色，
             // 用默认 surfaceContainer 底色。
             TokiCardRow(
-                Icons.Rounded.Star, "收藏",
-                if (anyLoggedIn) "$likedCount 首" else "登录后查看",
+                Icons.Rounded.Star, stringResource(R.string.library_liked),
+                if (anyLoggedIn) stringResource(R.string.library_liked_count, likedCount) else stringResource(R.string.common_login_to_view),
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Liked) else onOpenSettings() }
         }
         item {
             TokiCardRow(
-                Icons.Rounded.QueueMusic, "歌单",
-                if (anyLoggedIn) "$playlistCount 个歌单" else "登录后查看",
+                Icons.Rounded.QueueMusic, stringResource(R.string.library_playlists),
+                if (anyLoggedIn) stringResource(R.string.library_playlist_count, playlistCount) else stringResource(R.string.common_login_to_view),
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Playlists) else onOpenSettings() }
         }
         item {
             TokiCardRow(
                 // 0.1.13 第 24 项：“艺人”改名“歌手”。
-                Icons.Rounded.Mic, "歌手",
-                if (anyLoggedIn) "我关注的歌手" else "登录后查看",
+                Icons.Rounded.Mic, stringResource(R.string.library_artists),
+                if (anyLoggedIn) stringResource(R.string.library_my_artists) else stringResource(R.string.common_login_to_view),
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Artists) else onOpenSettings() }
         }
         item {
             TokiCardRow(
-                Icons.Rounded.Album, "专辑",
-                if (anyLoggedIn) "我收藏的专辑" else "登录后查看",
+                Icons.Rounded.Album, stringResource(R.string.library_albums),
+                if (anyLoggedIn) stringResource(R.string.library_my_albums) else stringResource(R.string.common_login_to_view),
             ) { if (anyLoggedIn || localMode) onOpenSection(LibrarySection.Albums) else onOpenSettings() }
         }
         item {
             // 本轮（0124）第 22 项：最近播放来自本机 PlayEventLog（全源），
             // 与登录无关——副文案恒显本地条数，点开也不再要求登录。
             TokiCardRow(
-                Icons.Rounded.MusicNote, "歌曲",
-                "${mine.recent.size} 首最近播放",
+                Icons.Rounded.MusicNote, stringResource(R.string.library_songs),
+                stringResource(R.string.library_recent_count, mine.recent.size),
             ) { if (anyLoggedIn || localMode || mine.recent.isNotEmpty()) onOpenSection(LibrarySection.Songs) else onOpenSettings() }
         }
         // 0.1.20 第 7 项：本地入口卡（所有模式都显示；本地模式下它是
@@ -411,15 +419,15 @@ fun LibraryScreen(
             if (localMode) Spacer(Modifier.height(8.dp))
             val localCount by vm.localTracks.collectAsState()
             TokiCardRow(
-                Icons.Rounded.FolderOpen, "本地",
-                if (localCount.isEmpty()) "读取 NeteaseMusic / QQMusic 与 Device 的本地文件" else "已导入 ${localCount.size} 首",
+                Icons.Rounded.FolderOpen, stringResource(R.string.library_local),
+                if (localCount.isEmpty()) stringResource(R.string.library_local_desc) else stringResource(R.string.library_local_imported, localCount.size),
             ) { onOpenSection(LibrarySection.Local) }
         }
         if (loggedIn) {
             item {
                 Box(
                     Modifier.onGloballyPositioned { recentTitleY = it.positionInRoot().y },
-                ) { SectionTitle("最近添加") }
+                ) { SectionTitle(stringResource(R.string.library_recently_added)) }
             }
             items(myPlaylists.chunked(2)) { pair ->
                 Row(
@@ -449,16 +457,16 @@ fun LibraryScreen(
             item {
                 Box(
                     Modifier.onGloballyPositioned { recordTitleY = it.positionInRoot().y },
-                ) { SectionTitle("听歌排行") }
+                ) { SectionTitle(stringResource(R.string.library_ranking)) }
             }
             // 第二轮第 22 项：排行右侧显示播放次数（RecordItem.playCount），
             // 不再显示歌曲时长。
             itemsIndexed(mine.record.take(10)) { i, r ->
                 val blocked = vm.songBlockedLabel(r.song)
-                SongRow(r.song, i, trailingText = "${r.playCount} 次", onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge, dimmed = blocked != null, dimmedLabel = blocked) {
+                SongRow(r.song, i, trailingText = AppStrings.getOrFallback(R.string.library_play_count, "%1\$d 次", r.playCount), onOpenArtist = onOpenArtist, onLongPress = { vm.openSongActions(it) }, showSourceBadge = showSourceBadge, dimmed = blocked != null, dimmedLabel = blocked) {
                     val playable = mine.record.take(10).map { it.song }.filter { vm.songBlockedLabel(it) == null }
                     val idx = playable.indexOf(r.song)
-                    if (idx >= 0) vm.play(playable, idx, "听歌排行")
+                    if (idx >= 0) vm.play(playable, idx, AppStrings.getOrFallback(R.string.library_ranking, "听歌排行"))
                 }
             }
         }
@@ -488,7 +496,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likedSongsSection(
     if (likedSongs.isEmpty()) {
         item {
             Text(
-                "还没有喜欢的歌曲，在播放器里点星标收藏",
+                stringResource(R.string.library_no_liked),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -514,7 +522,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
     if (groups.all { it.value.isEmpty() }) {
         item {
             Text(
-                "还没有歌单",
+                stringResource(R.string.library_no_playlists),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -526,7 +534,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
         if (list.isEmpty()) return@forEach
         item {
             Text(
-                group.title,
+                when (group) {
+                    PlaylistGroup.Liked -> stringResource(R.string.playlist_group_liked)
+                    PlaylistGroup.Created -> stringResource(R.string.playlist_group_created)
+                    PlaylistGroup.Subscribed -> stringResource(R.string.playlist_group_subscribed)
+                },
                 Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleMedium,
             )
@@ -553,7 +565,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playlistsSection(
             Column(Modifier.weight(1f)) {
                 Text(playlist.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(playlist.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${playlist.trackCount} 首 · ${playlist.creatorName}",
+                    stringResource(R.string.common_song_count_with, playlist.trackCount, playlist.creatorName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -580,7 +592,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.artistsSection(
     if (artists.isEmpty()) {
         item {
             Text(
-                "还没有关注的歌手",
+                stringResource(R.string.library_no_artists),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -628,7 +640,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.albumsSection(albums:
     if (albums.isEmpty()) {
         item {
             Text(
-                "还没有收藏的专辑",
+                stringResource(R.string.library_no_albums),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -653,7 +665,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.songsSection(
     if (recent.isEmpty()) {
         item {
             Text(
-                "还没有播放过歌曲",
+                stringResource(R.string.library_no_recent),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -681,7 +693,7 @@ private fun AlbumRow(album: Album, onClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(album.name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(album.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val albumSubtitle = listOf(album.artistText, if (album.trackCount > 0) "${album.trackCount} 首" else "").filter { it.isNotBlank() }.joinToString(" · ")
+            val albumSubtitle = listOf(album.artistText, if (album.trackCount > 0) stringResource(R.string.common_song_count, album.trackCount) else "").filter { it.isNotBlank() }.joinToString(" · ")
             Text(
                 albumSubtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -805,7 +817,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         if (permissionDeniedHint && !hasAudioPermission) {
             item {
                 Text(
-                    "未授予本地音乐权限，无法读取；下次点来源会再次询问。",
+                    stringResource(R.string.library_local_permission_denied),
                     Modifier.padding(horizontal = 24.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -822,7 +834,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     ) { startBucketRead(bucket) }
                     val treePicked = remember(treeVersion, bucket) { vm.localTree(bucket) }
                     Text(
-                        if (treePicked.isNotBlank()) "下载目录：已选择，点此更换" else "下载目录：未选择，点此选择",
+                        if (treePicked.isNotBlank()) stringResource(R.string.library_download_dir_set) else stringResource(R.string.library_download_dir_unset),
                         Modifier
                             .fillMaxWidth()
                             .clickable {
@@ -839,7 +851,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         if (importing) {
             item {
                 Text(
-                    "读取中…",
+                    stringResource(R.string.library_reading),
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -849,7 +861,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         report?.let { r ->
             item {
                 Text(
-                    "已导入 ${r.imported} 首" + if (r.failures.isNotEmpty()) "，失败 ${r.failures.size} 首" else "",
+                    stringResource(R.string.library_imported, r.imported) + if (r.failures.isNotEmpty()) stringResource(R.string.library_import_failed_suffix, r.failures.size) else "",
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -863,7 +875,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                 )
             }
         }
-        item { SectionTitle("已导入 · ${tracks.size} 首") }
+        item { SectionTitle(stringResource(R.string.library_imported_count, tracks.size)) }
         // 已导入按歌单格式展示（本轮）：与资料库「歌单」分区同款行式，
         // 封面位用桶内第一首的封面（导入时读到的嵌入/MediaStore 封面），
         // 作者口径与歌单详情一致（云音乐 / 企鹅音乐 / User 名）。
@@ -874,13 +886,13 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         }
         item {
             LocalPlaylistRow(
-                name = "NeteaseMusic", trackCount = neteaseTracks.size, creator = "云音乐",
+                name = "NeteaseMusic", trackCount = neteaseTracks.size, creator = stringResource(R.string.library_source_netease_creator),
                 coverUrl = bucketCover(neteaseTracks), icon = Icons.Rounded.QueueMusic,
             ) { onOpenPlaylist(LOCAL_NETEASE_PLAYLIST_ID) }
         }
         item {
             LocalPlaylistRow(
-                name = "QQMusic", trackCount = qqTracks.size, creator = "企鹅音乐",
+                name = "QQMusic", trackCount = qqTracks.size, creator = stringResource(R.string.library_source_qq_creator),
                 coverUrl = bucketCover(qqTracks), icon = Icons.Rounded.MusicNote,
             ) { onOpenPlaylist(LOCAL_QQ_PLAYLIST_ID) }
         }
@@ -894,7 +906,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     coverUrl = bucketCover(deviceTracks), icon = Icons.Rounded.FolderOpen,
                 ) { onOpenPlaylist(LOCAL_DOWNLOAD_PLAYLIST_ID) }
             }
-            item { SectionTitle("Device · ${deviceTracks.size} 首") }
+            item { SectionTitle(stringResource(R.string.library_device_count, deviceTracks.size)) }
             itemsIndexed(deviceTracks) { i, track ->
                 val allSongs = vm.localTrackSongs()
                 val songIndex = tracks.indexOf(track)
@@ -904,7 +916,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
                     trailingText = track.format.uppercase(),
                     trailingAction = {
                         IconButton(onClick = { vm.removeLocalTrack(track) }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "移除", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.library_remove), modifier = Modifier.size(20.dp))
                         }
                     },
                     onLongPress = { vm.openSongActions(it) },
@@ -918,7 +930,7 @@ private fun LocalLibraryPage(vm: AppViewModel, topPadding: Dp, bottomPadding: Dp
         // 本轮（0124）第 9 项：已下载歌单镜像——按歌单格式列出（与
         // 上面三桶歌单行同款），点开走下载歌单的虚拟 id 详情。
         if (downloadedEntries.isNotEmpty()) {
-            item { SectionTitle("已下载歌单") }
+            item { SectionTitle(stringResource(R.string.library_downloaded_playlists)) }
             items(downloadedEntries, key = { it.virtualId }) { entry ->
                 LocalPlaylistRow(
                     name = entry.name,
@@ -972,7 +984,7 @@ private fun LocalBucketImportRow(
         Column(Modifier.weight(1f)) {
             Text(bucket.displayName(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "已导入 $importedCount 首 · 点按扫描导入",
+                stringResource(R.string.library_imported_tap_scan, importedCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -1024,7 +1036,7 @@ private fun LocalPlaylistRow(
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleMedium, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(name), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "$trackCount 首 · $creator",
+                stringResource(R.string.common_song_count_with, trackCount, creator),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -1056,7 +1068,7 @@ private fun StatsPair(
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f)) {
             StatCard(
-                "音乐等级", level, Modifier.fillMaxWidth(),
+                stringResource(R.string.library_music_level), level, Modifier.fillMaxWidth(),
                 onClick = onLevelClick,
                 labelBadge = levelBadge,
                 leadingIcon = if (leadingIconRes != null) {
@@ -1068,7 +1080,7 @@ private fun StatsPair(
         // 的真实等级）；未登录 / 未取到时显示 —。
         // 第五轮第 23 项：删掉左边的“收藏歌曲”卡；听歌时长放
         // 等级右边，单位 h、可带一位小数（如 1537.5h）；点卡仍进时长页。
-        StatCard("听歌时长", minutes, Modifier.weight(1f), onClick = onMinutesClick)
+        StatCard(stringResource(R.string.library_listening_time), minutes, Modifier.weight(1f), onClick = onMinutesClick)
     }
 }
 

@@ -75,6 +75,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.data.AppStrings
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -151,12 +153,17 @@ fun HomeScreen(
     // Composable，状态必须提到这里）。
     var blockOrder by remember { mutableStateOf(HomeBlockOrder.apply(vm.store.homeBlockOrder)) }
     val topBarBottomPx = with(density) { topPadding.toPx() }
+    // 0127 第 9 条：标题文案先在组合作用域解析（derivedStateOf
+    // 的 lambda 不是组合作用域，不能直接调 stringResource）。
+    val sectionTitleNewSongs = stringResource(R.string.home_recommend_songs)
+    val sectionTitlePlaylists = stringResource(R.string.home_recommend_playlists)
+    val sectionTitleHome = stringResource(R.string.home_title)
     val activeSection by remember {
         derivedStateOf {
             when {
-                newSongsTitleY <= topBarBottomPx -> "推荐新歌"
-                playlistsTitleY <= topBarBottomPx -> "推荐歌单"
-                else -> "主页"
+                newSongsTitleY <= topBarBottomPx -> sectionTitleNewSongs
+                playlistsTitleY <= topBarBottomPx -> sectionTitlePlaylists
+                else -> sectionTitleHome
             }
         }
     }
@@ -221,14 +228,14 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(Icons.Rounded.CloudOff, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("无法连接 NeteaseMusic", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.home_connect_failed_netease), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "请检查网络后重试",
+                        stringResource(R.string.common_check_network_retry),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    FilledTonalButton(onClick = { vm.refreshHome() }, Modifier.height(56.dp)) { Text("重试") }
-                    FilledTonalButton(onClick = onOpenLogin, Modifier.height(56.dp)) { Text("去登录") }
+                    FilledTonalButton(onClick = { vm.refreshHome() }, Modifier.height(56.dp)) { Text(stringResource(R.string.common_retry)) }
+                    FilledTonalButton(onClick = onOpenLogin, Modifier.height(56.dp)) { Text(stringResource(R.string.home_go_login)) }
                 }
             }
             return@LazyColumn
@@ -267,18 +274,18 @@ fun HomeScreen(
                 ) {
                     LocalGeneratedCard(
                         title = "NeteaseMusic",
-                        caption = "$neteaseLocalCount 首 · Device",
+                        caption = stringResource(R.string.home_device_song_count, neteaseLocalCount),
                         modifier = Modifier.weight(1f),
                     ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_NETEASE_PLAYLIST_ID) }
                     LocalGeneratedCard(
                         title = "QQMusic",
-                        caption = "$qqLocalCount 首 · Device",
+                        caption = stringResource(R.string.home_device_song_count, qqLocalCount),
                         modifier = Modifier.weight(1f),
                     ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_QQ_PLAYLIST_ID) }
                     if (deviceLocalCount > 0) {
                         LocalGeneratedCard(
                             title = "Device",
-                            caption = "$deviceLocalCount 首 · Device",
+                            caption = stringResource(R.string.home_device_song_count, deviceLocalCount),
                             modifier = Modifier.weight(1f),
                         ) { onOpenPlaylist(com.tokimusic.app.ui.LOCAL_DOWNLOAD_PLAYLIST_ID) }
                     }
@@ -319,7 +326,7 @@ fun HomeScreen(
                 ) { key ->
                     when (key) {
                         HomeBlockOrder.DAILY -> RecommendCard(
-                            title = "每日推荐",
+                            title = stringResource(R.string.home_daily),
                             songs = home.daily,
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
@@ -329,7 +336,7 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         HomeBlockOrder.RADAR -> RecommendCard(
-                            title = "私人雷达",
+                            title = stringResource(R.string.home_radar),
                             songs = home.radar,
                             loggedIn = home.loggedIn,
                             onLogin = onOpenLogin,
@@ -376,7 +383,7 @@ fun HomeScreen(
         if (allPlaylists.isNotEmpty()) {
             item {
                 Text(
-                    "推荐歌单",
+                    stringResource(R.string.home_recommend_playlists),
                     Modifier.padding(horizontal = 24.dp)
                         .onGloballyPositioned { playlistsTitleY = it.positionInRoot().y },
                     style = MaterialTheme.typography.titleLarge,
@@ -405,7 +412,7 @@ fun HomeScreen(
         if (home.newSongs.isNotEmpty() || home.qqNewSongs.isNotEmpty()) {
             item {
                 Text(
-                    "推荐新歌",
+                    stringResource(R.string.home_recommend_songs),
                     Modifier.padding(horizontal = 24.dp)
                         .onGloballyPositioned { newSongsTitleY = it.positionInRoot().y },
                     style = MaterialTheme.typography.titleLarge,
@@ -432,7 +439,7 @@ fun HomeScreen(
         // OCT'26 + 副标「音乐记忆 · M月」），点开走虚拟歌单详情。
         if (home.retrospectives.isNotEmpty()) {
             item {
-                Text("回顾", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.home_retrospective), Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 24.dp),
@@ -452,7 +459,7 @@ fun HomeScreen(
         // 当月实时更新；跨月后本卡自动换到新月，旧月转入上方「回顾」
         // 并冻结）。当月无播放记录时显示空态卡（不编造歌曲、不可点）。
         item {
-            Text("音乐记忆", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.home_memory), Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             if (home.memorySongs.isNotEmpty() && home.memoryMonthKey != 0) {
                 // 本轮（0125）第 6 项：音乐记忆改歌单卡形式——生成
@@ -474,9 +481,9 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column {
-                        Text("10'26 音乐记忆", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.home_memory_empty_title), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "暂无播放记录",
+                            stringResource(R.string.home_no_play_records),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -523,6 +530,8 @@ private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Lon
     // 0.1.15 第 2 项：QQ 新歌的歌手名按 mid 进 QQ 歌手页（按行所在
     // 列表分流——0.1.19 起每块是单源列表，逻辑不变）。
     val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(songs, id, onOpenArtist, onOpenQqArtist) }
+    // 0127 第 9 条：播放上下文文案在组合作用域先解析（点击 lambda 里不能调 stringResource）。
+    val recommendPlayContext = stringResource(R.string.home_recommend_songs)
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     // 来源 icon 与歌名等高：边长取 titleMedium 的行高（默认排版 24sp →
     // 24dp）；行高未指定（value 为 NaN）时回落 24。
@@ -551,8 +560,8 @@ private fun NewSongsGrid(songs: List<Song>, vm: AppViewModel, onOpenArtist: (Lon
                     onLongPress = { vm.openSongActions(it) },
                     horizontalPadding = 0.dp,
                     titleTrailing = { SourceIcon(song.source, size = titleIconSize) },
-                    trailingAction = { SmallRoundPlayButton { vm.play(songs, index, "推荐新歌") } },
-                ) { vm.play(songs, index, "推荐新歌") }
+                    trailingAction = { SmallRoundPlayButton { vm.play(songs, index, recommendPlayContext) } },
+                ) { vm.play(songs, index, recommendPlayContext) }
             }
         }
     }
@@ -578,23 +587,23 @@ private fun LocalMusicHeader(hasSongs: Boolean, hasPermission: Boolean, onReques
         ) {
             Icon(painterResource(R.drawable.ic_local_music), contentDescription = null, modifier = Modifier.size(28.dp))
         }
-        Text("本地音乐", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.home_local_music), style = MaterialTheme.typography.titleLarge)
         Text(
-            "两源都已关闭，只显示本地音乐",
+            stringResource(R.string.home_local_both_sources_off),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!hasPermission) {
             FilledTonalButton(onClick = onRequestPermission, Modifier.height(56.dp)) {
-                Text("允许访问本地音乐")
+                Text(stringResource(R.string.home_local_grant))
             }
         } else if (!hasSongs) {
             Text(
-                "本地暂无歌曲",
+                stringResource(R.string.home_local_empty),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            FilledTonalButton(onClick = onRescan, Modifier.height(56.dp)) { Text("重新扫描") }
+            FilledTonalButton(onClick = onRescan, Modifier.height(56.dp)) { Text(stringResource(R.string.home_local_rescan)) }
         }
     }
 }
@@ -693,7 +702,7 @@ private fun RecommendCard(
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "登录后查看",
+                        stringResource(R.string.home_login_to_view),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -711,7 +720,13 @@ private fun RecommendCard(
 
 private fun artistLine(songs: List<Song>): String {
     val artists = songs.flatMap { it.artists }.map { it.name }.distinct()
-    return if (artists.size > 4) artists.take(4).joinToString("，") + "等" else artists.joinToString("，")
+    // 0127 第 9 条：分隔符与「等」后缀随 App 语言（非组合作用域，走 AppStrings）。
+    val separator = AppStrings.getOrFallback(R.string.home_artist_separator, "，")
+    return if (artists.size > 4) {
+        artists.take(4).joinToString(separator) + AppStrings.getOrFallback(R.string.home_more_artists_suffix, "等")
+    } else {
+        artists.joinToString(separator)
+    }
 }
 
 /**
@@ -817,7 +832,7 @@ private fun MemoryCoverCard(
                     maxLines = 1,
                 )
                 Text(
-                    com.tokimusic.app.player.Retrospective.coverSubtitle(monthKey),
+                    com.tokimusic.app.player.Retrospective.coverSubtitle(monthKey, stringResource(R.string.memory_cover_subtitle)),
                     style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     color = Color.White.copy(alpha = 0.92f),
@@ -825,7 +840,7 @@ private fun MemoryCoverCard(
                 )
             }
             Text(
-                "$trackCount 首 · TokiMusic",
+                stringResource(R.string.home_memory_creator_count, trackCount),
                 Modifier.align(Alignment.BottomStart).padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.85f),

@@ -1,4 +1,5 @@
 package com.tokimusic.app.player
+import com.tokimusic.app.data.AppStrings
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ComponentName
@@ -246,7 +247,7 @@ class PlayerController(context: Context) {
                 onControllerConnected(controllerFuture.get())
             } catch (e: Exception) {
                 Log.e("PlayerController", "连接播放服务失败", e)
-                onPlaybackError?.invoke("播放服务连接失败，请重启应用后重试")
+                onPlaybackError?.invoke(AppStrings.getOrFallback(R.string.err_play_service_failed, "播放服务连接失败，请重启应用后重试"))
             }
         }, mainExecutor)
         scope.launch {
@@ -311,7 +312,7 @@ class PlayerController(context: Context) {
             val songId = current?.mediaId?.toLongOrNull()
             if (songId != null && urlLoader != null && scheduleErrorRecovery(player, songId)) return
             _state.value = _state.value.copy(isPlaying = false)
-            onPlaybackError?.invoke("播放失败，请检查网络后重试")
+            onPlaybackError?.invoke(AppStrings.getOrFallback(R.string.err_play_failed_network, "播放失败，请检查网络后重试"))
         }
     }
 
@@ -357,7 +358,7 @@ class PlayerController(context: Context) {
                 if (wasPlaying && player.playWhenReady) player.play()
             } else if (!scheduleErrorRecovery(player, songId)) {
                 _state.value = _state.value.copy(isPlaying = false)
-                onPlaybackError?.invoke("播放失败，请检查网络后重试")
+                onPlaybackError?.invoke(AppStrings.getOrFallback(R.string.err_play_failed_network, "播放失败，请检查网络后重试"))
             }
         }
         return true
@@ -451,7 +452,7 @@ class PlayerController(context: Context) {
                 // onPlayerError 又把空 URI 错误吞掉，歌就静默播不出。
                 if (!autoPlay) return@launch
                 unplayable.add(id)
-                onPlaybackError?.invoke("这首歌暂无播放地址（可能无版权或需 VIP），已跳过")
+                onPlaybackError?.invoke(AppStrings.getOrFallback(R.string.err_play_skipped_no_url, "这首歌暂无播放地址（可能无版权或需 VIP），已跳过"))
                 if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.pause()
             }
         }

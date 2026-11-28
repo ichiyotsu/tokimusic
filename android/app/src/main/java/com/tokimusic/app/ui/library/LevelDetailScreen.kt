@@ -33,6 +33,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.player.formatPointCount
 import com.tokimusic.app.player.levelEarningRows
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
+import com.tokimusic.app.player.LevelEarningLabels
+import com.tokimusic.app.player.MusicLevel
 import com.tokimusic.app.ui.AppViewModel
 import kotlin.math.max
 import kotlin.math.min
@@ -74,6 +78,15 @@ fun LevelDetailScreen(
     bottomPadding: Dp,
 ) {
     val snapshot = remember { vm.musicLevelSnapshot() }
+    // 0127 第 9 条：赚分规则标签在组合作用域先拼好（LazyListScope 里不能调 stringResource）。
+    val earningLabels = LevelEarningLabels(
+        listenTitle = stringResource(R.string.level_rule_listen_title),
+        listenDesc = stringResource(R.string.level_rule_listen_desc, MusicLevel.POINTS_PER_MINUTE),
+        listenProgressTemplate = stringResource(R.string.level_rule_listen_progress),
+        completeTitle = stringResource(R.string.level_rule_complete_title),
+        completeDesc = stringResource(R.string.level_rule_complete_desc, MusicLevel.COMPLETION_BONUS),
+        completeProgressTemplate = stringResource(R.string.level_rule_complete_progress),
+    )
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding),
@@ -82,7 +95,7 @@ fun LevelDetailScreen(
         item {
             // 大字号当前等级。
             Text(
-                if (snapshot.isMaxLevel) "Lv.${snapshot.level} · 满级" else "Lv.${snapshot.level}",
+                if (snapshot.isMaxLevel) stringResource(R.string.level_max_suffix, snapshot.level) else "Lv.${snapshot.level}",
                 Modifier.padding(horizontal = 24.dp),
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Bold,
@@ -137,7 +150,7 @@ fun LevelDetailScreen(
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        if (snapshot.isMaxLevel) "满级" else formatPointCount(snapshot.nextLevelFloor ?: snapshot.levelFloor),
+                        if (snapshot.isMaxLevel) stringResource(R.string.level_max) else formatPointCount(snapshot.nextLevelFloor ?: snapshot.levelFloor),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -146,17 +159,17 @@ fun LevelDetailScreen(
         }
         item {
             Column(Modifier.padding(horizontal = 24.dp)) {
-                Text("达成条件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.level_requirements), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "今日总积分 ${snapshot.todayPoints} / ${snapshot.dailyCap} 分（每日上限）",
+                    stringResource(R.string.level_today_total, snapshot.todayPoints, snapshot.dailyCap),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         // 达成条件逐行（列表式，将来新增积分来源往 levelEarningRows 加行）。
-        for (row in levelEarningRows(snapshot)) {
+        for (row in levelEarningRows(snapshot, earningLabels)) {
             item(key = row.title) {
                 Column(Modifier.padding(horizontal = 24.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

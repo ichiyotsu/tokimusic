@@ -1,4 +1,6 @@
 package com.tokimusic.app
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.content.Context
 import android.content.Intent
@@ -118,7 +120,7 @@ object CrashLog {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(Intent.createChooser(intent, "导出崩溃日志").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent.createChooser(intent, AppStrings.getOrFallback(R.string.settings_export_crash_log, "导出崩溃日志")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         return true
     }
 

@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.data.model.Song
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.player.PlayMode
 import com.tokimusic.app.ui.pressRebound
 import com.tokimusic.app.ui.theme.CoverColors
@@ -213,9 +215,9 @@ fun DetailPlayControls(
             Icon(
                 if (buttonState == com.tokimusic.app.player.DetailPlayButtonState.Pause) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 when (buttonState) {
-                    com.tokimusic.app.player.DetailPlayButtonState.Pause -> "暂停"
-                    com.tokimusic.app.player.DetailPlayButtonState.Resume -> "继续播放"
-                    com.tokimusic.app.player.DetailPlayButtonState.Play -> "播放全部"
+                    com.tokimusic.app.player.DetailPlayButtonState.Pause -> stringResource(R.string.common_pause)
+                    com.tokimusic.app.player.DetailPlayButtonState.Resume -> stringResource(R.string.detail_resume)
+                    com.tokimusic.app.player.DetailPlayButtonState.Play -> stringResource(R.string.common_play_all)
                 },
                 tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(28.dp),
             )
@@ -234,7 +236,7 @@ fun DetailPlayControls(
                     PlayMode.RepeatOne -> Icons.Rounded.RepeatOne
                     PlayMode.Reverse -> Icons.Rounded.SwapVert
                 },
-                "切换顺序 / 随机播放",
+                stringResource(R.string.detail_toggle_play_mode),
                 tint = modeIconTint,
                 modifier = Modifier.size(24.dp),
             )

@@ -48,15 +48,16 @@ import com.tokimusic.app.ui.components.Avatar
 import com.tokimusic.app.ui.components.PlaylistCard
 import com.tokimusic.app.ui.components.SongRow
 import com.tokimusic.app.ui.components.SourceBadge
+import androidx.compose.ui.res.stringResource
 import com.tokimusic.app.ui.components.sourceBadgeBackground
 import kotlinx.coroutines.delay
 
 /** 搜索结果类型筛选（0.1.20 第 11 项）：单曲 / 歌单 / 歌手 / 歌词。 */
-enum class SearchFilter(val label: String) {
-    Songs("单曲"),
-    Playlists("歌单"),
-    Artists("歌手"),
-    Lyrics("歌词"),
+enum class SearchFilter(@androidx.annotation.StringRes val labelRes: Int) {
+    Songs(R.string.search_tab_songs),
+    Playlists(R.string.search_tab_playlists),
+    Artists(R.string.search_tab_artists),
+    Lyrics(R.string.search_tab_lyrics),
 }
 
 /**
@@ -82,6 +83,10 @@ fun SearchPage(
     // 本轮（0124）第 19 项：≥2 个在线源开启时才需要源徽标区分。
     val bothEnabled = listOf(neteaseEnabled, qqEnabled, youtubeEnabled).count { it } >= 2
     val searchSource by vm.searchSource.collectAsState()
+    // 0127 第 9 条：点击 lambda 里用的文案在组合作用域先解析。
+    val searchResultsContext = stringResource(R.string.search_results)
+    val lyricSearchContext = stringResource(R.string.search_lyric_search)
+    val qqArtistUnsupportedText = stringResource(R.string.search_qq_artist_unsupported)
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(SearchFilter.Songs) }
     LaunchedEffect(query) { delay(400); vm.search(query) }
@@ -106,7 +111,7 @@ fun SearchPage(
                     query,
                     { query = it },
                     Modifier.fillMaxWidth().focusRequester(focusRequester),
-                    placeholder = { Text(if (home.localMode) "本地模式下搜索不可用" else "搜索歌曲、歌手、歌单") },
+                    placeholder = { Text(if (home.localMode) stringResource(R.string.search_hint_local_mode) else stringResource(R.string.search_hint)) },
                     leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                     singleLine = true,
                     shape = RoundedCornerShape(percent = 50),
@@ -125,7 +130,7 @@ fun SearchPage(
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                         ) {
                             Text(
-                                f.label,
+                                stringResource(f.labelRes),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -138,7 +143,7 @@ fun SearchPage(
         if (home.localMode) {
             item {
                 Text(
-                    "本地模式下搜索不可用，本地歌曲在主页浏览。",
+                    stringResource(R.string.search_local_mode_note),
                     Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -149,7 +154,7 @@ fun SearchPage(
         if (home.searching) {
             item {
                 Text(
-                    "搜索中…",
+                    stringResource(R.string.search_searching),
                     Modifier.padding(horizontal = 24.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -173,13 +178,13 @@ fun SearchPage(
                                 Box(
                                     Modifier.size(40.dp).clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.surfaceContainer)
-                                        .clickable { vm.play(home.searchResults, i, "搜索结果") },
+                                        .clickable { vm.play(home.searchResults, i, searchResultsContext) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = "播放", modifier = Modifier.size(24.dp))
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.common_play), modifier = Modifier.size(24.dp))
                                 }
                             },
-                        ) { vm.play(home.searchResults, i, "搜索结果") }
+                        ) { vm.play(home.searchResults, i, searchResultsContext) }
                     }
                 }
             }
@@ -220,7 +225,7 @@ fun SearchPage(
                     Row(
                         Modifier.fillMaxWidth().clickable {
                             if (artist.mid.isNotBlank()) onOpenQqArtist(artist.mid)
-                            else vm.showMessage("QQ 歌手详情暂不支持")
+                            else vm.showMessage(qqArtistUnsupportedText)
                         }
                             .padding(horizontal = 24.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -236,7 +241,7 @@ fun SearchPage(
                 if (searchSource == MusicSource.QQ) {
                     item {
                         Text(
-                            "QQMusic 暂不支持歌词搜索。",
+                            stringResource(R.string.search_qq_lyrics_unsupported),
                             Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -251,7 +256,7 @@ fun SearchPage(
                             onOpenArtist = onOpenArtist,
                             onLongPress = { vm.openSongActions(it) },
                             showSourceBadge = bothEnabled,
-                        ) { vm.play(home.searchLyricResults, i, "歌词搜索") }
+                        ) { vm.play(home.searchLyricResults, i, lyricSearchContext) }
                     }
                 }
             }
@@ -262,7 +267,7 @@ fun SearchPage(
 @Composable
 private fun EmptyResultHint() {
     Text(
-        "没有找到相关结果",
+        stringResource(R.string.search_no_results),
         Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -297,7 +302,7 @@ fun SearchSourceButton(source: MusicSource, selected: Boolean, onClick: () -> Un
     ) {
         Icon(
             painterResource(iconRes),
-            contentDescription = "用 $label 搜索",
+            contentDescription = stringResource(R.string.search_with_source, label),
             tint = if (selected) Color.White else tint.copy(alpha = 0.5f),
             modifier = Modifier.size(24.dp),
         )

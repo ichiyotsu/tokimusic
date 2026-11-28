@@ -1,6 +1,8 @@
 package com.tokimusic.app.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -208,7 +210,7 @@ fun TokiScrollBackChip(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val content = MaterialTheme.colorScheme.onSurface
-    TokiLongPressLabel("返回") {
+    TokiLongPressLabel(stringResource(R.string.common_back)) {
         Box(
             Modifier
                 .size(56.dp)
@@ -225,7 +227,7 @@ fun TokiScrollBackChip(
             )
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.common_back),
                 tint = content,
                 modifier = Modifier.size(24.dp),
             )

@@ -127,6 +127,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.lyric.LyricLine
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Song
@@ -205,7 +207,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
     // 本轮（0127）第 12 条：长按满 3 秒触发 MiniPlayer Pro 的时间戳
     // （墙钟），onOpen 据此吞掉触发后紧跟的那次点按。
     var proFiredWallMs by remember { mutableLongStateOf(0L) }
-    val playLabel = if (state.isPlaying) "暂停" else "播放"
+    val playLabel = if (state.isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play)
     // 0.1.21：左右划切歌的累计位移（pointerInput 里累加，松手按
     // 72dp 阈值判定；点按打开播放页不受影响——拖动成立后 click
     // 会被手势消费取消）。
@@ -394,7 +396,7 @@ fun MiniPlayerPro(vm: AppViewModel, hazeState: HazeState, coverColors: CoverColo
     val motion = MaterialTheme.motionScheme
     val onCover = coverColors.onCoverText()
     val onCoverDim = coverColors.onCoverTextDim()
-    val playLabel = if (state.isPlaying) "暂停" else "播放"
+    val playLabel = if (state.isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play)
     var swipeTotalPx by remember { mutableFloatStateOf(0f) }
     Box(Modifier.fillMaxSize()) {
         // 面板外点按关闭层（透明、无指示）；面板画在它之后，面板内
@@ -436,7 +438,7 @@ fun MiniPlayerPro(vm: AppViewModel, hazeState: HazeState, coverColors: CoverColo
                     Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCover, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(song.artistText, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText), style = MaterialTheme.typography.bodySmall, color = onCoverDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1f))
-                    TokiLongPressLabel("收藏") {
+                    TokiLongPressLabel(stringResource(R.string.player_favorite)) {
                         CircleArtButton(
                             icon = if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                             tint = onCover,
@@ -555,11 +557,11 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
     }
     if (song == null) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-            Text("暂无播放中的歌曲", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.player_no_current_song), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
         }
         return
     }
-    val playLabel = if (state.isPlaying) "暂停" else "播放"
+    val playLabel = if (state.isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play)
     val liked = song.id in likedIds
     val scheme = MaterialTheme.motionScheme
     // 背景是封面取色的暖渐变（不是模糊封面 + 黑罩）。取色由
@@ -604,7 +606,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
             val mid = song.artists.firstOrNull { it.id == artistId }?.mid?.takeIf { it.isNotBlank() }
                 ?: song.artists.firstOrNull()?.mid?.takeIf { it.isNotBlank() }
             if (mid != null) onOpenQqArtist(mid)
-            else Toast.makeText(context, "QQ 歌手详情暂不支持", Toast.LENGTH_SHORT).show()
+            else Toast.makeText(context, context.getString(R.string.player_qq_artist_unsupported), Toast.LENGTH_SHORT).show()
         } else {
             onOpenArtist(artistId)
         }
@@ -855,7 +857,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TokiLongPressLabel("上一首") {
+                    TokiLongPressLabel(stringResource(R.string.player_prev)) {
                         CircleArtButton(Icons.Rounded.SkipPrevious, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.previous() }
                     }
                     Spacer(Modifier.width(28.dp))
@@ -888,7 +890,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
                         }
                     }
                     Spacer(Modifier.width(28.dp))
-                    TokiLongPressLabel("下一首") {
+                    TokiLongPressLabel(stringResource(R.string.player_next)) {
                         CircleArtButton(Icons.Rounded.SkipNext, onCover, size = 72.dp, iconSize = 36.dp, bgColor = buttonBg) { vm.player.next() }
                     }
                 }
@@ -907,19 +909,19 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    TokiLongPressLabel(if (playerView == PlayerView.Lyrics) "返回封面" else "歌词") {
+                    TokiLongPressLabel(if (playerView == PlayerView.Lyrics) stringResource(R.string.player_back_to_cover) else stringResource(R.string.player_lyrics_label)) {
                         CircleArtButton(
                             Icons.Rounded.FormatQuote, onCover,
                             bgColor = Color.Transparent,
                         ) { playerView = if (playerView == PlayerView.Lyrics) PlayerView.Cover else PlayerView.Lyrics }
                     }
-                    TokiLongPressLabel("声音") {
+                    TokiLongPressLabel(stringResource(R.string.player_volume)) {
                         CircleArtButton(Icons.Rounded.VolumeUp, onCover, bgColor = Color.Transparent) {
                             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                             audioManager?.adjustVolume(AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
                         }
                     }
-                    TokiLongPressLabel("播放队列") {
+                    TokiLongPressLabel(stringResource(R.string.player_queue_label)) {
                         CircleArtButton(
                             Icons.Rounded.QueueMusic, onCover,
                             bgColor = Color.Transparent,
@@ -938,7 +940,7 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
         castActive = castActive,
         onPlayNext = {
             vm.playNext(song)
-            Toast.makeText(context, "已加入下一首播放", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.player_added_next), Toast.LENGTH_SHORT).show()
             showMore = false
         },
         onCast = {
@@ -947,8 +949,8 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
             // 第五轮第 4 项：打不开时 Toast 提示，不再闪退。
             val activity = context as? androidx.fragment.app.FragmentActivity
             if (activity != null) {
-                if (!showCastChooser(activity)) Toast.makeText(context, "投放窗打开失败，请重试", Toast.LENGTH_SHORT).show()
-            } else Toast.makeText(context, "投放功能尚未接入", Toast.LENGTH_SHORT).show()
+                if (!showCastChooser(activity)) Toast.makeText(context, context.getString(R.string.player_cast_failed), Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(context, context.getString(R.string.player_cast_unavailable), Toast.LENGTH_SHORT).show()
         },
         onDismiss = { showMore = false },
     )
@@ -1066,11 +1068,11 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
 
 @Composable
 private fun RowScope.TitleActions(liked: Boolean, onToggleLike: () -> Unit, buttonTint: Color = Color.White, buttonBg: Color = Color.White.copy(alpha = 0.14f), onMore: () -> Unit) {
-    TokiLongPressLabel(if (liked) "取消喜欢" else "喜欢") {
+    TokiLongPressLabel(if (liked) stringResource(R.string.player_unlike) else stringResource(R.string.player_like)) {
         CircleArtButton(if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder, buttonTint, bgColor = buttonBg, onClick = onToggleLike)
     }
     Spacer(Modifier.width(12.dp))
-    TokiLongPressLabel("更多") {
+    TokiLongPressLabel(stringResource(R.string.player_more)) {
         CircleArtButton(Icons.Rounded.MoreHoriz, buttonTint, bgColor = buttonBg, onClick = onMore)
     }
 }
@@ -1127,15 +1129,15 @@ private fun QueueView(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            QueueModeSegment(0, segment, Icons.Rounded.FormatListNumbered, "顺序播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Sequential) }
-            QueueModeSegment(1, segment, Icons.Rounded.Shuffle, "随机播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Shuffle) }
-            QueueModeSegment(2, segment, Icons.Rounded.SwapVert, "倒序播放", onCover, coverColors.bottom) { onModeTap(PlayMode.Reverse) }
+            QueueModeSegment(0, segment, Icons.Rounded.FormatListNumbered, stringResource(R.string.player_mode_sequence), onCover, coverColors.bottom) { onModeTap(PlayMode.Sequential) }
+            QueueModeSegment(1, segment, Icons.Rounded.Shuffle, stringResource(R.string.player_mode_shuffle), onCover, coverColors.bottom) { onModeTap(PlayMode.Shuffle) }
+            QueueModeSegment(2, segment, Icons.Rounded.SwapVert, stringResource(R.string.player_mode_reverse), onCover, coverColors.bottom) { onModeTap(PlayMode.Reverse) }
         }
         Spacer(Modifier.height(16.dp))
-        Text("继续播放", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = onCover)
+        Text(stringResource(R.string.player_queue_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = onCover)
         if (state.sourceName != null) {
             Text(
-                "来自 ${state.sourceName}",
+                stringResource(R.string.player_from_source, state.sourceName!!),
                 style = MaterialTheme.typography.bodyMedium,
                 color = onCoverDim,
                 maxLines = 1,
@@ -1352,7 +1354,7 @@ private fun MoreSheet(
             MoreSheetCard(SegmentPosition.Single) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MoreSheetActionCell(
-                        if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, "投放", onCast,
+                        if (castActive) Icons.Rounded.Cast else Icons.Outlined.Cast, stringResource(R.string.player_cast), onCast,
                         Modifier.weight(1f),
                     )
                     Box(
@@ -1360,7 +1362,7 @@ private fun MoreSheet(
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)),
                     )
                     MoreSheetActionCell(
-                        Icons.Rounded.PlaylistAdd, "下一首播放", onPlayNext,
+                        Icons.Rounded.PlaylistAdd, stringResource(R.string.player_play_next), onPlayNext,
                         Modifier.weight(1f).padding(start = 16.dp),
                     )
                 }
@@ -1371,18 +1373,18 @@ private fun MoreSheet(
             Spacer(Modifier.height(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 MoreSheetCard(SegmentPosition.First) {
-                    MoreSheetSwitchRow(Icons.Rounded.Translate, "翻译", vm.store.showTranslation) { vm.store.showTranslation = it }
+                    MoreSheetSwitchRow(Icons.Rounded.Translate, stringResource(R.string.player_lyric_translation), vm.store.showTranslation) { vm.store.showTranslation = it }
                 }
                 MoreSheetCard(SegmentPosition.Middle) {
-                    MoreSheetSwitchRow(Icons.Rounded.TextFields, "罗马音", vm.store.showRomaji) { vm.store.showRomaji = it }
+                    MoreSheetSwitchRow(Icons.Rounded.TextFields, stringResource(R.string.player_lyric_romaji), vm.store.showRomaji) { vm.store.showRomaji = it }
                 }
                 MoreSheetCard(SegmentPosition.Middle) {
-                    MoreSheetSwitchRow(Icons.Rounded.Highlight, "逐字高亮", vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
+                    MoreSheetSwitchRow(Icons.Rounded.Highlight, stringResource(R.string.player_lyric_karaoke), vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
                 }
                 MoreSheetCard(SegmentPosition.Middle) {
                     // 本轮（0124）第 17 项：歌词模糊开关——关时只关距离
                     // 模糊，淡化与动画不受影响（接线在 LyricsView）。
-                    MoreSheetSwitchRow(Icons.Rounded.BlurOn, "歌词模糊", vm.store.lyricDistanceBlur) { vm.store.lyricDistanceBlur = it }
+                    MoreSheetSwitchRow(Icons.Rounded.BlurOn, stringResource(R.string.player_lyric_blur), vm.store.lyricDistanceBlur) { vm.store.lyricDistanceBlur = it }
                 }
                 MoreSheetCard(SegmentPosition.Last) {
                     // 本轮（0126）第 5 项：调时差（逐字时序）保持独立
@@ -1394,7 +1396,7 @@ private fun MoreSheet(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Text("逐字时序", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.player_lyric_timing), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text(
                             formatTimingOffset(vm.store.lyricTimingOffsetMs),
                             style = MaterialTheme.typography.bodyMedium,
@@ -1410,7 +1412,7 @@ private fun MoreSheet(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "正值让逐字高亮延后、负值提前；0 为跟随原时间轴。",
+                        stringResource(R.string.player_lyric_timing_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
@@ -1437,7 +1439,7 @@ fun formatTimingOffset(offsetMs: Int): String =
  */
 fun formatPublishDate(epochMs: Long): String {
     if (epochMs <= 0) return ""
-    val fmt = java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.US)
+    val fmt = java.text.SimpleDateFormat(com.tokimusic.app.data.AppStrings.getOrFallback(com.tokimusic.app.R.string.player_date_pattern, "yyyy年M月d日"), java.util.Locale.getDefault())
     fmt.timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
     return fmt.format(java.util.Date(epochMs))
 }

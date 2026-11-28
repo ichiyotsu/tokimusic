@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.tokimusic.app.data.model.Album
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.data.model.qqAlbumId
@@ -104,11 +106,12 @@ fun AlbumDetailScreen(
             detail = runCatching { vm.api.albumDetail(albumId) }.onFailure { loadError = true }.getOrNull()
         }
     }
-    val (album, tracks) = detail ?: (Album(albumId, "加载中…") to emptyList())
+    val loadingLabel = stringResource(R.string.common_loading)
+    val (album, tracks) = detail ?: (Album(albumId, loadingLabel) to emptyList())
     LaunchedEffect(album.name) {
         onTitle(album.name)
         // 本轮（0124）第 13 项：专辑页浏览记入口味训练信号（折算到专辑歌手）。
-        if (album.name != "加载中…" && album.artistText.isNotBlank()) {
+        if (album.name != loadingLabel && album.artistText.isNotBlank()) {
             vm.recordAlbumView(album.artistText.substringBefore(" / ").substringBefore(","))
         }
     }
@@ -150,9 +153,9 @@ fun AlbumDetailScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("专辑加载失败", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                        Text("请检查网络后重试", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
-                        FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text("重试") }
+                        Text(stringResource(R.string.album_load_failed), style = MaterialTheme.typography.titleMedium, color = Color.White)
+                        Text(stringResource(R.string.common_check_network_retry), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
+                        FilledTonalButton(onClick = { reloadKey++ }, Modifier.height(56.dp)) { Text(stringResource(R.string.common_retry)) }
                     }
                 } else {
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding)) {
@@ -212,12 +215,12 @@ fun AlbumDetailScreen(
                                                 .padding(horizontal = 20.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            Icon(Icons.Rounded.PlayArrow, contentDescription = "播放全部", tint = TokiPlayKeyIcon, modifier = Modifier.size(28.dp))
+                                            Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.common_play_all), tint = TokiPlayKeyIcon, modifier = Modifier.size(28.dp))
                                         }
                                         Spacer(Modifier.width(16.dp))
                                     }
                                     Text(
-                                        "$count 首 · ${formatTotalDurationMs(totalMs)}",
+                                        stringResource(R.string.playlist_count_duration, count, formatTotalDurationMs(totalMs)),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = coverColors.onCoverTextDim(),
                                         maxLines = 1,
@@ -235,7 +238,7 @@ fun AlbumDetailScreen(
                         if (detail != null && tracks.isEmpty()) {
                             item {
                                 Text(
-                                    "暂无歌曲",
+                                    stringResource(R.string.common_no_songs),
                                     Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = coverColors.onCoverTextDim(),

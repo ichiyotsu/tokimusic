@@ -44,6 +44,7 @@ import coil.compose.AsyncImage
 import com.tokimusic.app.R
 import com.tokimusic.app.data.model.MusicSource
 import com.tokimusic.app.data.model.Playlist
+import androidx.compose.ui.res.stringResource
 import com.tokimusic.app.data.model.Song
 import com.tokimusic.app.ui.theme.CjkBoldFamily
 import com.tokimusic.app.ui.theme.fontFamilyForText
@@ -271,7 +272,7 @@ fun resolveArtistTap(
         }
         Spacer(Modifier.height(8.dp))
         Text(playlist.name, style = MaterialTheme.typography.bodyMedium, fontFamily = fontFamilyForText(playlist.name, CjkBoldFamily), maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text("${playlist.trackCount} 首", style = MaterialTheme.typography.bodySmall, fontFamily = CjkBoldFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.common_song_count, playlist.trackCount), style = MaterialTheme.typography.bodySmall, fontFamily = CjkBoldFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -363,7 +364,7 @@ fun SmallRoundPlayButton(onClick: () -> Unit) {
     ) {
         Icon(
             Icons.Rounded.PlayArrow,
-            contentDescription = "播放",
+            contentDescription = stringResource(R.string.common_play),
             modifier = Modifier.size(24.dp),
         )
     }
@@ -442,11 +443,11 @@ fun TokiPillGroup(options: List<String>, selectedIndex: Int, onSelect: (Int) -> 
     // 0.1.13 第 18 项：自定义头像是应用私有目录里的本地文件路径
     // （以 "/" 开头），走 File 模型；其余（http 链接 / 空）走原字符串模型。
     val model: Any = if (url.startsWith("/")) java.io.File(url) else url
-    AsyncImage(model, "头像", Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+    AsyncImage(model, stringResource(R.string.common_avatar), Modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
 fun formatDuration(ms: Long): String { val s = ms / 1000; return "%d:%02d".format(java.util.Locale.US, s / 60, s % 60) }
 /** 歌单总时长：满 1 小时仍写“x 分 y 秒”（第二轮第 8 项，如 72分20秒），不用“x 小时 y 分”。 */
-fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return "${s / 60}分${"%02d".format(java.util.Locale.US, s % 60)}秒" }
+fun formatTotalDurationMs(ms: Long): String { val s = ms / 1000; return com.tokimusic.app.data.AppStrings.getOrFallback(com.tokimusic.app.R.string.common_duration_min_sec, "%1\$d分%2\$02d秒", s / 60, s % 60) }
 
 /**
  * 第五轮第 23 项：时长紧凑显示——整小时只显示 "1537h"，有零头时带一位小数

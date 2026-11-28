@@ -68,13 +68,16 @@ import com.tokimusic.app.ui.components.SettingsRow
 import com.tokimusic.app.ui.components.TokiPillGroup
 import com.tokimusic.app.ui.components.formatHours
 import com.tokimusic.app.ui.theme.tokiPageColor
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
+import com.tokimusic.app.data.AppStrings
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private enum class Granularity(val label: String) { Day("日"), Month("月"), Year("年") }
+private enum class Granularity(@androidx.annotation.StringRes val labelRes: Int) { Day(R.string.stats_day), Month(R.string.stats_month), Year(R.string.stats_year) }
 
 /**
  * Round 3 item 13: listening-time page.
@@ -118,10 +121,12 @@ fun ListeningStatsScreen(
     val noteInteractionSource = remember { MutableInteractionSource() }
 
     val today = LocalDate.now()
+    // 0127 第 9 条：播放上下文文案先在组合作用域解析（行点击 lambda 里用）。
+    val frequentPlayContext = stringResource(R.string.stats_top_songs)
     val periodLabel = when (granularity) {
-        Granularity.Day -> if (offset == 0) "今天" else today.plusDays(offset.toLong()).let { "${it.year}年${it.monthValue}月${it.dayOfMonth}日" }
-        Granularity.Month -> if (offset == 0) "本月" else YearMonth.now().plusMonths(offset.toLong()).let { "${it.year}年${it.monthValue}月" }
-        Granularity.Year -> if (offset == 0) "今年" else "${today.year + offset}年"
+        Granularity.Day -> if (offset == 0) stringResource(R.string.stats_today) else today.plusDays(offset.toLong()).let { stringResource(R.string.stats_date_full, it.year, it.monthValue, it.dayOfMonth) }
+        Granularity.Month -> if (offset == 0) stringResource(R.string.stats_this_month) else YearMonth.now().plusMonths(offset.toLong()).let { stringResource(R.string.stats_month_label, it.year, it.monthValue) }
+        Granularity.Year -> if (offset == 0) stringResource(R.string.stats_this_year) else stringResource(R.string.stats_year_label, today.year + offset)
     }
     val totalMs = when (granularity) {
         // 0.1.17 第 10 项：日档位图表是当周 7 天，header 总时长也取
@@ -189,7 +194,7 @@ fun ListeningStatsScreen(
     ) {
         item {
             TokiPillGroup(
-                options = Granularity.entries.map { it.label },
+                options = Granularity.entries.map { stringResource(it.labelRes) },
                 selectedIndex = Granularity.entries.indexOf(granularity),
                 onSelect = { granularity = Granularity.entries[it]; offset = 0 },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
@@ -201,11 +206,11 @@ fun ListeningStatsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { offset-- }, enabled = true) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "上一期")
+                    Icon(Icons.Rounded.ChevronLeft, contentDescription = stringResource(R.string.stats_prev_period))
                 }
                 Text(periodLabel, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = { if (offset < 0) offset++ }, enabled = offset < 0) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "下一期")
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = stringResource(R.string.stats_next_period))
                 }
             }
         }
@@ -218,12 +223,12 @@ fun ListeningStatsScreen(
                 Column(Modifier.weight(1f)) {
                     Text(formatLongDuration(totalMs), style = MaterialTheme.typography.headlineLarge)
                     Text(
-                        "tokimusic 时长 · 本地累计",
+                        stringResource(R.string.stats_local_total_label),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "仅统计本机自安装后的播放时长；卸载或清除数据后清零。",
+                        stringResource(R.string.stats_local_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -264,7 +269,7 @@ fun ListeningStatsScreen(
         // 0.1.17 第 10 项：“时长分布”只在年档位展示（年本来就是 12 个月，
         // TreemapPreview 内部不用改）；日/月档位整个不显示。
         if (granularity == Granularity.Year) {
-            item { SectionTitle("时长分布") }
+            item { SectionTitle(stringResource(R.string.stats_distribution)) }
             item {
                 TreemapPreview(
                     entries = treemapEntries,
@@ -273,11 +278,11 @@ fun ListeningStatsScreen(
             }
         }
         // 本轮（0124）第 10 项：常听歌曲（当前区间播放次数 top 5）。
-        item { SectionTitle("常听歌曲") }
+        item { SectionTitle(stringResource(R.string.stats_top_songs)) }
         if (frequentSongs.isEmpty()) {
             item {
                 Text(
-                    "暂无播放记录",
+                    stringResource(R.string.stats_no_records),
                     Modifier.padding(horizontal = 24.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -287,18 +292,18 @@ fun ListeningStatsScreen(
             items(frequentSongs) { (song, count) ->
                 com.tokimusic.app.ui.components.SongRow(
                     song,
-                    trailingText = "${count.plays} 次",
+                    trailingText = stringResource(R.string.stats_play_times, count.plays),
                     onLongPress = { vm.openSongActions(it) },
                 ) {
                     val songs = frequentSongs.map { it.first }
                     val idx = songs.indexOf(song)
-                    if (idx >= 0) vm.play(songs, idx, "常听歌曲")
+                    if (idx >= 0) vm.play(songs, idx, frequentPlayContext)
                 }
             }
         }
     }
         // Sixth round, batch 2, item 10: 〈!〉 floating annotation — "Netease x h"
-        // + small "按播放次数 × 时长估算", right-aligned under the 〈!〉 icon.
+        // + small stringResource(R.string.stats_estimate_note), right-aligned under the 〈!〉 icon.
         if (noteVisible) {
             Box(
                 Modifier.align(Alignment.TopEnd)
@@ -311,11 +316,11 @@ fun ListeningStatsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "Netease ${formatHours(mine.estimatedListeningMinutes)}",
+                        stringResource(R.string.stats_netease_hours, formatHours(mine.estimatedListeningMinutes)),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        "按播放次数 × 时长估算",
+                        stringResource(R.string.stats_estimate_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -350,7 +355,7 @@ private fun chartPoints(granularity: Granularity, today: LocalDate, offset: Int,
             // DayOfWeek.value：周一 = 1 … 周日 = 7。
             val monday = anchor.minusDays((anchor.dayOfWeek.value - 1).toLong())
             (0..6).map { monday.plusDays(it.toLong()) }.map { d ->
-                val label = "${d.monthValue}月${d.dayOfMonth}日"
+                val label = AppStrings.getOrFallback(R.string.stats_month_day, "%1\$d月%2\$d日", d.monthValue, d.dayOfMonth)
                 ChartPoint(label = label, fullLabel = label, millis = store.dayMillis(d), showLabel = true)
             }
         }
@@ -361,8 +366,8 @@ private fun chartPoints(granularity: Granularity, today: LocalDate, offset: Int,
             (1..lastDay).map { day ->
                 val d = LocalDate.of(ym.year, ym.monthValue, day)
                 ChartPoint(
-                    label = "${day}日",
-                    fullLabel = "${d.monthValue}月${d.dayOfMonth}日",
+                    label = AppStrings.getOrFallback(R.string.stats_day_of_month, "%1\$d日", day),
+                    fullLabel = AppStrings.getOrFallback(R.string.stats_month_day, "%1\$d月%2\$d日", d.monthValue, d.dayOfMonth),
                     millis = store.dayMillis(d),
                     showLabel = day in labeledDays,
                 )
@@ -371,7 +376,7 @@ private fun chartPoints(granularity: Granularity, today: LocalDate, offset: Int,
         Granularity.Year -> {
             val year = today.year + offset
             (1..12).map { m ->
-                ChartPoint(label = "${m}月", fullLabel = "${m}月", millis = store.monthMillis(year, m), showLabel = true)
+                ChartPoint(label = AppStrings.getOrFallback(R.string.stats_month_only, "%1\$d月", m), fullLabel = AppStrings.getOrFallback(R.string.stats_month_only, "%1\$d月", m), millis = store.monthMillis(year, m), showLabel = true)
             }
         }
     }
@@ -512,7 +517,7 @@ private fun ListeningChart(
         }
         if (points.isNotEmpty() && points.all { it.millis == 0L }) {
             Text(
-                "暂无记录，播放后开始统计",
+                stringResource(R.string.stats_no_records_hint),
                 Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
@@ -531,9 +536,9 @@ private fun TreemapPreview(entries: List<TreemapEntry>, range: TreemapRange) {
     val totalMs = entries.sumOf { it.millis }
     val emptyBuckets = range.buckets - entries.size
     val rangeLabel = when (range) {
-        TreemapRange.Week -> "最近 7 天"
-        TreemapRange.Month -> "最近 30 日"
-        TreemapRange.Year -> "最近 12 个月"
+        TreemapRange.Week -> stringResource(R.string.stats_last_7_days)
+        TreemapRange.Month -> stringResource(R.string.stats_last_30_days)
+        TreemapRange.Year -> stringResource(R.string.stats_last_12_months)
     }
     val scheme = MaterialTheme.colorScheme
     val palette = listOf(
@@ -545,21 +550,21 @@ private fun TreemapPreview(entries: List<TreemapEntry>, range: TreemapRange) {
     )
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-            Text("$rangeLabel 共 ${formatLongDuration(totalMs)}", style = MaterialTheme.typography.headlineLarge)
+            Text(stringResource(R.string.stats_range_total, rangeLabel, formatLongDuration(totalMs)), style = MaterialTheme.typography.headlineLarge)
             Text(
-                if (emptyBuckets > 0) "其中 $emptyBuckets 个无记录，不占块" else "每天 / 每月都有记录",
+                if (emptyBuckets > 0) stringResource(R.string.stats_empty_buckets, emptyBuckets) else stringResource(R.string.stats_all_buckets_filled),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
             Text(
-                "仅统计本机自安装后的播放时长；卸载或清除数据后清零。",
+                stringResource(R.string.stats_local_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
         }
         if (entries.isEmpty()) {
             Text(
-                "暂无记录，播放后开始统计",
+                stringResource(R.string.stats_no_records_hint),
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
@@ -615,5 +620,5 @@ internal fun formatLongDuration(ms: Long): String {
     val minutes = ms / 60_000
     // 第五轮第 23 项：满 1 小时用 h 格式（整小时 "1537h"，有零头一位小数
     // 如 "1537.5h"）；不足 1 小时仍写“X 分钟”（"0.5h" 不如分钟直观）。
-    return if (minutes >= 60) formatHours(minutes) else "$minutes 分钟"
+    return if (minutes >= 60) formatHours(minutes) else AppStrings.getOrFallback(R.string.stats_minutes, "%1\$d 分钟", minutes)
 }

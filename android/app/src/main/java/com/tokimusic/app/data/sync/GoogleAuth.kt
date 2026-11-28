@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.sync
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.app.Activity
 import android.content.Context
@@ -45,7 +47,7 @@ class GoogleAuthManager(private val appContext: Context) {
         val credentialManager = try {
             CredentialManager.create(activity)
         } catch (e: Exception) {
-            return GoogleSignInResult.Unavailable(e.message ?: "Credential Manager 不可用")
+            return GoogleSignInResult.Unavailable(e.message ?: AppStrings.getOrFallback(R.string.err_google_cm_unavailable, "Credential Manager 不可用"))
         }
         val option = GetGoogleIdOption.Builder()
             .setServerClientId(GoogleConfig.webClientId)
@@ -66,11 +68,11 @@ class GoogleAuthManager(private val appContext: Context) {
         } catch (e: GetCredentialCancellationException) {
             GoogleSignInResult.Cancelled
         } catch (e: NoCredentialException) {
-            GoogleSignInResult.Unavailable("设备上没有可用的 Google 账号")
+            GoogleSignInResult.Unavailable(AppStrings.getOrFallback(R.string.err_google_no_account, "设备上没有可用的 Google 账号"))
         } catch (e: GetCredentialException) {
-            GoogleSignInResult.Unavailable(e.message ?: "Google 登录不可用")
+            GoogleSignInResult.Unavailable(e.message ?: AppStrings.getOrFallback(R.string.err_google_login_unavailable, "Google 登录不可用"))
         } catch (e: Exception) {
-            GoogleSignInResult.Failed(e.message ?: "Google 登录失败")
+            GoogleSignInResult.Failed(e.message ?: AppStrings.getOrFallback(R.string.err_google_login_failed, "Google 登录失败"))
         }
     }
 
@@ -94,16 +96,16 @@ class GoogleAuthManager(private val appContext: Context) {
                             if (sender != null) {
                                 cont.resume(DriveAuthResult.NeedsResolution(sender))
                             } else {
-                                cont.resume(DriveAuthResult.Failed("授权需要确认但系统未提供确认页"))
+                                cont.resume(DriveAuthResult.Failed(AppStrings.getOrFallback(R.string.err_google_auth_no_page, "授权需要确认但系统未提供确认页")))
                             }
                         }
                         !result.accessToken.isNullOrBlank() ->
                             cont.resume(DriveAuthResult.Granted(result.accessToken!!))
-                        else -> cont.resume(DriveAuthResult.Failed("授权未返回访问令牌"))
+                        else -> cont.resume(DriveAuthResult.Failed(AppStrings.getOrFallback(R.string.err_google_auth_no_token, "授权未返回访问令牌")))
                     }
                 }
                 .addOnFailureListener { e ->
-                    cont.resume(DriveAuthResult.Failed(e.message ?: "Drive 授权失败"))
+                    cont.resume(DriveAuthResult.Failed(e.message ?: AppStrings.getOrFallback(R.string.err_drive_auth_failed, "Drive 授权失败")))
                 }
         }
 }

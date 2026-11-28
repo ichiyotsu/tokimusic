@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.api
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -296,7 +298,7 @@ class NeteaseClient(
             val json = try {
                 JSONObject(respBody)
             } catch (e: Exception) {
-                throw ApiException(ApiErrorKind.Unknown, message = "网易返回了无法解析的内容")
+                throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_netease_unparsable, "网易返回了无法解析的内容"))
             }
             if (json.optInt("code") == 301) throw ApiException(ApiErrorKind.NotLoggedIn, apiCode = 301)
             return DirectResponse(json, setCookies)
@@ -373,7 +375,7 @@ class NeteaseClient(
             // A "success" with no credential anywhere is a failure, not a login.
             var cookie = o.optString("cookie")
             if (cookie.isBlank()) cookie = cookies.loginValue()
-            if (cookie.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = "登录成功但未拿到凭证，请重新扫码")
+            if (cookie.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_login_no_credential, "登录成功但未拿到凭证，请重新扫码"))
             // Merge the body credential into the store so later requests carry
             // both it and the NMTID the key step set (neither may be dropped).
             if (o.optString("cookie").isNotBlank()) cookies.seed(o.optString("cookie"))
@@ -467,7 +469,7 @@ class NeteaseClient(
             obj("alg" to "itembased", "trackId" to id, "like" to like, "time" to "3"),
             Crypto.WEAPI,
         ).body.optInt("code")
-        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "喜欢失败（code $code）")
+        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_like_code, "喜欢失败（code %1\$d）", code))
     }
 
     // 第 6 项：加歌 / 删歌。上游 4.32.0 playlist_track_add / playlist_track_delete：
@@ -480,7 +482,7 @@ class NeteaseClient(
             obj("id" to playlistId, "tracks" to "[{\"type\":3,\"id\":\"$trackId\"}]"),
             Crypto.WEAPI,
         ).body.optInt("code")
-        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "添加到歌单失败（code $code）")
+        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_add_playlist_code, "添加到歌单失败（code %1\$d）", code))
     }
 
     override suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long) {
@@ -489,7 +491,7 @@ class NeteaseClient(
             obj("id" to playlistId, "tracks" to "[{\"type\":3,\"id\":\"$trackId\"}]"),
             Crypto.WEAPI,
         ).body.optInt("code")
-        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = "从歌单移除失败（code $code）")
+        if (code != 200) throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_remove_playlist_code, "从歌单移除失败（code %1\$d）", code))
     }
 
     // 第 7 项：音乐等级。上游 4.32.0 user_level：POST /api/user/level

@@ -1,6 +1,8 @@
 package com.tokimusic.app.ui.stats
 
 import java.time.LocalDate
+import com.tokimusic.app.R
+import com.tokimusic.app.data.AppStrings
 import java.time.YearMonth
 
 /** 树状图的一块：标签 + 时长（毫秒）。面积按时长占比分。 */
@@ -18,7 +20,7 @@ enum class TreemapRange(val label: String, val buckets: Int) { Week("日", 7), M
 fun treemapDayEntries(today: LocalDate, count: Int, dayMillis: (LocalDate) -> Long): List<TreemapEntry> {
     val days = (0 until count).map { today.minusDays(it.toLong()) }
     return days.map { d ->
-        val label = if (d == today) "今天" else "${d.monthValue}月${d.dayOfMonth}日"
+        val label = if (d == today) AppStrings.getOrFallback(R.string.stats_today, "今天") else AppStrings.getOrFallback(R.string.stats_month_day, "%1\$d月%2\$d日", d.monthValue, d.dayOfMonth)
         TreemapEntry(label, dayMillis(d))
     }.filter { it.millis > 0 }
 }
@@ -27,7 +29,7 @@ fun treemapDayEntries(today: LocalDate, count: Int, dayMillis: (LocalDate) -> Lo
 fun treemapMonthEntries(today: LocalDate, count: Int, monthMillis: (YearMonth) -> Long): List<TreemapEntry> {
     val months = (0 until count).map { YearMonth.from(today).minusMonths(it.toLong()) }
     return months.map { ym ->
-        val label = if (ym.year == today.year) "${ym.monthValue}月" else "${ym.year}年${ym.monthValue}月"
+        val label = if (ym.year == today.year) AppStrings.getOrFallback(R.string.stats_month_only, "%1\$d月", ym.monthValue) else AppStrings.getOrFallback(R.string.stats_month_label, "%1\$d年%2\$d月", ym.year, ym.monthValue)
         TreemapEntry(label, monthMillis(ym))
     }.filter { it.millis > 0 }
 }

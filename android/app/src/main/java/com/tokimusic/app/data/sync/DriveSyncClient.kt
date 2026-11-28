@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.sync
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,7 +33,7 @@ class DriveSyncClient(
             "&fields=files(id,name)"
         val request = authed(Request.Builder().url(url).get(), token).build()
         http.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Drive 列表失败 HTTP ${response.code}" }
+            check(response.isSuccessful) { AppStrings.getOrFallback(R.string.err_drive_list, "Drive 列表失败 HTTP %1\$d", response.code) }
             val body = response.body?.string() ?: return@withContext null
             val files = JSONObject(body).optJSONArray("files") ?: return@withContext null
             if (files.length() == 0) null else files.getJSONObject(0).optString("id").ifBlank { null }
@@ -44,7 +46,7 @@ class DriveSyncClient(
             token,
         ).build()
         http.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Drive 下载失败 HTTP ${response.code}" }
+            check(response.isSuccessful) { AppStrings.getOrFallback(R.string.err_drive_download, "Drive 下载失败 HTTP %1\$d", response.code) }
             response.body?.string()
         }
     }
@@ -65,7 +67,7 @@ class DriveSyncClient(
                 token,
             ).build()
             http.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "Drive 上传失败 HTTP ${response.code}" }
+                check(response.isSuccessful) { AppStrings.getOrFallback(R.string.err_drive_upload, "Drive 上传失败 HTTP %1\$d", response.code) }
                 JSONObject(response.body?.string() ?: "{}").optString("id")
             }
         } else {
@@ -76,7 +78,7 @@ class DriveSyncClient(
                 token,
             ).build()
             http.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "Drive 更新失败 HTTP ${response.code}" }
+                check(response.isSuccessful) { AppStrings.getOrFallback(R.string.err_drive_update, "Drive 更新失败 HTTP %1\$d", response.code) }
             }
             fileId
         }

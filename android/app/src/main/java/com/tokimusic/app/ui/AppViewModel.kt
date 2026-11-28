@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.tokimusic.app.BuildConfig
 import com.tokimusic.app.TokiMusicApplication
 import com.tokimusic.app.data.api.ApiErrorKind
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 import com.tokimusic.app.data.api.ApiException
 import com.tokimusic.app.data.api.LyricPayload
 import com.tokimusic.app.data.api.QqClient
@@ -206,7 +208,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _driveGranted.value = false
             driveAccessToken = null
             driveFileId = null
-            _userMessage.value = "已解绑 Google 账号"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_google_unbound, "已解绑 Google 账号")
         }
     }
 
@@ -219,11 +221,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (launcher != null) {
                     launcher(result.intentSender)
                 } else {
-                    _userMessage.value = "需要确认 Drive 授权"
+                    _userMessage.value = AppStrings.getOrFallback(R.string.msg_drive_auth_confirm_needed, "需要确认 Drive 授权")
                 }
             }
             is com.tokimusic.app.data.sync.DriveAuthResult.Failed ->
-                _userMessage.value = "Drive 授权失败：${result.reason}"
+                _userMessage.value = AppStrings.getOrFallback(R.string.msg_drive_auth_failed, "Drive 授权失败：%1\$s", result.reason)
         }
     }
 
@@ -368,7 +370,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun syncNow(manual: Boolean): Boolean {
         val token = driveAccessToken
         if (_tokiProfile.value == null || token == null) {
-            if (manual) _userMessage.value = "请先绑定 Google 并授权 Drive 同步"
+            if (manual) _userMessage.value = AppStrings.getOrFallback(R.string.msg_sync_bind_first, "请先绑定 Google 并授权 Drive 同步")
             return false
         }
         return try {
@@ -382,15 +384,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             accountStore.settingsStampMs = now
             driveFileId = driveClient.upload(token, driveFileId, com.tokimusic.app.data.sync.SyncBundleCodec.encode(merged))
             accountStore.lastSyncAtMs = now
-            accountStore.lastSyncStatus = "同步完成"
+            accountStore.lastSyncStatus = AppStrings.getOrFallback(R.string.msg_sync_done, "同步完成")
             _lastSyncAt.value = now
-            _syncStatus.value = "同步完成"
-            if (manual) _userMessage.value = "同步完成"
+            _syncStatus.value = AppStrings.getOrFallback(R.string.msg_sync_done, "同步完成")
+            if (manual) _userMessage.value = AppStrings.getOrFallback(R.string.msg_sync_done, "同步完成")
             true
         } catch (e: Exception) {
-            accountStore.lastSyncStatus = "同步失败"
-            _syncStatus.value = "同步失败"
-            if (manual) _userMessage.value = "同步失败：${e.message ?: "网络错误"}"
+            accountStore.lastSyncStatus = AppStrings.getOrFallback(R.string.msg_sync_failed, "同步失败")
+            _syncStatus.value = AppStrings.getOrFallback(R.string.msg_sync_failed, "同步失败")
+            if (manual) _userMessage.value = AppStrings.getOrFallback(R.string.msg_sync_failed_reason, "同步失败：%1\$s", e.message ?: AppStrings.getOrFallback(R.string.err_network, "网络错误"))
             false
         }
     }
@@ -792,7 +794,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val songs = _home.value.retrospectives.firstOrNull { it.first == monthKey }?.second ?: return null
         val playlist = Playlist(
             id = com.tokimusic.app.player.Retrospective.playlistId(monthKey),
-            name = "${com.tokimusic.app.player.Retrospective.yearOf(monthKey)}年${com.tokimusic.app.player.Retrospective.monthOf(monthKey)}月回顾",
+            name = AppStrings.getOrFallback(R.string.msg_retrospective_name, "%1\$d年%2\$d月回顾", com.tokimusic.app.player.Retrospective.yearOf(monthKey), com.tokimusic.app.player.Retrospective.monthOf(monthKey)),
             coverUrl = "",
             trackCount = songs.size,
             creatorName = "TokiMusic",
@@ -808,7 +810,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (songs.isEmpty()) return null
         val playlist = Playlist(
             id = com.tokimusic.app.player.Retrospective.memoryPlaylistId(monthKey),
-            name = "${com.tokimusic.app.player.Retrospective.monthLabel(monthKey)} 音乐记忆",
+            name = AppStrings.getOrFallback(R.string.memory_playlist_name, "%1\$s 音乐记忆", com.tokimusic.app.player.Retrospective.monthLabel(monthKey)),
             coverUrl = songs.firstOrNull()?.picUrl ?: "",
             trackCount = songs.size,
             creatorName = "TokiMusic",
@@ -1049,7 +1051,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // QQ 服务端已订阅的歌单没有取消收藏接口（见 NOTES.md 第 3 项），
         // 在这里取消不掉——诚实提示，不改状态。
         if (playlist.source == MusicSource.QQ && serverSubbed) {
-            showMessage("QQ 歌单需在 QQMusic 内取消收藏")
+            showMessage(AppStrings.getOrFallback(R.string.msg_qq_unfavorite_in_app, "QQ 歌单需在 QQMusic 内取消收藏"))
             return
         }
         // 网易云、已登录、非自己建的、真实歌单：走服务端订阅/取消订阅
@@ -1061,7 +1063,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val ok = api.playlistSub(playlist.id, !serverSubbed)
                     if (!ok) {
-                        showMessage("收藏失败，请检查网络后重试")
+                        showMessage(AppStrings.getOrFallback(R.string.msg_favorite_failed, "收藏失败，请检查网络后重试"))
                         return@launch
                     }
                     val favUpdated = if (!serverSubbed) _favoritePlaylistIds.value + key else _favoritePlaylistIds.value - key
@@ -1321,7 +1323,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val ok = loadHome(refresh = true)
         loadToplist(force = true)
-        if (!ok && hadContent) _userMessage.value = "刷新失败，请重试"
+        if (!ok && hadContent) _userMessage.value = AppStrings.getOrFallback(R.string.msg_refresh_failed, "刷新失败，请重试")
     }
 
     /** 第六轮第 1 项：启动时校验 QQ 凭证（GetLoginUserInfo）；无凭证直接
@@ -1395,7 +1397,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     api.clearSession()
                     _profile.value = null; _mine.value = MineUiState(); _myPlaylists.value = emptyList(); _likedIds.value = emptySet(); _subscribedPlaylistIds.value = emptySet()
                     _authState.value = if (hadCookie) AuthState.Expired else AuthState.LoggedOut
-                    if (hadCookie) _userMessage.value = "登录已过期，请重新扫码登录"
+                    if (hadCookie) _userMessage.value = AppStrings.getOrFallback(R.string.err_login_expired, "登录已过期，请重新扫码登录")
                 }
                 else -> { _authState.value = AuthState.Offline }
             }
@@ -1517,7 +1519,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val known = (_myPlaylists.value + _home.value.playlists + _home.value.qqPlaylists +
                 _home.value.qqToplist + _home.value.searchPlaylists)
                 .firstOrNull { it.id == id }
-            return (known ?: Playlist(id = id, name = "歌单", source = source)) to emptyList()
+            return (known ?: Playlist(id = id, name = AppStrings.getOrFallback(R.string.msg_playlist, "歌单"), source = source)) to emptyList()
         }
         if (dissid != null) {
             return qqClient.playlistDetail(dissid).also { (pl, tracks) ->
@@ -1598,19 +1600,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val source = playlist.source
         if (source != MusicSource.NETEASE && source != MusicSource.QQ && source != MusicSource.YOUTUBEMUSIC) return
         if (tracks.isEmpty()) {
-            _userMessage.value = "歌单暂无可下载曲目"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_download_empty, "歌单暂无可下载曲目")
             return
         }
         if (isLocalModeNow()) {
-            _userMessage.value = "本地模式下无法下载，请先开启来源"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_download_local_mode, "本地模式下无法下载，请先开启来源")
             return
         }
         if (isSourceDisabled(source)) {
-            _userMessage.value = "该来源已关闭，无法下载"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_download_source_off, "该来源已关闭，无法下载")
             return
         }
         if (source == MusicSource.QQ && (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank())) {
-            _userMessage.value = "请先登录 QQMusic"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_login_qq_first, "请先登录 QQMusic")
             return
         }
         val key = downloadProgressKey(playlist)
@@ -1658,9 +1660,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _downloadedPlaylists.value = downloadedPlaylistStore.all()
                 refreshLocalTracks()
                 _userMessage.value = when {
-                    failed == 0 -> "下载完成：${done} 首"
-                    done == 0 -> "下载失败：${failed} 首均无法下载"
-                    else -> "下载完成：成功 ${done} 首，失败 ${failed} 首"
+                    failed == 0 -> AppStrings.getOrFallback(R.string.msg_download_done, "下载完成：%1\$d 首", done)
+                    done == 0 -> AppStrings.getOrFallback(R.string.msg_download_all_failed, "下载失败：%1\$d 首均无法下载", failed)
+                    else -> AppStrings.getOrFallback(R.string.msg_download_partial, "下载完成：成功 %1\$d 首，失败 %2\$d 首", done, failed)
                 }
             } finally {
                 _downloadProgress.value = _downloadProgress.value - key
@@ -1897,7 +1899,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Sixth round, batch 2, item 20: a local song's sourceId IS its content URI — no network, no login.
         if (song.source == MusicSource.LOCAL) {
             return song.sourceId.takeIf { it.isNotBlank() } ?: run {
-                _userMessage.value = "本地文件不可用"; null
+                _userMessage.value = AppStrings.getOrFallback(R.string.msg_local_file_unavailable, "本地文件不可用"); null
             }
         }
         // 0.1.20 第 8 项：本地优先——这首歌已导入本地库且文件还在就
@@ -1908,30 +1910,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         songBlockedLabel(song)?.let { _userMessage.value = it; return null }
         if (song.source == MusicSource.QQ) {
             if (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank()) {
-                _userMessage.value = "请先登录 QQMusic"; return null
+                _userMessage.value = AppStrings.getOrFallback(R.string.msg_login_qq_first, "请先登录 QQMusic"); return null
             }
             return try {
                 when (val r = qqClient.songUrl(song.sourceId, store.audioQuality)) {
                     is QqSongUrlResult.Url -> r.url
-                    QqSongUrlResult.NotLoggedIn -> { _userMessage.value = "请先登录 QQMusic"; null }
-                    QqSongUrlResult.NoPermission -> { _userMessage.value = "QQMusic 暂无这首歌的播放权限（可能需要登录或 VIP）"; null }
-                    is QqSongUrlResult.Unavailable -> { _userMessage.value = "这首歌暂无播放地址（可能无版权或需 VIP）"; null }
+                    QqSongUrlResult.NotLoggedIn -> { _userMessage.value = AppStrings.getOrFallback(R.string.msg_login_qq_first, "请先登录 QQMusic"); null }
+                    QqSongUrlResult.NoPermission -> { _userMessage.value = AppStrings.getOrFallback(R.string.msg_qq_no_permission, "QQMusic 暂无这首歌的播放权限（可能需要登录或 VIP）"); null }
+                    is QqSongUrlResult.Unavailable -> { _userMessage.value = AppStrings.getOrFallback(R.string.msg_no_play_url, "这首歌暂无播放地址（可能无版权或需 VIP）"); null }
                 }
             } catch (e: ApiException) {
                 _userMessage.value = apiErrorText(e); null
             } catch (e: Exception) {
-                _userMessage.value = "无法获取播放地址，请重试"; null
+                _userMessage.value = AppStrings.getOrFallback(R.string.msg_no_play_url_retry, "无法获取播放地址，请重试"); null
             }
         }
         if (song.source == MusicSource.YOUTUBEMUSIC) {
             // 本轮（0124）第 19 项：YT 取址（VISIONOS 直链，无登录）；
             // 失败按不可用上报原文状态，绝不伪造。
             return when (val r = runCatching { ytClient.songUrl(song.sourceId) }.getOrElse {
-                com.tokimusic.app.data.api.YtSongUrlResult.Unavailable(it.message ?: "网络错误")
+                com.tokimusic.app.data.api.YtSongUrlResult.Unavailable(it.message ?: AppStrings.getOrFallback(R.string.err_yt_network, "网络错误"))
             }) {
                 is com.tokimusic.app.data.api.YtSongUrlResult.Url -> r.url
                 is com.tokimusic.app.data.api.YtSongUrlResult.Unavailable -> {
-                    _userMessage.value = "YouTubeMusic 暂无播放地址（${r.reason}）"; null
+                    _userMessage.value = AppStrings.getOrFallback(R.string.msg_yt_no_play_url, "YouTubeMusic 暂无播放地址（%1\$s）", r.reason); null
                 }
             }
         }
@@ -1940,11 +1942,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: ApiException) {
             _userMessage.value = apiErrorText(e); return null
         } catch (e: Exception) {
-            _userMessage.value = "无法获取播放地址，请重试"; return null
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_no_play_url_retry, "无法获取播放地址，请重试"); return null
         }
         val url = result.url
         if (url.isNullOrBlank()) {
-            _userMessage.value = if (result.isTrial) "这首歌仅提供试听，暂无完整播放地址" else "这首歌暂无播放地址（可能无版权或需 VIP）"
+            _userMessage.value = if (result.isTrial) AppStrings.getOrFallback(R.string.msg_trial_only, "这首歌仅提供试听，暂无完整播放地址") else AppStrings.getOrFallback(R.string.msg_no_play_url, "这首歌暂无播放地址（可能无版权或需 VIP）")
             return null
         }
         return url
@@ -1984,7 +1986,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         songBlockedLabel(song)?.let { _userMessage.value = it; return@launch }
         if (player.state.value.queue.isEmpty()) { play(listOf(song), 0); return@launch }
         if (song.source == MusicSource.QQ && (store.qqMusicId.isBlank() || store.qqMusicKey.isBlank())) {
-            _userMessage.value = "请先登录 QQMusic"; return@launch
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_login_qq_first, "请先登录 QQMusic"); return@launch
         }
         player.playNext(song, songUrlQuiet(song))
     }
@@ -1995,24 +1997,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _mine.value = _mine.value.copy(likeCount = _likedIds.value.size)
             likedSongsLoaded = false // 下次打开喜爱歌曲时重新拉取详情
         }.onFailure { e ->
-            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "喜欢失败，请重试"
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) AppStrings.getOrFallback(R.string.err_login_expired, "登录已过期，请重新扫码登录") else AppStrings.getOrFallback(R.string.msg_like_failed, "喜欢失败，请重试")
         }
     }
     // 第 6 项：加歌 / 删歌。成功后歌单详情页靠 playlistVersion 重新拉取。
     fun addSongToPlaylist(song: Song, playlist: Playlist) = viewModelScope.launch {
         runCatching { api.addTrackToPlaylist(playlist.id, song.id) }.onSuccess {
             _playlistVersion.value++
-            _userMessage.value = "已添加到「${playlist.name}」"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_added_to_playlist, "已添加到「%1\$s」", playlist.name)
         }.onFailure { e ->
-            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "添加到歌单失败，请重试"
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) AppStrings.getOrFallback(R.string.err_login_expired, "登录已过期，请重新扫码登录") else AppStrings.getOrFallback(R.string.msg_add_to_playlist_failed, "添加到歌单失败，请重试")
         }
     }
     fun removeSongFromPlaylist(song: Song, playlistId: Long) = viewModelScope.launch {
         runCatching { api.removeTrackFromPlaylist(playlistId, song.id) }.onSuccess {
             _playlistVersion.value++
-            _userMessage.value = "已从歌单移除"
+            _userMessage.value = AppStrings.getOrFallback(R.string.msg_removed_from_playlist, "已从歌单移除")
         }.onFailure { e ->
-            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) "登录已过期，请重新扫码登录" else "移除失败，请重试"
+            _userMessage.value = if (e is ApiException && e.kind == ApiErrorKind.NotLoggedIn) AppStrings.getOrFallback(R.string.err_login_expired, "登录已过期，请重新扫码登录") else AppStrings.getOrFallback(R.string.msg_remove_failed, "移除失败，请重试")
         }
     }
     fun loadLyrics(song: Song) = viewModelScope.launch {
@@ -2064,11 +2066,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    _qrError.value = if (e is ApiException) apiErrorText(e) else "二维码生成失败，请检查网络后重试"
+                    _qrError.value = if (e is ApiException) apiErrorText(e) else AppStrings.getOrFallback(R.string.msg_qr_generate_failed, "二维码生成失败，请检查网络后重试")
                     return@launch
                 }
             }
-            _qrError.value = "二维码已过期，请重新生成"
+            _qrError.value = AppStrings.getOrFallback(R.string.msg_qr_expired, "二维码已过期，请重新生成")
         }
     }
     fun cancelQrLogin() {
@@ -2090,7 +2092,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sendQqSmsCode() {
         val phone = qqSmsPhone.value.trim()
         if (!isValidCnPhone(phone)) {
-            _qqSmsError.value = "请输入 11 位手机号"; return
+            _qqSmsError.value = AppStrings.getOrFallback(R.string.msg_phone_invalid, "请输入 11 位手机号"); return
         }
         qqSmsJob?.cancel()
         _qqSmsError.value = null
@@ -2103,12 +2105,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         startSmsCountdown()
                     }
                     is QqPhoneAuthResult.Captcha -> qqSmsCaptchaUrl.value = result.securityUrl
-                    QqPhoneAuthResult.Frequency -> _qqSmsError.value = "请求过于频繁，请稍后再试"
+                    QqPhoneAuthResult.Frequency -> _qqSmsError.value = AppStrings.getOrFallback(R.string.msg_too_frequent, "请求过于频繁，请稍后再试")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else "验证码发送失败，请检查网络后重试"
+                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else AppStrings.getOrFallback(R.string.msg_sms_send_failed, "验证码发送失败，请检查网络后重试")
             }
         }
     }
@@ -2118,7 +2120,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val phone = qqSmsPhone.value.trim()
         val code = qqSmsCode.value.trim()
         if (code.isBlank()) {
-            _qqSmsError.value = "请输入验证码"; return
+            _qqSmsError.value = AppStrings.getOrFallback(R.string.msg_sms_code_empty, "请输入验证码"); return
         }
         qqSmsJob?.cancel()
         _qqSmsError.value = null
@@ -2131,7 +2133,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else "登录失败，请重试"
+                _qqSmsError.value = if (e is ApiException) apiErrorText(e) else AppStrings.getOrFallback(R.string.msg_login_failed, "登录失败，请重试")
             }
         }
     }
@@ -2239,9 +2241,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // 重新关注重新计时。
             if (!following) store.setArtistFollowTimeMs(id, System.currentTimeMillis())
             else store.clearArtistFollowTimeMs(id)
-            _userMessage.value = if (following) "已取消关注" else "已关注"
+            _userMessage.value = if (following) AppStrings.getOrFallback(R.string.msg_unfollowed, "已取消关注") else AppStrings.getOrFallback(R.string.msg_followed, "已关注")
         } else {
-            _userMessage.value = if (store.cookie.isBlank()) "请先登录 NeteaseMusic" else "关注失败，请重试"
+            _userMessage.value = if (store.cookie.isBlank()) AppStrings.getOrFallback(R.string.msg_login_netease_first, "请先登录 NeteaseMusic") else AppStrings.getOrFallback(R.string.msg_follow_failed, "关注失败，请重试")
         }
     }
 
@@ -2307,7 +2309,7 @@ internal fun songBlockedReason(
         MusicSource.LOCAL -> false
     }
     if (!disabled) return null
-    return if (isLocalMode(neteaseEnabled, qqEnabled, youtubeEnabled)) "本地模式暂不可用" else "源已关闭暂不可用"
+    return if (isLocalMode(neteaseEnabled, qqEnabled, youtubeEnabled)) AppStrings.getOrFallback(R.string.msg_local_mode_unavailable, "本地模式暂不可用") else AppStrings.getOrFallback(R.string.msg_source_off_unavailable, "源已关闭暂不可用")
 }
 
 internal fun scrobbleReportSeconds(playedMs: Long, durationMs: Long, reported: Boolean, ended: Boolean): Int? {

@@ -231,20 +231,38 @@ data class LevelEarningRow(
     val fraction: Float,
 )
 
+/**
+ * 本轮（0127）第 9 条：达成条件行的文案——默认值是简体中文
+ * （既有单测锁定的口径不变），UI 层用 stringResource 传当前
+ * 语言的文案进来，纯函数本身不依赖 Android 资源。
+ * listenDesc / completeDesc 只依赖常量，由调用方带参格式化好
+ * 整段传入（资源里的 %% 转义交给 Android 的格式化处理）；
+ * 两个 progressTemplate 只含数字占位（%1$d / %2$d，无字面 %），
+ * 在这里按快照值 format。
+ */
+data class LevelEarningLabels(
+    val listenTitle: String = "听歌时长",
+    val listenDesc: String = "每听满 1 分钟 +${MusicLevel.POINTS_PER_MINUTE} 分",
+    val listenProgressTemplate: String = "今日已得 %1\$d 分",
+    val completeTitle: String = "整首听完奖励",
+    val completeDesc: String = "整首听完（播放达到 90%）+${MusicLevel.COMPLETION_BONUS} 分/首",
+    val completeProgressTemplate: String = "今日已完成 %1\$d 首 · +%2\$d 分",
+)
+
 /** 由快照构建达成条件行（纯函数，JVM 单测覆盖）。数字全走 [MusicLevel]。 */
-fun levelEarningRows(snapshot: MusicLevelSnapshot): List<LevelEarningRow> {
+fun levelEarningRows(snapshot: MusicLevelSnapshot, labels: LevelEarningLabels = LevelEarningLabels()): List<LevelEarningRow> {
     val bonusPoints = snapshot.todayPoints - snapshot.todayMinutePoints
     return listOf(
         LevelEarningRow(
-            title = "听歌时长",
-            description = "每听满 1 分钟 +${MusicLevel.POINTS_PER_MINUTE} 分",
-            progressText = "今日已得 ${snapshot.todayMinutePoints} 分",
+            title = labels.listenTitle,
+            description = labels.listenDesc,
+            progressText = labels.listenProgressTemplate.format(snapshot.todayMinutePoints),
             fraction = (snapshot.todayMinutePoints.toFloat() / snapshot.dailyCap).coerceIn(0f, 1f),
         ),
         LevelEarningRow(
-            title = "整首听完奖励",
-            description = "整首听完（播放达到 90%）+${MusicLevel.COMPLETION_BONUS} 分/首",
-            progressText = "今日已完成 ${snapshot.todayCompletions} 首 · +$bonusPoints 分",
+            title = labels.completeTitle,
+            description = labels.completeDesc,
+            progressText = labels.completeProgressTemplate.format(snapshot.todayCompletions, bonusPoints),
             fraction = (snapshot.todayPoints.toFloat() / snapshot.dailyCap).coerceIn(0f, 1f),
         ),
     )

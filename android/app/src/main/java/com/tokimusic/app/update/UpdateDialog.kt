@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.components.TokiSheetContainer
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import kotlinx.coroutines.launch
 
 /** 第三轮第 15 项：新版本提醒（用户决定：提醒 + 弹窗，不自动下载）。
@@ -46,7 +48,7 @@ fun downloadProgressFraction(downloadedBytes: Long, totalBytes: Long): Float? =
 fun downloadProgressText(downloadedBytes: Long, totalBytes: Long): String {
     val done = AppOptimizer.formatBytes(downloadedBytes.coerceAtLeast(0))
     val fraction = downloadProgressFraction(downloadedBytes, totalBytes)
-        ?: return "已下载 $done"
+        ?: return com.tokimusic.app.data.AppStrings.getOrFallback(com.tokimusic.app.R.string.update_downloaded_so_far, "已下载 %1\$s", done)
     return "${(fraction * 100).toInt()}% · $done / ${AppOptimizer.formatBytes(totalBytes)}"
 }
 
@@ -70,11 +72,11 @@ fun UpdateDialog(
         // 「发现测试版本」；正式版维持「发现新版本」。
         val testVersion = isTestVersion(release.version)
         Text(
-            if (testVersion) "发现测试版本 ${release.version}" else "发现新版本 ${release.version}",
+            if (testVersion) stringResource(R.string.update_found_test, release.version) else stringResource(R.string.update_found_new, release.version),
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            "当前版本 $currentVersion → ${if (testVersion) "测试版本" else "新版本"} ${release.version}",
+            stringResource(R.string.update_version_arrow, currentVersion, if (testVersion) stringResource(R.string.update_kind_test) else stringResource(R.string.update_kind_new), release.version),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -84,14 +86,14 @@ fun UpdateDialog(
         }
         release.apkSizeBytes?.let {
             Text(
-                "安装包大小：约 ${AppOptimizer.formatBytes(it)}",
+                stringResource(R.string.update_package_size, AppOptimizer.formatBytes(it)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (downloadError) {
             Text(
-                "下载失败，请稍后重试",
+                stringResource(R.string.update_download_failed),
                 Modifier.padding(top = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
@@ -127,11 +129,11 @@ fun UpdateDialog(
                     onClick = onConfirm,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
-                    Text("立即更新")
+                    Text(stringResource(R.string.update_now))
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                Text("稍后提醒")
+                Text(stringResource(R.string.update_later))
             }
         }
     }
@@ -147,6 +149,8 @@ fun UpdatePrompt(release: LatestRelease, currentVersion: String, onDismiss: () -
     var downloadError by remember { mutableStateOf(false) }
     // 本轮（0126）第 1 项：真实下载进度（安装器流式回调写入；
     // totalBytes 为 -1 表示服务端没给总量）。
+    // 0127 第 9 条：Toast 文案先在组合作用域解析（回调 lambda 里用）。
+    val allowInstallText = stringResource(R.string.update_allow_install)
     var downloadedBytes by remember { mutableLongStateOf(0L) }
     var totalBytes by remember { mutableLongStateOf(-1L) }
     UpdateDialog(
@@ -165,7 +169,7 @@ fun UpdatePrompt(release: LatestRelease, currentVersion: String, onDismiss: () -
             }
             if (!UpdateInstaller.canInstallPackages(context)) {
                 UpdateInstaller.openUnknownSourcesSettings(context)
-                Toast.makeText(context, "请允许安装未知应用后重试", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, allowInstallText, Toast.LENGTH_LONG).show()
                 return@UpdateDialog
             }
             downloading = true

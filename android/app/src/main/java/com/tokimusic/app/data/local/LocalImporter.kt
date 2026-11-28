@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.local
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.content.Context
 import android.net.Uri
@@ -156,7 +158,7 @@ class LocalImporter(private val context: Context) {
     /** 通道 2：遍历一个已授权的 SAF 目录，整桶归 [bucket]（登记来源与解密产物目录都按桶）。 */
     suspend fun importFromTreeForBucket(treeUri: Uri, bucket: LocalBucket): ImportReport = withContext(Dispatchers.IO) {
         val root = DocumentFile.fromTreeUri(context, treeUri)
-            ?: return@withContext ImportReport(0, listOf(ImportFailure("所选目录", "无法打开目录")))
+            ?: return@withContext ImportReport(0, listOf(ImportFailure(AppStrings.getOrFallback(R.string.local_selected_dir, "所选目录"), AppStrings.getOrFallback(R.string.local_open_dir_failed, "无法打开目录"))))
         val files = ArrayList<DocumentFile>()
         collectFiles(root, depth = 0, out = files)
         // 旁挂歌词：同目录同名 .lrc 按基名（小写、去扩展名）索引，
@@ -182,7 +184,7 @@ class LocalImporter(private val context: Context) {
             when {
                 lower.endsWith(".ncm") -> importNcm(file, name, bucket, tracks, failures, sidecarLyric(name))
                 lower.endsWith(".uc") -> importUc(file, name, bucket, tracks, failures, sidecarLyric(name))
-                isQqEncrypted(lower) -> failures += ImportFailure(name, "QQ 加密格式暂不支持解密")
+                isQqEncrypted(lower) -> failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_qq_format_unsupported, "QQ 加密格式暂不支持解密"))
                 isPlainAudio(lower) -> importPlain(file, name, bucket, tracks, failures, sidecarLyric(name))
                 else -> Unit // 非音频文件（封面图/歌词/说明）静默跳过，不算失败
             }
@@ -239,11 +241,11 @@ class LocalImporter(private val context: Context) {
     ) {
         val bytes = readBytes(file.uri)
         if (bytes == null) {
-            failures += ImportFailure(name, "读取不到文件")
+            failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_read_failed, "读取不到文件"))
             return
         }
         val result = runCatching { NcmDecrypt.decryptNcm(bytes) }.getOrElse { e ->
-            failures += ImportFailure(name, "解密失败：${e.message ?: "未知错误"}")
+            failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_decrypt_failed, "解密失败：%1\$s", e.message ?: AppStrings.getOrFallback(R.string.err_unknown, "未知错误")))
             return
         }
         val base = name.removeSuffix(".ncm").removeSuffix(".NCM")
@@ -274,12 +276,12 @@ class LocalImporter(private val context: Context) {
     ) {
         val bytes = readBytes(file.uri)
         if (bytes == null) {
-            failures += ImportFailure(name, "读取不到文件")
+            failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_read_failed, "读取不到文件"))
             return
         }
         val audio = NcmDecrypt.decryptUc(bytes)
         if (audio == null) {
-            failures += ImportFailure(name, "解密后音频校验失败")
+            failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_decrypt_verify_failed, "解密后音频校验失败"))
             return
         }
         val format = NcmDecrypt.sniffAudioFormat(audio) ?: "mp3"
@@ -316,7 +318,7 @@ class LocalImporter(private val context: Context) {
         // 旧的 256KB 上限会把大封面截断丢掉。
         val head = readHead(file.uri, 2 * 1024 * 1024)
         if (head == null) {
-            failures += ImportFailure(name, "读取不到文件")
+            failures += ImportFailure(name, AppStrings.getOrFallback(R.string.local_read_failed, "读取不到文件"))
             return
         }
         val tags = AudioTags.parse(head)

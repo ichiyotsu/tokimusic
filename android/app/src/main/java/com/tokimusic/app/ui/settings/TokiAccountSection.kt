@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.data.sync.GoogleConfig
@@ -87,23 +89,23 @@ private fun TokiAccountPage(vm: AppViewModel) {
         // Google 绑定卡
         TokiSettingsCard(position = SegmentPosition.Single, horizontalMargin = 0.dp) {
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Google 账号", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.account_google), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 when {
                     !GoogleConfig.isConfigured -> Text(
-                        "未配置：需要先在 Google Cloud Console 创建 OAuth 客户端并填入客户端 ID 后才能绑定。",
+                        stringResource(R.string.account_not_configured),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     profile == null -> {
                         if (unavailableReason != null) {
                             Text(
-                                "Google 登录不可用：$unavailableReason",
+                                stringResource(R.string.account_google_unavailable, unavailableReason!!),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Text(
-                            "绑定后可用你自己的 Google Drive 同步设置、等级与歌单结构。",
+                            stringResource(R.string.account_bind_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -122,7 +124,7 @@ private fun TokiAccountPage(vm: AppViewModel) {
                             },
                             enabled = !signingIn && activity != null,
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text(if (signingIn) "绑定中…" else "绑定 Google") }
+                        ) { Text(if (signingIn) stringResource(R.string.account_binding) else stringResource(R.string.account_bind_google)) }
                     }
                     else -> {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -131,7 +133,7 @@ private fun TokiAccountPage(vm: AppViewModel) {
                                 Text(profile!!.name.ifBlank { profile!!.email }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                                 Text(profile!!.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            TextButton(onClick = { showUnbind = true }) { Text("解绑") }
+                            TextButton(onClick = { showUnbind = true }) { Text(stringResource(R.string.account_unbind)) }
                         }
                     }
                 }
@@ -140,16 +142,16 @@ private fun TokiAccountPage(vm: AppViewModel) {
         // Drive 同步卡
         TokiSettingsCard(position = SegmentPosition.Single, horizontalMargin = 0.dp) {
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Drive 同步", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.account_drive_sync), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 when {
                     profile == null -> Text(
-                        "请先绑定 Google 账号。",
+                        stringResource(R.string.account_bind_first),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     !driveGranted -> {
                         Text(
-                            "同步需要授权访问你 Drive 的应用专属文件夹（drive.appdata）。",
+                            stringResource(R.string.account_drive_scope_note),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -160,34 +162,34 @@ private fun TokiAccountPage(vm: AppViewModel) {
                             },
                             enabled = activity != null,
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("授权 Drive 同步") }
+                        ) { Text(stringResource(R.string.account_authorize_drive)) }
                     }
                     else -> {
                         Text(
-                            "状态：${syncStatus.ifBlank { "尚未同步" }}",
+                            stringResource(R.string.account_status, syncStatus.ifBlank { stringResource(R.string.account_not_synced_yet) }),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            "上次同步：" + if (lastSyncAt > 0) {
+                            stringResource(R.string.account_last_sync, if (lastSyncAt > 0) {
                                 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSyncAt))
                             } else {
                                 "—"
-                            },
+                            }),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Button(
                             onClick = { vm.syncNowAsync(manual = true) },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("立即同步") }
+                        ) { Text(stringResource(R.string.account_sync_now)) }
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("自动同步", style = MaterialTheme.typography.bodyLarge)
+                                Text(stringResource(R.string.account_auto_sync), style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "等级或设置变化后自动同步（静默失败不打扰）",
+                                    stringResource(R.string.account_auto_sync_desc),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -199,9 +201,7 @@ private fun TokiAccountPage(vm: AppViewModel) {
             }
         }
         Text(
-            "同步数据保存在你自己 Google Drive 的应用专属文件夹中（tokimusic-sync.json），" +
-                "包含设置偏好、音乐等级、口味记录、已下载歌单结构与喜欢歌曲的身份信息，不包含音频文件，" +
-                "也不包含任何登录凭据。删除该文件即可清除云端同步数据。",
+            stringResource(R.string.account_sync_data_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
@@ -211,10 +211,10 @@ private fun TokiAccountPage(vm: AppViewModel) {
     if (showUnbind) {
         TokiDialog(
             icon = Icons.Rounded.Person,
-            title = "解绑 Google 账号？",
-            subtitle = "解绑后将停止 Drive 同步；已同步到 Drive 的数据不会被删除，App 本地数据不受影响。",
-            confirmText = "解绑",
-            dismissText = "取消",
+            title = stringResource(R.string.account_unbind_title),
+            subtitle = stringResource(R.string.account_unbind_desc),
+            confirmText = stringResource(R.string.account_unbind),
+            dismissText = stringResource(R.string.common_cancel),
             confirmDestructive = true,
             onConfirm = {
                 showUnbind = false

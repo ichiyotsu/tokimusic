@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.api
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import com.tokimusic.app.data.model.Album
 import com.tokimusic.app.data.model.Artist
@@ -98,17 +100,46 @@ internal fun qqTimePublicToMs(s: String?): Long {
     return runCatching { fmt.parse(t)?.time ?: 0L }.getOrDefault(0L)
 }
 
-internal fun qqLoginCodeMessage(code: Int): String? = when (code) {
+internal data class QqLoginCodeMessages(
+    val authExpired: String = "登录鉴权已过期",
+    val paramError: String = "登录参数错误",
+    val smsCode: String = "验证码错误",
+    val bindAbnormal: String = "账号绑定异常",
+    val bindMissing: String = "账号绑定缺失",
+    val restricted: String = "账号受限",
+    val deviceLimit: String = "登录设备数量超限",
+    val banned: String = "账号已被封禁",
+    val tooFrequent: String = "操作过于频繁，请稍后再试",
+) {
+    companion object {
+        /** 0127 第 9 条：生产调用点用当前语言的文案；无参版本保留简体中文默认（单测锁定）。 */
+        fun localized(): QqLoginCodeMessages = QqLoginCodeMessages(
+            authExpired = AppStrings.getOrFallback(R.string.err_qq_auth_expired, "登录鉴权已过期"),
+            paramError = AppStrings.getOrFallback(R.string.err_qq_login_param, "登录参数错误"),
+            smsCode = AppStrings.getOrFallback(R.string.err_qq_sms_code, "验证码错误"),
+            bindAbnormal = AppStrings.getOrFallback(R.string.err_qq_bind_abnormal, "账号绑定异常"),
+            bindMissing = AppStrings.getOrFallback(R.string.err_qq_bind_missing, "账号绑定缺失"),
+            restricted = AppStrings.getOrFallback(R.string.err_qq_account_restricted, "账号受限"),
+            deviceLimit = AppStrings.getOrFallback(R.string.err_qq_device_limit, "登录设备数量超限"),
+            banned = AppStrings.getOrFallback(R.string.err_qq_account_banned, "账号已被封禁"),
+            tooFrequent = AppStrings.getOrFallback(R.string.err_qq_too_frequent, "操作过于频繁，请稍后再试"),
+        )
+    }
+}
+
+internal fun qqLoginCodeMessage(code: Int): String? = qqLoginCodeMessage(code, QqLoginCodeMessages())
+
+internal fun qqLoginCodeMessage(code: Int, m: QqLoginCodeMessages): String? = when (code) {
     0 -> null
-    1000, 104401, 104400 -> "登录鉴权已过期"
-    20261 -> "登录参数错误"
-    20271 -> "验证码错误"
-    20272 -> "账号绑定异常"
-    20274 -> "账号绑定缺失"
-    20277, 20278 -> "账号受限"
-    20279 -> "登录设备数量超限"
-    20450 -> "账号已被封禁"
-    104604 -> "操作过于频繁，请稍后再试"
+    1000, 104401, 104400 -> m.authExpired
+    20261 -> m.paramError
+    20271 -> m.smsCode
+    20272 -> m.bindAbnormal
+    20274 -> m.bindMissing
+    20277, 20278 -> m.restricted
+    20279 -> m.deviceLimit
+    20450 -> m.banned
+    104604 -> m.tooFrequent
     else -> null
 }
 
@@ -218,7 +249,7 @@ class QqClient(
     private fun credentialFromLoginResp(resp: JSONObject, failurePrefix: String): QqCredential {
         val code = resp.optInt("code", -1)
         if (code != 0) {
-            val detail = qqLoginCodeMessage(code)
+            val detail = qqLoginCodeMessage(code, QqLoginCodeMessages.localized())
             throw ApiException(
                 ApiErrorKind.Unknown,
                 message = if (detail != null) "$failurePrefix：$detail" else "$failurePrefix（$code）",
@@ -228,7 +259,7 @@ class QqClient(
         val musicId = data.opt("musicid")?.toString().orEmpty()
         val musicKey = data.optString("musickey", "")
         if (musicId.isBlank() || musicKey.isBlank()) {
-            throw ApiException(ApiErrorKind.Unknown, message = "$failurePrefix：服务端未返回凭证")
+            throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_no_credential, "%1\$s：服务端未返回凭证", failurePrefix))
         }
         val credential = QqCredential(musicId, musicKey, data.optString("str_musicid", musicId))
         store.qqMusicId = credential.musicId
@@ -263,11 +294,11 @@ class QqClient(
             0 -> QqPhoneAuthResult.Sent
             20276 -> {
                 val url = resp.optJSONObject("data")?.optString("securityURL", "").orEmpty()
-                if (url.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = "验证码发送失败：需要人机验证但未返回验证地址")
+                if (url.isBlank()) throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_sms_need_captcha, "验证码发送失败：需要人机验证但未返回验证地址"))
                 QqPhoneAuthResult.Captcha(url)
             }
             100001 -> QqPhoneAuthResult.Frequency
-            else -> throw ApiException(ApiErrorKind.Unknown, message = "验证码发送失败（$code）")
+            else -> throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_sms_send_code, "验证码发送失败（%1\$d）", code))
         }
     }
 
@@ -284,7 +315,7 @@ class QqClient(
             commExtra = mapOf("tmeLoginMethod" to 3, "tmeLoginType" to 0),
             attachStoredCredential = false,
         )
-        credentialFromLoginResp(resp, "手机号登录失败")
+        credentialFromLoginResp(resp, AppStrings.getOrFallback(R.string.err_qq_phone_login_failed, "手机号登录失败"))
     }
 
     /**
@@ -294,7 +325,7 @@ class QqClient(
      */
     suspend fun exchangeMobileQrLogin(qrcodeId: String, uin: String, key: String): QqCredential = withContext(Dispatchers.IO) {
         val musicId = uin.toLongOrNull()
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ音乐扫码登录失败：凭证格式错误")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_qr_login_failed, "QQ音乐扫码登录失败"))
         val resp = cgi(
             module = "music.login.LoginServer",
             method = "Login",
@@ -302,7 +333,7 @@ class QqClient(
             commExtra = mapOf("tmeLoginType" to 6),
             attachStoredCredential = false,
         )
-        credentialFromLoginResp(resp, "QQ音乐扫码登录失败")
+        credentialFromLoginResp(resp, AppStrings.getOrFallback(R.string.err_qq_qr_login_failed, "QQ音乐扫码登录失败"))
     }
 
     // ---- session / profile ----
@@ -315,9 +346,9 @@ class QqClient(
             param = JSONObject().put("uid", "").put("vkey", 0).put("caller", 2),
         )
         val data = resp.optJSONObject("data")
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ GetSession 未返回 data")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_session_no_data, "QQ GetSession 未返回 data"))
         val session = data.optJSONObject("session")
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ GetSession 未返回 session")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_session_no_session, "QQ GetSession 未返回 session"))
         return QqSession(session.optString("uid", ""), session.optString("sid", ""))
     }
 
@@ -325,7 +356,7 @@ class QqClient(
      * GetLoginUserInfo: code 0 → logged in. The profile shape is NOT
      * modelled in L-1124 (it only checks the code), so nickname/avatar are
      * read defensively from several candidate keys, top level and one
-     * level deep; anything unrecognised falls back to "QQ用户" + no avatar.
+     * level deep; anything unrecognised falls back to AppStrings.getOrFallback(R.string.err_qq_default_user, "QQ用户") + no avatar.
      * Returns null when there is no credential or the server says the
      * credential is dead (caller maps that to Expired).
      */
@@ -345,7 +376,7 @@ class QqClient(
         val nickname = firstString(data, "NickName", "nick", "nickname", "Nick", "name")
             ?: firstString(data.optJSONObject("userinfo"), "NickName", "nick", "nickname", "Nick", "name")
             ?: firstString(data.optJSONObject("userInfo"), "NickName", "nick", "nickname", "Nick", "name")
-            ?: "QQ用户"
+            ?: AppStrings.getOrFallback(R.string.err_qq_default_user, "QQ用户")
         val avatar = firstString(data, "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
             ?: firstString(data.optJSONObject("userinfo"), "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
             ?: firstString(data.optJSONObject("userInfo"), "Avatar", "avatar", "headurl", "headUrl", "face", "pic")
@@ -544,7 +575,7 @@ class QqClient(
             .header("Referer", "https://y.qq.com/")
             .build()
         val root = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = "QQ 歌词获取失败")
+            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = AppStrings.getOrFallback(R.string.err_qq_lyric_failed, "QQ 歌词获取失败"))
             JSONObject(resp.body?.string() ?: "")
         }
         if (root.optInt("retcode", -1) != 0) return LyricPayload()
@@ -1010,7 +1041,7 @@ class QqClient(
                 .put("orderlist", true).put("onlysonglist", false),
         )
         val data = resp.optJSONObject("data")
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 歌单详情为空")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_playlist_empty, "QQ 歌单详情为空"))
         val info = data.optJSONObject("dirinfo") ?: data
         val playlist = Playlist(
             id = QqPlaylistIds.dissPlaylistId(dissid),
@@ -1283,11 +1314,11 @@ class QqClient(
             .header("User-Agent", CGI_UA)
         if (credential != null) reqBuilder.header("Cookie", credentialCookies(credential))
         val root = http.newCall(reqBuilder.build()).execute().use { resp ->
-            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = "QQ 请求失败")
+            if (!resp.isSuccessful) throw ApiException(ApiErrorKind.HttpStatus, httpCode = resp.code, message = AppStrings.getOrFallback(R.string.err_qq_request_failed, "QQ 请求失败"))
             JSONObject(resp.body?.string() ?: "")
         }
         root.optJSONObject("req_0")
-            ?: throw ApiException(ApiErrorKind.Unknown, message = "QQ 响应缺少 req_0")
+            ?: throw ApiException(ApiErrorKind.Unknown, message = AppStrings.getOrFallback(R.string.err_qq_missing_req, "QQ 响应缺少 req_0"))
     }
 
     /** ANDROID comm (L-1124 core/versioning.py build_comm, ANDROID branch). */

@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.local
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.content.ContentUris
 import android.content.Context
@@ -43,7 +45,7 @@ object LocalMusicScanner {
                 val id = c.getLong(idCol)
                 val contentUri = ContentUris.withAppendedId(uri, id).toString()
                 val title = c.getString(titleCol)?.takeIf { it.isNotBlank() } ?: continue
-                val artist = c.getString(artistCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "未知歌手"
+                val artist = c.getString(artistCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: AppStrings.getOrFallback(R.string.local_unknown_artist, "未知歌手")
                 out += Song(
                     id = localSongId(contentUri),
                     name = title,

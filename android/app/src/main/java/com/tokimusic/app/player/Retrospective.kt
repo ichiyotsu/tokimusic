@@ -243,7 +243,13 @@ object Retrospective {
         "${monthAbbr(monthKey)}'${(yearOf(monthKey) % 100).toString().padStart(2, '0')}"
 
     /** 封面副标，如「音乐记忆 · 10月」。 */
-    fun coverSubtitle(monthKey: Int): String = "音乐记忆 · ${monthOf(monthKey)}月"
+    fun coverSubtitle(monthKey: Int): String = coverSubtitle(monthKey, "音乐记忆 · %1\$d月")
+
+    /**
+     * 本轮（0127）第 9 条：副标模板由调用方按当前语言传入
+     * （模板含 %1$d 月份）；无参版保持简体中文口径（单测锁定）。
+     */
+    fun coverSubtitle(monthKey: Int, template: String): String = template.format(monthOf(monthKey))
 
     /** 深色主题的封面色族（深色版：整体更沉，白字对比更足）。每族 3 色为同色相的浅→深。 */
     val COVER_FAMILIES_DARK: List<List<Color>> = listOf(

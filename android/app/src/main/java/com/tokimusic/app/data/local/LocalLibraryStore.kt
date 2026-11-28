@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.local
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import android.content.Context
 import com.tokimusic.app.data.model.Artist
@@ -144,7 +146,7 @@ class LocalLibraryStore(context: Context) {
      * 封面用登记时落盘/相册图的 URI（本轮）；没有就空串，展示侧走占位。 */
     fun toSong(track: LocalTrack): Song = Song(
         id = com.tokimusic.app.data.model.localSongId(track.uri),
-        name = track.title.ifBlank { "未知歌曲" },
+        name = track.title.ifBlank { AppStrings.getOrFallback(R.string.local_unknown_song, "未知歌曲") },
         artists = track.artist.split(" / ").filter { it.isNotBlank() }.map { Artist(0, it) },
         albumName = track.album,
         picUrl = track.cover,

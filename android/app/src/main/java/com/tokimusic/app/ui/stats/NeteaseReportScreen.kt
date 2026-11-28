@@ -28,10 +28,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SongRow
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.ui.components.TokiPillGroup
 import com.tokimusic.app.ui.theme.TokiBlack
 
-private enum class ReportRange(val label: String) { Week("周"), Year("年") }
+private enum class ReportRange(@androidx.annotation.StringRes val labelRes: Int) { Week(R.string.stats_week), Year(R.string.stats_year) }
 
 /**
  * 0.1.17 第 17 项：网易云收听报告——资料库网易云听歌时长入口点进来的页。
@@ -59,9 +61,11 @@ fun NeteaseReportScreen(
         ReportRange.Year -> mine.record
     }
     val totalMs = records.sumOf { it.song.durationMs * it.playCount }
+    // 0127 第 9 条：播放上下文文案先在组合作用域解析（行点击 lambda 里用）。
+    val reportPlayContext = stringResource(R.string.stats_report_title)
     val totalLabel = when (range) {
-        ReportRange.Week -> "本周预估听歌时长"
-        ReportRange.Year -> "累计预估听歌时长"
+        ReportRange.Week -> stringResource(R.string.stats_week_estimate)
+        ReportRange.Year -> stringResource(R.string.stats_total_estimate)
     }
 
     // 第三轮第 14 项：列表上下边缘 32dp 淡出（与主页、歌单详情同款）。
@@ -73,7 +77,7 @@ fun NeteaseReportScreen(
         ) {
             item {
                 TokiPillGroup(
-                    options = ReportRange.entries.map { it.label },
+                    options = ReportRange.entries.map { stringResource(it.labelRes) },
                     selectedIndex = ReportRange.entries.indexOf(range),
                     onSelect = { range = ReportRange.entries[it] },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
@@ -91,7 +95,7 @@ fun NeteaseReportScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "按播放次数 × 时长估算",
+                        stringResource(R.string.stats_estimate_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -100,7 +104,7 @@ fun NeteaseReportScreen(
             if (records.isEmpty()) {
                 item {
                     Text(
-                        "暂无收听记录",
+                        stringResource(R.string.stats_no_listen_records),
                         Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -110,10 +114,10 @@ fun NeteaseReportScreen(
                 itemsIndexed(records) { i, r ->
                     SongRow(
                         r.song, i,
-                        trailingText = "${r.playCount} 次",
+                        trailingText = stringResource(R.string.stats_play_times, r.playCount),
                         onOpenArtist = onOpenArtist,
                         onLongPress = { vm.openSongActions(it) },
-                    ) { vm.play(records.map { it.song }, i, "听歌报告") }
+                    ) { vm.play(records.map { it.song }, i, reportPlayContext) }
                 }
             }
         }

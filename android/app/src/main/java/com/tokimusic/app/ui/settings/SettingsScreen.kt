@@ -109,6 +109,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
+import com.tokimusic.app.data.AppLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
@@ -163,7 +166,7 @@ import java.io.File
 // 本轮（0127）第 6 条：「个性化」改名「设计」、「Toki 账号」改名「账号」
 // （枚举名保持 Personalize / Account 不动，只改显示名；账号带 beta 徽章，
 // 见一级页入口行与二级页标题行的 BetaBadge）。
-private enum class SettingsSub(val title: String) { General("通用"), Storage("存储"), Personalize("设计"), Audio("音频"), Lyrics("歌词"), Achievements("成就"), Account("账号") }
+private enum class SettingsSub(@StringRes val titleRes: Int) { General(R.string.settings_general), Storage(R.string.settings_storage), Personalize(R.string.settings_design), Audio(R.string.settings_audio), Lyrics(R.string.settings_lyrics), Achievements(R.string.settings_achievements), Account(R.string.settings_account) }
 
 
 /**
@@ -323,7 +326,7 @@ fun SettingsOverlay(
     ) {
         Column(Modifier.fillMaxSize()) {
             OverlayTitleHeader(
-                title = if (sub == null) "我的" else sub!!.title,
+                title = if (sub == null) stringResource(R.string.settings_my) else stringResource(sub!!.titleRes),
                 onBack = null,
                 onHeightMeasured = {},
                 hazeState = hazeState,
@@ -334,7 +337,7 @@ fun SettingsOverlay(
                 trailing = {
                     TokiGlassIconButton(
                         icon = Icons.Rounded.Close,
-                        label = if (sub == null) "关闭" else "返回",
+                        label = if (sub == null) stringResource(R.string.settings_close) else stringResource(R.string.common_back),
                         hazeState = hazeState,
                         onClick = { if (sub != null) sub = null else onClose() },
                     )
@@ -519,9 +522,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     val path = saveProfileAvatar(context, uri)
                     if (path != null) {
                         vm.setCustomAvatarPath(path)
-                        Toast.makeText(context, "头像已更换", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_avatar_changed), Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "头像更换失败", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_avatar_change_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -556,7 +559,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     ) {
                         Icon(
                             Icons.Rounded.Edit,
-                            contentDescription = "更换头像",
+                            contentDescription = stringResource(R.string.settings_change_avatar),
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(14.dp),
                         )
@@ -565,7 +568,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        customDisplayName.ifBlank { profile?.nickname ?: "未登录" },
+                        customDisplayName.ifBlank { profile?.nickname ?: stringResource(R.string.settings_not_logged_in) },
                         style = MaterialTheme.typography.headlineSmall,
                     )
                     // 0.1.21（用户追加）：头像旁不再重复显示 UID/ID——
@@ -573,7 +576,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     // 未登录时保留扫码登录提示行。
                     if (profile == null) {
                         Text(
-                            "点击下方按钮扫码登录 NeteaseMusic",
+                            stringResource(R.string.settings_login_hint_qr),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -584,7 +587,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                     IconButton(onClick = { editing = !editing }) {
                         Icon(
                             Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = if (editing) "收起" else "编辑",
+                            contentDescription = if (editing) stringResource(R.string.settings_collapse) else stringResource(R.string.settings_edit),
                             modifier = Modifier.graphicsLayer { rotationZ = chevronRotation },
                         )
                     }
@@ -629,7 +632,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                                 editing = false
                             },
                             Modifier.height(56.dp),
-                        ) { Text("保存") }
+                        ) { Text(stringResource(R.string.settings_save)) }
                         OutlinedButton(
                             onClick = {
                                 nameDraft = customDisplayName.ifBlank { profile?.nickname ?: "" }
@@ -638,13 +641,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                                 editing = false
                             },
                             Modifier.height(56.dp),
-                        ) { Text("取消") }
+                        ) { Text(stringResource(R.string.common_cancel)) }
                     }
                 }
             }
             if (profile == null) {
                 Button(onClick = { onShowLogin(true) }, Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp).height(56.dp)) {
-                    Text("二维码登录")
+                    Text(stringResource(R.string.settings_qr_login))
                 }
             }
         }
@@ -690,7 +693,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 // 现状），不编造、不占位。
                 accountText = qqProfile?.let { p ->
                     if (p.musicId.isNotBlank()) "${p.nickname} · ID ${p.musicId}" else p.nickname
-                } ?: if (qqLoggedIn) "已登录" else null,
+                } ?: if (qqLoggedIn) stringResource(R.string.settings_logged_in) else null,
                 loggedIn = qqLoggedIn,
                 enabled = qqEnabled,
                 onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.QQ, it)) },
@@ -705,7 +708,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
                 name = "YouTubeMusic",
                 iconRes = R.drawable.ic_source_youtube,
                 iconTint = com.tokimusic.app.ui.components.YtBadgeBackground,
-                accountText = "无需登录",
+                accountText = stringResource(R.string.settings_no_login_needed),
                 loggedIn = false,
                 enabled = youtubeEnabled,
                 onToggle = { onRequestConfirm(SourceConfirm.Toggle(MusicSource.YOUTUBEMUSIC, it)) },
@@ -727,7 +730,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         ) {
             Text(
-                "登录已过期，请重新扫码登录",
+                stringResource(R.string.login_expired_qr),
                 Modifier.padding(24.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
@@ -741,19 +744,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.mainSections(
             Modifier.fillMaxWidth().then(settingsGroupEnterModifier("main-entries", 3, shownGroups)),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            SubRow("通用", onClick = { onOpenSub(SettingsSub.General) }, position = SegmentPosition.First)
+            SubRow(stringResource(R.string.settings_general), onClick = { onOpenSub(SettingsSub.General) }, position = SegmentPosition.First)
             // 0.1.21 追加：存储入口（通用下方）——占用总览/缓存清理/三桶占用。
-            SubRow("存储", onClick = { onOpenSub(SettingsSub.Storage) }, position = SegmentPosition.Middle)
-            SubRow("设计", onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
-            SubRow("音频", onClick = { onOpenSub(SettingsSub.Audio) }, position = SegmentPosition.Middle)
-            SubRow("歌词", onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
+            SubRow(stringResource(R.string.settings_storage), onClick = { onOpenSub(SettingsSub.Storage) }, position = SegmentPosition.Middle)
+            SubRow(stringResource(R.string.settings_design), onClick = { onOpenSub(SettingsSub.Personalize) }, position = SegmentPosition.Middle)
+            SubRow(stringResource(R.string.settings_audio), onClick = { onOpenSub(SettingsSub.Audio) }, position = SegmentPosition.Middle)
+            SubRow(stringResource(R.string.settings_lyrics), onClick = { onOpenSub(SettingsSub.Lyrics) }, position = SegmentPosition.Middle)
             // 0.1.13 第 12 项：成就页入口（加入天数搬进成就页）。
-            SubRow("成就", onClick = { onOpenSub(SettingsSub.Achievements) }, position = SegmentPosition.Middle)
+            SubRow(stringResource(R.string.settings_achievements), onClick = { onOpenSub(SettingsSub.Achievements) }, position = SegmentPosition.Middle)
             // 本轮（0124）第 18 项：「Toki 账号」二级页（Google 绑定 +
             // Drive 同步）——替换 0.1.21 的「管理你的 Toki 账号」占位
             // 入口（原为只弹提示的假入口）。
             // 本轮（0127）第 6 条：改名「账号」，行内标题后带 beta 徽章。
-            SubRow("账号", onClick = { onOpenSub(SettingsSub.Account) }, position = SegmentPosition.Last, badge = "beta")
+            SubRow(stringResource(R.string.settings_account), onClick = { onOpenSub(SettingsSub.Account) }, position = SegmentPosition.Last, badge = "beta")
         }
     }
 }
@@ -849,24 +852,40 @@ data class AchievementDetail(
     val statusText: String,
 )
 
-fun achievementDetail(entry: JoinedDayEntry): AchievementDetail = when (entry.label) {
+/**
+ * 本轮（0127）第 9 条：成就详情的文案标签——默认值是简体中文
+ * （既有单测锁定的口径不变），UI 层用 stringResource 拼当前
+ * 语言的标签传入，纯函数本身不依赖 Android 资源。
+ */
+data class AchievementLabels(
+    val tokiTitle: String = "TokiMusic 陪伴",
+    val tokiDesc: String = "从第一次在 TokiMusic 登录起计算的陪伴天数。",
+    val neteaseTitle: String = "NeteaseMusic 陪伴",
+    val neteaseDesc: String = "NeteaseMusic 账号的注册天数，由 NeteaseMusic 返回。",
+    val joinedDaysTemplate: String = "已加入 %1\$d 天",
+    val joinedDaysUnknown: String = "已加入 — 天",
+    val achieved: String = "已达成",
+    val achievedDaysUnknown: String = "已达成（天数未知）",
+)
+
+fun achievementDetail(entry: JoinedDayEntry, labels: AchievementLabels = AchievementLabels()): AchievementDetail = when (entry.label) {
     "TokiMusic" -> AchievementDetail(
-        title = "TokiMusic 陪伴",
-        description = "从第一次在 TokiMusic 登录起计算的陪伴天数。",
-        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
-        statusText = "已达成",
+        title = labels.tokiTitle,
+        description = labels.tokiDesc,
+        progressText = entry.days?.let { labels.joinedDaysTemplate.format(it) } ?: labels.joinedDaysUnknown,
+        statusText = labels.achieved,
     )
     "NeteaseMusic" -> AchievementDetail(
-        title = "NeteaseMusic 陪伴",
-        description = "NeteaseMusic 账号的注册天数，由 NeteaseMusic 返回。",
-        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
-        statusText = if (entry.days != null) "已达成" else "已达成（天数未知）",
+        title = labels.neteaseTitle,
+        description = labels.neteaseDesc,
+        progressText = entry.days?.let { labels.joinedDaysTemplate.format(it) } ?: labels.joinedDaysUnknown,
+        statusText = if (entry.days != null) labels.achieved else labels.achievedDaysUnknown,
     )
     else -> AchievementDetail(
         title = entry.label,
         description = "",
-        progressText = entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
-        statusText = "已达成",
+        progressText = entry.days?.let { labels.joinedDaysTemplate.format(it) } ?: labels.joinedDaysUnknown,
+        statusText = labels.achieved,
     )
 }
 
@@ -877,7 +896,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
 ) {
     item {
         // 0.1.16 第 2 条：标题不再自带上下边距——组间 12dp 由 spacedBy 给。
-        Text("加入天数", Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_join_days), Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleMedium)
     }
     item {
         val entries = joinedDaysEntries(
@@ -891,7 +910,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
         // 勋章卡的 SettingsSubCard 去掉，勋章卡本身（20dp 圆角卡）保留。
         if (entries.isEmpty()) {
             Text(
-                "登录后查看加入天数",
+                stringResource(R.string.settings_join_days_login_hint),
                 Modifier.padding(horizontal = 4.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
@@ -912,28 +931,40 @@ private fun androidx.compose.foundation.lazy.LazyListScope.achievementsSection(
             }
         }
         selectedEntry?.let { entry ->
-            val detail = achievementDetail(entry)
+            val detail = achievementDetail(
+                entry,
+                AchievementLabels(
+                    tokiTitle = stringResource(R.string.settings_companion_toki_title),
+                    tokiDesc = stringResource(R.string.settings_companion_toki_desc),
+                    neteaseTitle = stringResource(R.string.settings_companion_netease_title),
+                    neteaseDesc = stringResource(R.string.settings_companion_netease_desc),
+                    joinedDaysTemplate = stringResource(R.string.settings_joined_days),
+                    joinedDaysUnknown = stringResource(R.string.settings_joined_days_unknown),
+                    achieved = stringResource(R.string.settings_achieved),
+                    achievedDaysUnknown = stringResource(R.string.settings_achieved_days_unknown),
+                ),
+            )
             com.tokimusic.app.ui.components.TokiDialog(
                 icon = Icons.Rounded.EmojiEvents,
                 title = detail.title,
                 onDismiss = { selectedEntry = null },
-                dismissText = "关闭",
+                dismissText = stringResource(R.string.settings_close),
             ) {
                 Column {
                     if (detail.description.isNotBlank()) {
                         Text(detail.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(12.dp))
                     }
-                    Text("进度：${detail.progressText}", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_achievement_progress, detail.progressText), style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(4.dp))
-                    Text("状态：${detail.statusText}", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_achievement_status, detail.statusText), style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
     }
     item {
         Text(
-            "更多成就即将到来",
+            stringResource(R.string.settings_more_achievements),
             Modifier.padding(horizontal = 4.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
@@ -974,7 +1005,7 @@ private fun JoinedDayMedalCard(entry: JoinedDayEntry, modifier: Modifier = Modif
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                entry.days?.let { "已加入 $it 天" } ?: "已加入 — 天",
+                entry.days?.let { stringResource(R.string.settings_joined_days, it) } ?: stringResource(R.string.settings_joined_days_unknown),
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
@@ -1014,7 +1045,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
         var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("实时通知", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_live_updates), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = liveUpdates,
                     onCheckedChange = { liveUpdates = it; vm.store.liveUpdatesEnabled = it },
@@ -1024,7 +1055,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "播放时在通知栏、锁屏和快捷设置中显示系统媒体播放器，可直接控制播放；关闭后不显示通知，后台播放可能被系统停止。需要通知权限。",
+            stringResource(R.string.settings_live_updates_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1037,7 +1068,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
         var scrobble by remember { mutableStateOf(vm.store.scrobbleEnabled) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("听歌记录上报", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_scrobble), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = scrobble,
                     onCheckedChange = { scrobble = it; vm.store.scrobbleEnabled = it },
@@ -1047,7 +1078,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "开启后，在 NeteaseMusic 里听的歌会同步到你的 NeteaseMusic 听歌记录；只上报 NeteaseMusic 源的歌，需要登录 NeteaseMusic。",
+            stringResource(R.string.settings_scrobble_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1065,12 +1096,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             Row(
                 Modifier.fillMaxWidth().height(64.dp)
                     .clickable {
-                        Toast.makeText(context, "算法推荐暂不可用", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_algo_unavailable), Toast.LENGTH_SHORT).show()
                     },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "算法推荐",
+                    stringResource(R.string.settings_algo),
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
@@ -1085,7 +1116,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "关闭时，推荐歌单与推荐新歌按所选音乐源的默认内容与顺序；开启后，按你的听歌口味重新排序。播放记录始终只保存在本机（不上传），用于口味画像与回顾歌单；画像数据存内部存储、更新不丢，并定期自动整理成月度汇总，不会无限增长。",
+            stringResource(R.string.settings_algo_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1101,7 +1132,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
         var checkOnLaunch by remember { mutableStateOf(vm.store.checkUpdateOnLaunch) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("启动时检查更新", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_check_update_on_start), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = checkOnLaunch,
                     onCheckedChange = { checkOnLaunch = it; vm.store.checkUpdateOnLaunch = it },
@@ -1111,7 +1142,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     }
     item {
         Text(
-            "每次打开软件时检查一次新版本；关闭后只在设置里手动检查。",
+            stringResource(R.string.settings_check_update_on_start_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1136,16 +1167,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
                     scope.launch {
                         when (val r = UpdateChecker.checkForUpdate(vm.versionName)) {
                             is UpdateCheckResult.UpdateAvailable -> update = r.release
-                            UpdateCheckResult.UpToDate -> Toast.makeText(context, "已是最新版本", Toast.LENGTH_SHORT).show()
-                            UpdateCheckResult.Failed -> Toast.makeText(context, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                            UpdateCheckResult.UpToDate -> Toast.makeText(context, context.getString(R.string.settings_update_latest), Toast.LENGTH_SHORT).show()
+                            UpdateCheckResult.Failed -> Toast.makeText(context, context.getString(R.string.settings_update_check_failed), Toast.LENGTH_SHORT).show()
                         }
                         checking = false
                     }
                 },
             ) {
                 SettingsRow(
-                    "检查更新",
-                    "当前版本 ${vm.versionName}",
+                    stringResource(R.string.settings_check_update),
+                    stringResource(R.string.settings_current_version, vm.versionName),
                     horizontalPadding = 0.dp,
                 )
             }
@@ -1154,8 +1185,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
             // 0.1.15 第 21 项：更新组中间项。
             SettingsSubCard(SegmentPosition.Middle) {
                 SettingsRow(
-                    "关于 TokiMusic",
-                    "版本 ${vm.versionName} · TokiUI ${TokiUiHolder.semantic.version}",
+                    stringResource(R.string.settings_about),
+                    stringResource(R.string.settings_about_version, vm.versionName, TokiUiHolder.semantic.version),
                     horizontalPadding = 0.dp,
                 )
             }
@@ -1168,13 +1199,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
                 SegmentPosition.Last,
                 onClick = {
                     if (!CrashLog.shareLatestCrash(context)) {
-                        Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_no_crash_log), Toast.LENGTH_SHORT).show()
                     }
                 },
             ) {
                 SettingsRow(
-                    "导出崩溃日志",
-                    if (crashCount > 0) "已有 $crashCount 份崩溃记录" else "暂无崩溃记录",
+                    stringResource(R.string.settings_export_crash_log),
+                    if (crashCount > 0) stringResource(R.string.settings_crash_count, crashCount) else stringResource(R.string.settings_no_crash_records),
                     horizontalPadding = 0.dp,
                 )
             }
@@ -1198,14 +1229,49 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
             SettingsSubCard(SegmentPosition.First) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("浅色模式", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_light_mode), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.lightMode, onCheckedChange = { onTheme(theme.copy(lightMode = it)) })
                 }
             }
             SettingsSubCard(SegmentPosition.Last) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("减少动效", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_reduce_motion), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
+                }
+            }
+        }
+    }
+    // 本轮（0127）第 9 条：语言切换——四语单选（音频页音质同款
+    // 分段单选卡）。选择走系统 per-app locales（AppLocale /
+    // LocaleManager）由系统持久化并重建 Activity 全局生效；
+    // 选项名用各语言自身的名字，不随当前语言变化。
+    item {
+        Text(
+            stringResource(R.string.settings_language),
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+    }
+    item {
+        val context = LocalContext.current
+        var language by remember { mutableStateOf(AppLocale.currentTag(context)) }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            AppLocale.OPTIONS.forEachIndexed { index, (tag, label) ->
+                SettingsSubCard(positionOf(index, AppLocale.OPTIONS.size), onClick = {
+                    language = tag
+                    AppLocale.set(context, tag)
+                }) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = language == tag, onClick = {
+                            language = tag
+                            AppLocale.set(context, tag)
+                        })
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
         }
@@ -1217,16 +1283,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
     quality: String,
     onQualityChange: (String) -> Unit,
 ) {
-    val options = listOf(
-        "standard" to "标准",
-        "higher" to "较高",
-        "exhigh" to "极高",
-        "lossless" to "无损",
-    )
+    // 0127 第 9 条：选项标签改资源（本函数不是组合作用域，
+    // 标签在 item 内按 key 解析，见下方 labelFor）。
+    val options = listOf("standard", "higher", "exhigh", "lossless")
     item {
         // 0.1.16 第 2 条：标题不再自带上下边距——组间 12dp 由 spacedBy 给。
         Text(
-            "播放音质",
+            stringResource(R.string.settings_play_quality),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.titleLarge,
         )
@@ -1235,7 +1298,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
     // 0.1.16 第 2 条：四选项是一组，组内 4dp 细缝。
     item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            options.forEachIndexed { index, (key, label) ->
+            options.forEachIndexed { index, key ->
+                val label = when (key) {
+                    "standard" -> stringResource(R.string.settings_quality_standard)
+                    "higher" -> stringResource(R.string.settings_quality_higher)
+                    "exhigh" -> stringResource(R.string.settings_quality_exhigh)
+                    else -> stringResource(R.string.settings_quality_lossless)
+                }
                 // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
                 // 0.1.17 第 7 项：整卡可点——涟漪由卡片给，撑满整个栏位。
                 SettingsSubCard(positionOf(index, options.size), onClick = { onQualityChange(key) }) {
@@ -1253,7 +1322,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
     }
     item {
         Text(
-            "无损需要歌曲本身提供无损版本，否则自动用较低音质；新选择从下一首歌生效。",
+            stringResource(R.string.settings_quality_lossless_note),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1265,7 +1334,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
         var spatialAudio by remember { mutableStateOf(vm.store.spatialAudioEnabled) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("空间音频", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_spatial_audio), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = spatialAudio,
                     onCheckedChange = {
@@ -1280,7 +1349,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
     // 0.1.15 第 19 项：空间音频介绍移到卡片外（与无损说明同款式）。
     item {
         Text(
-            "对立体声内容做系统级空间化，从下一首歌生效；需要设备支持空间音频，不支持的设备上无效果。",
+            stringResource(R.string.settings_spatial_audio_note),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1301,23 +1370,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.storageSection(vm: Ap
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SettingsSubCard(SegmentPosition.First) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("总占用", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_storage_total), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        stats?.let { formatFileSize(it.totalBytes) } ?: "统计中…",
+                        stats?.let { formatFileSize(it.totalBytes) } ?: stringResource(R.string.settings_computing),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
             }
             SettingsSubCard(SegmentPosition.Middle) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("缓存", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_cache), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Text(
                         stats?.let { formatFileSize(it.cacheBytes) } ?: "—",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(12.dp))
-                    TextButton(onClick = { vm.clearCache() }) { Text("清理缓存") }
+                    TextButton(onClick = { vm.clearCache() }) { Text(stringResource(R.string.settings_clear_cache)) }
                 }
             }
             for (bucket in LocalBucket.entries) {
@@ -1328,7 +1397,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.storageSection(vm: Ap
                     Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(bucket.displayName(), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            bucketStats?.let { "${it.count} 首 · ${formatFileSize(it.bytes)}" } ?: "统计中…",
+                            bucketStats?.let { stringResource(R.string.settings_storage_bucket, it.count, formatFileSize(it.bytes)) } ?: stringResource(R.string.settings_computing),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1339,7 +1408,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.storageSection(vm: Ap
     }
     item {
         Text(
-            "总占用含应用本体与全部内部数据；三桶占用按已导入登记逐条统计真实文件大小，统计不到的文件按 0 计。清理缓存只删缓存目录，不影响已导入歌曲与播放记录。",
+            stringResource(R.string.settings_storage_note),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1361,7 +1430,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             // 0.1.17 第 8 项：歌词字体入口已删（歌词默认 Inter），本组只剩两张卡。
             SettingsSubCard(SegmentPosition.First) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("翻译显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_lyric_translation), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(
                         checked = showTranslation,
                         onCheckedChange = { showTranslation = it; vm.store.showTranslation = it },
@@ -1374,7 +1443,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             // 0.1.15 第 21 项：歌词组末项。
             SettingsSubCard(SegmentPosition.Last) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("罗马音显示", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_lyric_romaji), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(
                         checked = showRomaji,
                         onCheckedChange = { showRomaji = it; vm.store.showRomaji = it },
@@ -1391,7 +1460,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
         var liveLyrics by remember { mutableStateOf(vm.store.liveLyricsEnabled) }
         SettingsSubCard {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("实时歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_live_lyrics), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = liveLyrics,
                     onCheckedChange = { liveLyrics = it; vm.store.liveLyricsEnabled = it },
@@ -1401,7 +1470,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
     }
     item {
         Text(
-            "开启后，播放时通知标题实时显示当前唱到的歌词行；没有歌词时显示歌名。需要先开启实时通知。",
+            stringResource(R.string.settings_live_lyrics_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1466,7 +1535,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
         // 开启时与下面的控制卡连成一个分组板块（First + Last）。
         SettingsSubCard(if (enabled) SegmentPosition.First else SegmentPosition.Single) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("悬浮歌词", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.settings_floating_lyrics), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = enabled,
                     onCheckedChange = { want ->
@@ -1495,7 +1564,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
         }
         if (permHint) {
             Text(
-                "未获得悬浮窗权限，悬浮歌词无法开启",
+                stringResource(R.string.settings_floating_no_permission),
                 Modifier.padding(horizontal = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
@@ -1505,22 +1574,22 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
             SettingsSubCard(SegmentPosition.Last) {
                 // 颜色：白 / 黑两档。
                 Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("颜色", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_floating_color), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     FilterChip(
                         selected = !black,
                         onClick = { black = false; vm.store.floatingLyricsBlack = false },
-                        label = { Text("白色") },
+                        label = { Text(stringResource(R.string.settings_color_white)) },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = black,
                         onClick = { black = true; vm.store.floatingLyricsBlack = true },
-                        label = { Text("黑色") },
+                        label = { Text(stringResource(R.string.settings_color_black)) },
                     )
                 }
                 // 大小：滑杆 12–28sp，松手落盘（预览实时跟随本地状态）。
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("大小", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_floating_size), style = MaterialTheme.typography.bodyLarge)
                     Slider(
                         value = sizeSp,
                         onValueChange = { sizeSp = it },
@@ -1535,7 +1604,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
                     )
                 }
                 Text(
-                    "位置：在下面预览里拖动，歌词停在松手处（悬浮窗本身不能拖动）",
+                    stringResource(R.string.settings_floating_position_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1564,7 +1633,7 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
                     contentAlignment = Alignment.TopCenter,
                 ) {
                     Text(
-                        "悬浮歌词预览",
+                        stringResource(R.string.settings_floating_preview),
                         Modifier.offset(x = maxWidth / 2 * horizontalFraction, y = 140.dp * topFraction),
                         color = if (black) Color.Black else Color.White,
                         fontSize = sizeSp.sp,
@@ -1585,7 +1654,7 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(qr?.code) {
         if (qr?.code == 803) {
-            Toast.makeText(context, "登录成功", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.settings_login_success), Toast.LENGTH_SHORT).show()
             onDismiss()
         }
     }
@@ -1593,18 +1662,18 @@ fun LoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     // 0.1.21：迁统一弹窗 TokiDialog（单按钮弹窗同视觉语言）。
     TokiDialog(
         icon = Icons.Rounded.QrCode2,
-        title = "扫码登录 NeteaseMusic",
+        title = stringResource(R.string.settings_qr_login_netease),
         onDismiss = { vm.cancelQrLogin(); onDismiss() },
-        dismissText = "关闭",
+        dismissText = stringResource(R.string.settings_close),
     ) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             val bitmap = remember(img) { runCatching { val raw = img.substringAfter("base64,", img); if (raw.isBlank()) null else Base64.decode(raw, Base64.DEFAULT).let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }.getOrNull() }
-            if (bitmap != null) androidx.compose.foundation.Image(bitmap, "登录二维码", Modifier.size(200.dp)) else Text("正在生成二维码…")
+            if (bitmap != null) androidx.compose.foundation.Image(bitmap, stringResource(R.string.settings_qr_code), Modifier.size(200.dp)) else Text(stringResource(R.string.settings_qr_generating))
             if (qrError != null) {
                 Text(qrError!!, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                FilledTonalButton(onClick = { vm.startQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text("重新生成") }
+                FilledTonalButton(onClick = { vm.startQrLogin() }, Modifier.height(56.dp).padding(top = 12.dp)) { Text(stringResource(R.string.settings_qr_regenerate)) }
             } else {
-                Text(when (qr?.code) { 801 -> "等待扫码"; 802 -> "已扫码，请在手机上确认"; 803 -> "登录成功"; 800 -> "二维码已过期，正在重新生成…"; else -> "使用 NeteaseMusic App 扫码" }, Modifier.padding(top = 12.dp))
+                Text(when (qr?.code) { 801 -> stringResource(R.string.settings_qr_waiting); 802 -> stringResource(R.string.settings_qr_scanned); 803 -> stringResource(R.string.settings_login_success); 800 -> stringResource(R.string.settings_qr_expired_regenerating); else -> stringResource(R.string.settings_qr_use_app) }, Modifier.padding(top = 12.dp))
             }
         }
     }
@@ -1651,7 +1720,7 @@ private fun SourceRow(
             Column(Modifier.weight(1f)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    accountText ?: "未登录",
+                    accountText ?: stringResource(R.string.settings_not_logged_in),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1661,12 +1730,12 @@ private fun SourceRow(
                 // 「退出登录」），并与开关左右对调——退出在左、开关在
                 // 最右。退出仍走 SourceConfirmDialog 二次确认。
                 IconButton(onClick = onLogout) {
-                    Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = "退出登录", tint = TokiLogoutRed)
+                    Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = stringResource(R.string.settings_logout), tint = TokiLogoutRed)
                 }
             }
             Switch(checked = enabled, onCheckedChange = onToggle, enabled = !requiresLogin || loggedIn)
             if (!loggedIn && requiresLogin) {
-                TextButton(onClick = onLogin) { Text("登录") }
+                TextButton(onClick = onLogin) { Text(stringResource(R.string.settings_login)) }
             }
         }
     }
@@ -1688,13 +1757,13 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
     }
     val (title, text, isLogout) = when (confirm) {
         is SourceConfirm.Toggle -> if (confirm.enable) {
-            Triple("启用$sourceName？", "启用后主页、资料库与搜索将显示$sourceName 的内容。", false)
+            Triple(stringResource(R.string.settings_enable_source_title, sourceName), stringResource(R.string.settings_enable_source_desc, sourceName), false)
         } else {
-            Triple("停用$sourceName？", "停用后该源的内容不再显示，本地播放不受影响。", false)
+            Triple(stringResource(R.string.settings_disable_source_title, sourceName), stringResource(R.string.settings_disable_source_desc), false)
         }
         is SourceConfirm.Logout -> Triple(
-            "退出登录$sourceName？",
-            "退出后该源的歌单与收藏不再显示，本地播放不受影响。",
+            stringResource(R.string.settings_logout_source_title, sourceName),
+            stringResource(R.string.settings_logout_source_desc),
             true,
         )
     }
@@ -1703,7 +1772,7 @@ private fun SourceConfirmDialog(confirm: SourceConfirm, onDismiss: () -> Unit, o
         icon = if (isLogout) Icons.AutoMirrored.Rounded.Logout else Icons.Rounded.SwapHoriz,
         title = title,
         onDismiss = onDismiss,
-        confirmText = "确认",
+        confirmText = stringResource(R.string.common_confirm),
         onConfirm = onConfirm,
         confirmDestructive = isLogout,
     ) {
@@ -1728,7 +1797,7 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(smsSuccess) {
         if (smsSuccess) {
-            Toast.makeText(context, "QQ 登录成功", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.settings_qq_login_success), Toast.LENGTH_SHORT).show()
             vm.cancelQqSmsLogin()
             onDismiss()
         }
@@ -1737,10 +1806,10 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     // 「返回」与「关闭」在唯一调用点行为等价，合并为「关闭」）。
     TokiDialog(
         icon = Icons.Rounded.Sms,
-        title = "手机号短信登录",
+        title = stringResource(R.string.settings_qq_sms_login),
         onDismiss = { vm.cancelQqSmsLogin(); onDismiss() },
-        dismissText = "关闭",
-        confirmText = "登录",
+        dismissText = stringResource(R.string.settings_close),
+        confirmText = stringResource(R.string.settings_login),
         onConfirm = { vm.verifyQqSmsCode() },
         confirmEnabled = sent && code.isNotBlank(),
     ) {
@@ -1748,8 +1817,8 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { vm.qqSmsPhone.value = it.filter { c -> c.isDigit() }.take(11) },
-                    label = { Text("手机号") },
-                    placeholder = { Text("11 位手机号") },
+                    label = { Text(stringResource(R.string.settings_phone)) },
+                    placeholder = { Text(stringResource(R.string.settings_phone_hint)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -1758,7 +1827,7 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     OutlinedTextField(
                         value = code,
                         onValueChange = { vm.qqSmsCode.value = it.filter { c -> c.isDigit() }.take(6) },
-                        label = { Text("验证码") },
+                        label = { Text(stringResource(R.string.settings_sms_code)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         enabled = sent,
@@ -1768,9 +1837,9 @@ private fun QqSmsLoginDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         onClick = { vm.sendQqSmsCode() },
                         enabled = countdown == 0,
                         modifier = Modifier.height(56.dp),
-                    ) { Text(if (countdown > 0) "${countdown}s 后重发" else if (sent) "重新发送" else "发送验证码") }
+                    ) { Text(if (countdown > 0) stringResource(R.string.settings_sms_resend_after, countdown) else if (sent) stringResource(R.string.settings_sms_resend) else stringResource(R.string.settings_sms_send)) }
                 }
-                Text("手机号须是 QQMusic 账号绑定的手机号。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_sms_phone_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (smsError != null) Text(smsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
     }
@@ -1784,12 +1853,12 @@ private fun CaptchaWebViewDialog(url: String, onDismiss: () -> Unit) {
     // 0.1.21：迁统一弹窗 TokiDialog。
     TokiDialog(
         icon = Icons.Rounded.Security,
-        title = "人机验证",
+        title = stringResource(R.string.settings_captcha),
         onDismiss = onDismiss,
-        dismissText = "关闭",
+        dismissText = stringResource(R.string.settings_close),
     ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("请在下方完成验证，完成后返回重新发送验证码。", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_captcha_hint), style = MaterialTheme.typography.bodyMedium)
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {

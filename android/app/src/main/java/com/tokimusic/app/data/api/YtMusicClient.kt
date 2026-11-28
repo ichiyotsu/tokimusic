@@ -1,4 +1,6 @@
 package com.tokimusic.app.data.api
+import com.tokimusic.app.data.AppStrings
+import com.tokimusic.app.R
 
 import com.tokimusic.app.data.model.Artist
 import com.tokimusic.app.data.model.MusicSource
@@ -301,7 +303,7 @@ class YtMusicClient(private val store: YtVisitorStore) {
             return YtSongUrlResult.Unavailable(if (reason.isBlank()) state else "$state: $reason")
         }
         val format = selectYtAudioFormat(parseYtFormats(root))
-            ?: return YtSongUrlResult.Unavailable("无可用音频流")
+            ?: return YtSongUrlResult.Unavailable(AppStrings.getOrFallback(R.string.err_yt_no_stream, "无可用音频流"))
         return YtSongUrlResult.Url(format.url)
     }
 
@@ -311,7 +313,7 @@ class YtMusicClient(private val store: YtVisitorStore) {
      * 进 reason 供排障（报告第 8 项：错误要带 playabilityStatus 原文）。
      */
     suspend fun songUrl(videoId: String): YtSongUrlResult {
-        if (videoId.isBlank()) return YtSongUrlResult.Unavailable("videoId 为空")
+        if (videoId.isBlank()) return YtSongUrlResult.Unavailable(AppStrings.getOrFallback(R.string.err_yt_empty_id, "videoId 为空"))
         return try {
             var vd = ensureVisitorData()
             var result = playerOnce(videoId, visionOsContext(vd), YtClients.UA_VISIONOS)
@@ -321,12 +323,12 @@ class YtMusicClient(private val store: YtVisitorStore) {
             }
             if (result is YtSongUrlResult.Unavailable) {
                 val vr = runCatching { playerOnce(videoId, androidVrContext(vd), YtClients.UA_ANDROID_VR) }
-                    .getOrElse { YtSongUrlResult.Unavailable(it.message ?: "ANDROID_VR 失败") }
+                    .getOrElse { YtSongUrlResult.Unavailable(it.message ?: AppStrings.getOrFallback(R.string.err_yt_vr_failed, "ANDROID_VR 失败")) }
                 if (vr is YtSongUrlResult.Url) return vr
             }
             result
         } catch (e: Exception) {
-            YtSongUrlResult.Unavailable(e.message ?: "网络错误")
+            YtSongUrlResult.Unavailable(e.message ?: AppStrings.getOrFallback(R.string.err_yt_network, "网络错误"))
         }
     }
 

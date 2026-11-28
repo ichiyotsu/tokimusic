@@ -14,6 +14,8 @@ class TokiMusicApplication : Application() {
         super.onCreate()
         // 第五轮第 4 项：崩溃捕获越早装越好，初始化阶段的崩溃也要能落盘。
         CrashLog.install(this)
+        // 0127 第 9 条：非 Compose 层的本地化文案入口，先于各组件初始化。
+        com.tokimusic.app.data.AppStrings.init(this)
         TokiUiHolder.load(this)
         store = SettingsStore(this); api = NeteaseClient(store); qqClient = QqClient(store); ytClient = YtMusicClient(store); player = PlayerController(this)
         // 悬浮歌词（0.1.21 追加）：Application 级控制器，开关关时轮询

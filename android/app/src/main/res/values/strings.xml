@@ -1,1 +1,550 @@
-<resources><string name="app_name">TokiMusic</string><string name="nav_home">主页</string><string name="nav_library">资料库</string><string name="nav_search">搜索</string></resources>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 0127 第 9 条：四语言资源表。默认（本文件）= 简体中文；
+     values-zh-rTW / values-en / values-ja 为其余三语。
+     新增文案必须四份同步补齐，缺译会回退到本文件（简体中文）。 -->
+<resources>
+    <string name="app_name">TokiMusic</string>
+    <string name="nav_home">主页</string>
+    <string name="nav_library">资料库</string>
+    <string name="nav_search">搜索</string>
+
+    <!-- 通用 -->
+    <string name="common_cancel">取消</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_retry">重试</string>
+    <string name="common_loading">加载中…</string>
+    <string name="common_back">返回</string>
+    <string name="common_play">播放</string>
+    <string name="common_pause">暂停</string>
+    <string name="common_play_all">播放全部</string>
+    <string name="common_no_songs">暂无歌曲</string>
+    <string name="common_check_network_retry">请检查网络后重试</string>
+    <string name="common_login_to_view">登录后查看</string>
+    <string name="common_song_count">%1$d 首</string>
+    <string name="common_song_count_with">%1$d 首 · %2$s</string>
+    <string name="login_expired_qr">登录已过期，请重新扫码登录</string>
+    <string name="network_error">网络错误</string>
+
+    <!-- 设置主框架 -->
+    <string name="settings_my">我的</string>
+    <string name="settings_close">关闭</string>
+    <string name="settings_general">通用</string>
+    <string name="settings_storage">存储</string>
+    <string name="settings_design">设计</string>
+    <string name="settings_audio">音频</string>
+    <string name="settings_lyrics">歌词</string>
+    <string name="settings_achievements">成就</string>
+    <string name="settings_account">账号</string>
+    <string name="settings_avatar_changed">头像已更换</string>
+    <string name="settings_avatar_change_failed">头像更换失败</string>
+    <string name="settings_change_avatar">更换头像</string>
+    <string name="settings_not_logged_in">未登录</string>
+    <string name="settings_login_hint_qr">点击下方按钮扫码登录 NeteaseMusic</string>
+    <string name="settings_collapse">收起</string>
+    <string name="settings_edit">编辑</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_qr_login">二维码登录</string>
+    <string name="settings_logged_in">已登录</string>
+    <string name="settings_no_login_needed">无需登录</string>
+    <string name="settings_logout">退出登录</string>
+    <string name="settings_login">登录</string>
+
+    <!-- 设置 · 成就 -->
+    <string name="settings_companion_toki_title">TokiMusic 陪伴</string>
+    <string name="settings_companion_toki_desc">从第一次在 TokiMusic 登录起计算的陪伴天数。</string>
+    <string name="settings_companion_netease_title">NeteaseMusic 陪伴</string>
+    <string name="settings_companion_netease_desc">NeteaseMusic 账号的注册天数，由 NeteaseMusic 返回。</string>
+    <string name="settings_joined_days">已加入 %1$d 天</string>
+    <string name="settings_joined_days_unknown">已加入 — 天</string>
+    <string name="settings_achieved">已达成</string>
+    <string name="settings_achieved_days_unknown">已达成（天数未知）</string>
+    <string name="settings_join_days">加入天数</string>
+    <string name="settings_join_days_login_hint">登录后查看加入天数</string>
+    <string name="settings_achievement_progress">进度：%1$s</string>
+    <string name="settings_achievement_status">状态：%1$s</string>
+    <string name="settings_more_achievements">更多成就即将到来</string>
+
+    <!-- 设置 · 通用 -->
+    <string name="settings_live_updates">实时通知</string>
+    <string name="settings_live_updates_desc">播放时在通知栏、锁屏和快捷设置中显示系统媒体播放器，可直接控制播放；关闭后不显示通知，后台播放可能被系统停止。需要通知权限。</string>
+    <string name="settings_scrobble">听歌记录上报</string>
+    <string name="settings_scrobble_desc">开启后，在 NeteaseMusic 里听的歌会同步到你的 NeteaseMusic 听歌记录；只上报 NeteaseMusic 源的歌，需要登录 NeteaseMusic。</string>
+    <string name="settings_algo_unavailable">算法推荐暂不可用</string>
+    <string name="settings_algo">算法推荐</string>
+    <string name="settings_algo_desc">关闭时，推荐歌单与推荐新歌按所选音乐源的默认内容与顺序；开启后，按你的听歌口味重新排序。播放记录始终只保存在本机（不上传），用于口味画像与回顾歌单；画像数据存内部存储、更新不丢，并定期自动整理成月度汇总，不会无限增长。</string>
+    <string name="settings_check_update_on_start">启动时检查更新</string>
+    <string name="settings_check_update_on_start_desc">每次打开软件时检查一次新版本；关闭后只在设置里手动检查。</string>
+    <string name="settings_update_latest">已是最新版本</string>
+    <string name="settings_update_check_failed">检查失败，请稍后重试</string>
+    <string name="settings_check_update">检查更新</string>
+    <string name="settings_current_version">当前版本 %1$s</string>
+    <string name="settings_about">关于 TokiMusic</string>
+    <string name="settings_about_version">版本 %1$s · TokiUI %2$s</string>
+    <string name="settings_no_crash_log">暂无崩溃日志</string>
+    <string name="settings_export_crash_log">导出崩溃日志</string>
+    <string name="settings_crash_count">已有 %1$d 份崩溃记录</string>
+    <string name="settings_no_crash_records">暂无崩溃记录</string>
+
+    <!-- 设置 · 设计 -->
+    <string name="settings_light_mode">浅色模式</string>
+    <string name="settings_reduce_motion">减少动效</string>
+    <string name="settings_language">语言</string>
+
+    <!-- 设置 · 音频 -->
+    <string name="settings_quality_standard">标准</string>
+    <string name="settings_quality_higher">较高</string>
+    <string name="settings_quality_exhigh">极高</string>
+    <string name="settings_quality_lossless">无损</string>
+    <string name="settings_play_quality">播放音质</string>
+    <string name="settings_quality_lossless_note">无损需要歌曲本身提供无损版本，否则自动用较低音质；新选择从下一首歌生效。</string>
+    <string name="settings_spatial_audio">空间音频</string>
+    <string name="settings_spatial_audio_note">对立体声内容做系统级空间化，从下一首歌生效；需要设备支持空间音频，不支持的设备上无效果。</string>
+
+    <!-- 设置 · 存储 -->
+    <string name="settings_storage_total">总占用</string>
+    <string name="settings_computing">统计中…</string>
+    <string name="settings_cache">缓存</string>
+    <string name="settings_clear_cache">清理缓存</string>
+    <string name="settings_storage_bucket">%1$d 首 · %2$s</string>
+    <string name="settings_storage_note">总占用含应用本体与全部内部数据；三桶占用按已导入登记逐条统计真实文件大小，统计不到的文件按 0 计。清理缓存只删缓存目录，不影响已导入歌曲与播放记录。</string>
+
+    <!-- 设置 · 歌词 -->
+    <string name="settings_lyric_translation">翻译显示</string>
+    <string name="settings_lyric_romaji">罗马音显示</string>
+    <string name="settings_live_lyrics">实时歌词</string>
+    <string name="settings_live_lyrics_desc">开启后，播放时通知标题实时显示当前唱到的歌词行；没有歌词时显示歌名。需要先开启实时通知。</string>
+    <string name="settings_floating_lyrics">悬浮歌词</string>
+    <string name="settings_floating_no_permission">未获得悬浮窗权限，悬浮歌词无法开启</string>
+    <string name="settings_floating_color">颜色</string>
+    <string name="settings_color_white">白色</string>
+    <string name="settings_color_black">黑色</string>
+    <string name="settings_floating_size">大小</string>
+    <string name="settings_floating_position_hint">位置：在下面预览里拖动，歌词停在松手处（悬浮窗本身不能拖动）</string>
+    <string name="settings_floating_preview">悬浮歌词预览</string>
+
+    <!-- 设置 · 扫码登录 -->
+    <string name="settings_login_success">登录成功</string>
+    <string name="settings_qr_login_netease">扫码登录 NeteaseMusic</string>
+    <string name="settings_qr_code">登录二维码</string>
+    <string name="settings_qr_generating">正在生成二维码…</string>
+    <string name="settings_qr_regenerate">重新生成</string>
+    <string name="settings_qr_waiting">等待扫码</string>
+    <string name="settings_qr_scanned">已扫码，请在手机上确认</string>
+    <string name="settings_qr_expired_regenerating">二维码已过期，正在重新生成…</string>
+    <string name="settings_qr_use_app">使用 NeteaseMusic App 扫码</string>
+
+    <!-- 设置 · 源开关/退出确认 -->
+    <string name="settings_enable_source_title">启用%1$s？</string>
+    <string name="settings_enable_source_desc">启用后主页、资料库与搜索将显示%1$s 的内容。</string>
+    <string name="settings_disable_source_title">停用%1$s？</string>
+    <string name="settings_disable_source_desc">停用后该源的内容不再显示，本地播放不受影响。</string>
+    <string name="settings_logout_source_title">退出登录%1$s？</string>
+    <string name="settings_logout_source_desc">退出后该源的歌单与收藏不再显示，本地播放不受影响。</string>
+
+    <!-- 设置 · QQ 短信登录 -->
+    <string name="settings_qq_login_success">QQ 登录成功</string>
+    <string name="settings_qq_sms_login">手机号短信登录</string>
+    <string name="settings_phone">手机号</string>
+    <string name="settings_phone_hint">11 位手机号</string>
+    <string name="settings_sms_code">验证码</string>
+    <string name="settings_sms_resend_after">%1$ds 后重发</string>
+    <string name="settings_sms_resend">重新发送</string>
+    <string name="settings_sms_send">发送验证码</string>
+    <string name="settings_sms_phone_note">手机号须是 QQMusic 账号绑定的手机号。</string>
+    <string name="settings_captcha">人机验证</string>
+    <string name="settings_captcha_hint">请在下方完成验证，完成后返回重新发送验证码。</string>
+
+    <!-- 账号（Google 绑定 / Drive 同步） -->
+    <string name="account_google">Google 账号</string>
+    <string name="account_not_configured">未配置：需要先在 Google Cloud Console 创建 OAuth 客户端并填入客户端 ID 后才能绑定。</string>
+    <string name="account_google_unavailable">Google 登录不可用：%1$s</string>
+    <string name="account_bind_desc">绑定后可用你自己的 Google Drive 同步设置、等级与歌单结构。</string>
+    <string name="account_binding">绑定中…</string>
+    <string name="account_bind_google">绑定 Google</string>
+    <string name="account_unbind">解绑</string>
+    <string name="account_drive_sync">Drive 同步</string>
+    <string name="account_bind_first">请先绑定 Google 账号。</string>
+    <string name="account_drive_scope_note">同步需要授权访问你 Drive 的应用专属文件夹（drive.appdata）。</string>
+    <string name="account_authorize_drive">授权 Drive 同步</string>
+    <string name="account_status">状态：%1$s</string>
+    <string name="account_not_synced_yet">尚未同步</string>
+    <string name="account_last_sync">上次同步：%1$s</string>
+    <string name="account_sync_now">立即同步</string>
+    <string name="account_auto_sync">自动同步</string>
+    <string name="account_auto_sync_desc">等级或设置变化后自动同步（静默失败不打扰）</string>
+    <string name="account_sync_data_note">同步数据保存在你自己 Google Drive 的应用专属文件夹中（tokimusic-sync.json），包含设置偏好、音乐等级、口味记录、已下载歌单结构与喜欢歌曲的身份信息，不包含音频文件，也不包含任何登录凭据。删除该文件即可清除云端同步数据。</string>
+    <string name="account_unbind_title">解绑 Google 账号？</string>
+    <string name="account_unbind_desc">解绑后将停止 Drive 同步；已同步到 Drive 的数据不会被删除，App 本地数据不受影响。</string>
+
+    <!-- 主页 -->
+    <string name="home_title">主页</string>
+    <string name="home_recommend_playlists">推荐歌单</string>
+    <string name="home_recommend_songs">推荐新歌</string>
+    <string name="home_daily">每日推荐</string>
+    <string name="home_radar">私人雷达</string>
+    <string name="home_retrospective">回顾</string>
+    <string name="home_memory">音乐记忆</string>
+    <string name="home_memory_empty_title">10\'26 音乐记忆</string>
+    <string name="home_no_play_records">暂无播放记录</string>
+    <string name="home_connect_failed_netease">无法连接 NeteaseMusic</string>
+    <string name="home_go_login">去登录</string>
+    <string name="home_login_to_view">登录后查看</string>
+    <string name="home_local_music">本地音乐</string>
+    <string name="home_local_both_sources_off">两源都已关闭，只显示本地音乐</string>
+    <string name="home_local_grant">允许访问本地音乐</string>
+    <string name="home_local_empty">本地暂无歌曲</string>
+    <string name="home_local_rescan">重新扫描</string>
+    <string name="home_device_song_count">%1$d 首 · Device</string>
+    <string name="home_memory_creator_count">%1$d 首 · TokiMusic</string>
+    <string name="home_artist_separator">，</string>
+    <string name="home_more_artists_suffix">等</string>
+
+    <!-- 资料库 -->
+    <string name="library_title">资料库</string>
+    <string name="library_liked">收藏</string>
+    <string name="library_playlists">歌单</string>
+    <string name="library_artists">歌手</string>
+    <string name="library_albums">专辑</string>
+    <string name="library_songs">歌曲</string>
+    <string name="library_local">本地</string>
+    <string name="library_ranking">听歌排行</string>
+    <string name="library_recently_added">最近添加</string>
+    <string name="library_followed_days">已关注 %1$d 天</string>
+    <string name="library_liked_count">%1$d 首</string>
+    <string name="library_playlist_count">%1$d 个歌单</string>
+    <string name="library_my_artists">我关注的歌手</string>
+    <string name="library_my_albums">我收藏的专辑</string>
+    <string name="library_recent_count">%1$d 首最近播放</string>
+    <string name="library_local_desc">读取 NeteaseMusic / QQMusic 与 Device 的本地文件</string>
+    <string name="library_local_imported">已导入 %1$d 首</string>
+    <string name="library_play_count">%1$d 次</string>
+    <string name="library_no_liked">还没有喜欢的歌曲，在播放器里点星标收藏</string>
+    <string name="library_no_playlists">还没有歌单</string>
+    <string name="library_no_artists">还没有关注的歌手</string>
+    <string name="library_no_albums">还没有收藏的专辑</string>
+    <string name="library_no_recent">还没有播放过歌曲</string>
+    <string name="library_local_permission_denied">未授予本地音乐权限，无法读取；下次点来源会再次询问。</string>
+    <string name="library_download_dir_set">下载目录：已选择，点此更换</string>
+    <string name="library_download_dir_unset">下载目录：未选择，点此选择</string>
+    <string name="library_reading">读取中…</string>
+    <string name="library_imported">已导入 %1$d 首</string>
+    <string name="library_import_failed_suffix">，失败 %1$d 首</string>
+    <string name="library_imported_count">已导入 · %1$d 首</string>
+    <string name="library_source_netease_creator">云音乐</string>
+    <string name="library_source_qq_creator">企鹅音乐</string>
+    <string name="library_device_count">Device · %1$d 首</string>
+    <string name="library_remove">移除</string>
+    <string name="library_downloaded_playlists">已下载歌单</string>
+    <string name="library_imported_tap_scan">已导入 %1$d 首 · 点按扫描导入</string>
+    <string name="library_music_level">音乐等级</string>
+    <string name="library_listening_time">听歌时长</string>
+
+    <!-- 音乐等级 -->
+    <string name="level_max_suffix">Lv.%1$d · 满级</string>
+    <string name="level_max">满级</string>
+    <string name="level_requirements">达成条件</string>
+    <string name="level_today_total">今日总积分 %1$d / %2$d 分（每日上限）</string>
+    <string name="level_rule_listen_title">听歌时长</string>
+    <string name="level_rule_listen_desc">每听满 1 分钟 +%1$d 分</string>
+    <string name="level_rule_listen_progress">今日已得 %1$d 分</string>
+    <string name="level_rule_complete_title">整首听完奖励</string>
+    <string name="level_rule_complete_desc">整首听完（播放达到 90%%）+%1$d 分/首</string>
+    <string name="level_rule_complete_progress">今日已完成 %1$d 首 · +%2$d 分</string>
+    <string name="memory_cover_subtitle">音乐记忆 · %1$d月</string>
+    <string name="memory_playlist_name">%1$s 音乐记忆</string>
+    <string name="retrospective_playlist_name">%1$d年%2$d月回顾</string>
+
+    <!-- 播放器 / MiniPlayer / 更多面板 -->
+    <string name="player_favorite">收藏</string>
+    <string name="player_no_current_song">暂无播放中的歌曲</string>
+    <string name="player_qq_artist_unsupported">QQ 歌手详情暂不支持</string>
+    <string name="player_prev">上一首</string>
+    <string name="player_next">下一首</string>
+    <string name="player_back_to_cover">返回封面</string>
+    <string name="player_lyrics_label">歌词</string>
+    <string name="player_volume">声音</string>
+    <string name="player_queue_label">播放队列</string>
+    <string name="player_added_next">已加入下一首播放</string>
+    <string name="player_cast_failed">投放窗打开失败，请重试</string>
+    <string name="player_cast_unavailable">投放功能尚未接入</string>
+    <string name="player_unlike">取消喜欢</string>
+    <string name="player_like">喜欢</string>
+    <string name="player_more">更多</string>
+    <string name="player_mode_sequence">顺序播放</string>
+    <string name="player_mode_shuffle">随机播放</string>
+    <string name="player_mode_reverse">倒序播放</string>
+    <string name="player_queue_title">继续播放</string>
+    <string name="player_from_source">来自 %1$s</string>
+    <string name="player_cast">投放</string>
+    <string name="player_play_next">下一首播放</string>
+    <string name="player_lyric_translation">翻译</string>
+    <string name="player_lyric_romaji">罗马音</string>
+    <string name="player_lyric_karaoke">逐字高亮</string>
+    <string name="player_lyric_blur">歌词模糊</string>
+    <string name="player_lyric_timing">逐字时序</string>
+    <string name="player_lyric_timing_hint">正值让逐字高亮延后、负值提前；0 为跟随原时间轴。</string>
+    <string name="player_date_pattern">yyyy年M月d日</string>
+    <string name="lyrics_empty">暂无歌词</string>
+    <string name="lyrics_back_to_current">回到当前行</string>
+
+    <!-- 搜索 -->
+    <string name="search_tab_songs">单曲</string>
+    <string name="search_tab_playlists">歌单</string>
+    <string name="search_tab_artists">歌手</string>
+    <string name="search_tab_lyrics">歌词</string>
+    <string name="search_hint">搜索歌曲、歌手、歌单</string>
+    <string name="search_hint_local_mode">本地模式下搜索不可用</string>
+    <string name="search_local_mode_note">本地模式下搜索不可用，本地歌曲在主页浏览。</string>
+    <string name="search_searching">搜索中…</string>
+    <string name="search_results">搜索结果</string>
+    <string name="search_qq_artist_unsupported">QQ 歌手详情暂不支持</string>
+    <string name="search_qq_lyrics_unsupported">QQMusic 暂不支持歌词搜索。</string>
+    <string name="search_lyric_search">歌词搜索</string>
+    <string name="search_no_results">没有找到相关结果</string>
+    <string name="search_with_source">用 %1$s 搜索</string>
+
+    <!-- 歌单详情 -->
+    <string name="playlist_group_liked">我喜欢的音乐</string>
+    <string name="playlist_group_created">我创建的歌单</string>
+    <string name="playlist_group_subscribed">我收藏的歌单</string>
+    <string name="playlist_daily">每日推荐</string>
+    <string name="playlist_radar">私人雷达</string>
+    <string name="playlist_liked_music">喜欢的音乐</string>
+    <string name="playlist_load_failed">歌单加载失败</string>
+    <string name="playlist_count_duration">%1$d 首 · %2$s</string>
+    <string name="playlist_downloading">下载中 %1$d/%2$d</string>
+    <string name="playlist_downloaded">已下载 %1$d 首</string>
+    <string name="playlist_downloaded_continue">已下载 %1$d/%2$d 首 · 继续下载</string>
+    <string name="playlist_download">下载歌单</string>
+    <string name="playlist_no_imported">暂无导入歌曲</string>
+    <string name="playlist_no_cached">暂无本地缓存曲目</string>
+
+    <!-- 歌手 / 专辑详情 -->
+    <string name="artist_title">歌手</string>
+    <string name="artist_unfollow_confirm">取消关注%1$s？</string>
+    <string name="artist_unfollow">取消关注</string>
+    <string name="artist_follow">关注</string>
+    <string name="artist_load_failed">歌手加载失败</string>
+    <string name="artist_song_count">%1$d 首歌曲</string>
+    <string name="artist_album_count">%1$d 张专辑</string>
+    <string name="artist_followed_days">已关注 %1$d 天</string>
+    <string name="artist_collapse">收起</string>
+    <string name="artist_expand">展开</string>
+    <string name="artist_songs_total">歌曲 %1$d</string>
+    <string name="artist_songs_listened">歌曲 %1$d/%2$d</string>
+    <string name="artist_albums_tab">专辑</string>
+    <string name="artist_no_albums">暂无专辑</string>
+    <string name="album_load_failed">专辑加载失败</string>
+
+    <!-- 统计 -->
+    <string name="stats_day">日</string>
+    <string name="stats_month">月</string>
+    <string name="stats_year">年</string>
+    <string name="stats_week">周</string>
+    <string name="stats_today">今天</string>
+    <string name="stats_date_full">%1$d年%2$d月%3$d日</string>
+    <string name="stats_month_label">%1$d年%2$d月</string>
+    <string name="stats_year_label">%1$d年</string>
+    <string name="stats_this_month">本月</string>
+    <string name="stats_this_year">今年</string>
+    <string name="stats_prev_period">上一期</string>
+    <string name="stats_next_period">下一期</string>
+    <string name="stats_local_total_label">tokimusic 时长 · 本地累计</string>
+    <string name="stats_local_note">仅统计本机自安装后的播放时长；卸载或清除数据后清零。</string>
+    <string name="stats_distribution">时长分布</string>
+    <string name="stats_top_songs">常听歌曲</string>
+    <string name="stats_no_records">暂无播放记录</string>
+    <string name="stats_no_records_hint">暂无记录，播放后开始统计</string>
+    <string name="stats_play_times">%1$d 次</string>
+    <string name="stats_estimate_note">按播放次数 × 时长估算</string>
+    <string name="stats_month_day">%1$d月%2$d日</string>
+    <string name="stats_day_of_month">%1$d日</string>
+    <string name="stats_month_only">%1$d月</string>
+    <string name="stats_last_7_days">最近 7 天</string>
+    <string name="stats_last_30_days">最近 30 日</string>
+    <string name="stats_last_12_months">最近 12 个月</string>
+    <string name="stats_range_total">%1$s 共 %2$s</string>
+    <string name="stats_empty_buckets">其中 %1$d 个无记录，不占块</string>
+    <string name="stats_all_buckets_filled">每天 / 每月都有记录</string>
+    <string name="stats_minutes">%1$d 分钟</string>
+    <string name="stats_report_title">听歌报告</string>
+    <string name="stats_week_estimate">本周预估听歌时长</string>
+    <string name="stats_total_estimate">累计预估听歌时长</string>
+    <string name="stats_no_listen_records">暂无收听记录</string>
+
+    <!-- 组件（歌曲菜单 / 详情骨架 / 通用） -->
+    <string name="sheet_favorited">已收藏</string>
+    <string name="sheet_favorite">收藏</string>
+    <string name="sheet_about">关于</string>
+    <string name="sheet_add">添加</string>
+    <string name="sheet_delete">删除</string>
+    <string name="sheet_add_to_playlist">添加到歌单</string>
+    <string name="sheet_no_created_playlists">还没有自己创建的歌单</string>
+    <string name="sheet_field_title">歌名</string>
+    <string name="sheet_field_artist">歌手</string>
+    <string name="sheet_field_album">专辑</string>
+    <string name="sheet_field_duration">时长</string>
+    <string name="detail_toggle_play_mode">切换顺序 / 随机播放</string>
+    <string name="common_avatar">头像</string>
+    <string name="common_duration_min_sec">%1$d分%2$02d秒</string>
+    <string name="app_playlist">歌单</string>
+    <string name="app_artist">歌手</string>
+    <string name="app_album">专辑</string>
+    <string name="app_now_playing">正在播放</string>
+    <string name="app_listening_time">听歌时长</string>
+    <string name="app_music_level">音乐等级</string>
+    <string name="app_listen_report">收听报告</string>
+    <string name="app_view_netease_estimate">查看 NeteaseMusic 统计估算</string>
+    <string name="app_unfavorite_playlist">取消收藏</string>
+    <string name="app_favorite_playlist">收藏歌单</string>
+    <string name="app_unfollow">取消关注</string>
+    <string name="app_follow">关注</string>
+    <string name="app_login">登录</string>
+
+    <!-- 更新 -->
+    <string name="update_found_new">发现新版本 %1$s</string>
+    <string name="update_found_test">发现测试版本 %1$s</string>
+    <string name="update_version_arrow">当前版本 %1$s → %2$s %3$s</string>
+    <string name="update_package_size">安装包大小：约 %1$s</string>
+    <string name="update_download_failed">下载失败，请稍后重试</string>
+    <string name="update_now">立即更新</string>
+    <string name="update_later">稍后提醒</string>
+    <string name="update_allow_install">请允许安装未知应用后重试</string>
+    <string name="update_downloaded_bytes">已下载 %1$s</string>
+    <string name="optimize_title">优化软件</string>
+    <string name="optimize_prompt">检测到已更新到新版本，是否现在优化？将清理上个版本的旧安装包与播放、图片等缓存（已下载歌曲、歌单与歌词不受影响）</string>
+    <string name="optimize_cache_size">缓存占用</string>
+    <string name="optimize_old_package">其中旧安装包</string>
+    <string name="optimize_play_cache">其中播放等缓存</string>
+    <string name="optimize_estimated">预计可清理</string>
+    <string name="optimize_running">正在优化…</string>
+    <string name="optimize_now">立即优化</string>
+    <string name="optimize_skip">暂不优化</string>
+    <string name="optimize_done">优化完成</string>
+    <string name="optimize_cleaned">已清理</string>
+    <string name="optimize_cache_before">优化前缓存</string>
+    <string name="optimize_cache_after">优化后缓存</string>
+    <string name="optimize_ok">知道了</string>
+
+    <!-- ViewModel / 数据层消息（经 AppStrings 解析） -->
+    <string name="msg_google_unbound">已解绑 Google 账号</string>
+    <string name="msg_drive_auth_confirm_needed">需要确认 Drive 授权</string>
+    <string name="msg_drive_auth_failed">Drive 授权失败：%1$s</string>
+    <string name="msg_sync_bind_first">请先绑定 Google 并授权 Drive 同步</string>
+    <string name="msg_sync_done">同步完成</string>
+    <string name="msg_sync_failed">同步失败</string>
+    <string name="msg_sync_failed_reason">同步失败：%1$s</string>
+    <string name="msg_qq_unfavorite_in_app">QQ 歌单需在 QQMusic 内取消收藏</string>
+    <string name="msg_favorite_failed">收藏失败，请检查网络后重试</string>
+    <string name="msg_refresh_failed">刷新失败，请重试</string>
+    <string name="msg_playlist">歌单</string>
+    <string name="msg_download_empty">歌单暂无可下载曲目</string>
+    <string name="msg_download_local_mode">本地模式下无法下载，请先开启来源</string>
+    <string name="msg_download_source_off">该来源已关闭，无法下载</string>
+    <string name="msg_login_qq_first">请先登录 QQMusic</string>
+    <string name="msg_download_done">下载完成：%1$d 首</string>
+    <string name="msg_download_all_failed">下载失败：%1$d 首均无法下载</string>
+    <string name="msg_download_partial">下载完成：成功 %1$d 首，失败 %2$d 首</string>
+    <string name="msg_local_file_unavailable">本地文件不可用</string>
+    <string name="msg_qq_no_permission">QQMusic 暂无这首歌的播放权限（可能需要登录或 VIP）</string>
+    <string name="msg_no_play_url">这首歌暂无播放地址（可能无版权或需 VIP）</string>
+    <string name="msg_no_play_url_retry">无法获取播放地址，请重试</string>
+    <string name="msg_yt_no_play_url">YouTubeMusic 暂无播放地址（%1$s）</string>
+    <string name="msg_trial_only">这首歌仅提供试听，暂无完整播放地址</string>
+    <string name="msg_like_failed">喜欢失败，请重试</string>
+    <string name="msg_added_to_playlist">已添加到「%1$s」</string>
+    <string name="msg_add_to_playlist_failed">添加到歌单失败，请重试</string>
+    <string name="msg_removed_from_playlist">已从歌单移除</string>
+    <string name="msg_remove_failed">移除失败，请重试</string>
+    <string name="msg_qr_generate_failed">二维码生成失败，请检查网络后重试</string>
+    <string name="msg_qr_expired">二维码已过期，请重新生成</string>
+    <string name="msg_phone_invalid">请输入 11 位手机号</string>
+    <string name="msg_too_frequent">请求过于频繁，请稍后再试</string>
+    <string name="msg_sms_send_failed">验证码发送失败，请检查网络后重试</string>
+    <string name="msg_sms_code_empty">请输入验证码</string>
+    <string name="msg_login_failed">登录失败，请重试</string>
+    <string name="msg_unfollowed">已取消关注</string>
+    <string name="msg_followed">已关注</string>
+    <string name="msg_login_netease_first">请先登录 NeteaseMusic</string>
+    <string name="msg_follow_failed">关注失败，请重试</string>
+    <string name="msg_local_mode_unavailable">本地模式暂不可用</string>
+    <string name="msg_source_off_unavailable">源已关闭暂不可用</string>
+
+    <!-- 数据层错误（经 AppStrings 解析后展示） -->
+    <string name="err_netease_unreachable">连不上网易云：请检查网络连接后重试</string>
+    <string name="err_netease_http">网易云返回了错误（HTTP %1$d）</string>
+    <string name="err_netease_rate_limited">请求太频繁，被网易暂时限制了，稍后再试</string>
+    <string name="err_request_failed">请求失败，请重试</string>
+    <string name="err_netease_unparsable">网易返回了无法解析的内容</string>
+    <string name="err_login_no_credential">登录成功但未拿到凭证，请重新扫码</string>
+    <string name="err_like_code">喜欢失败（code %1$d）</string>
+    <string name="err_add_playlist_code">添加到歌单失败（code %1$d）</string>
+    <string name="err_remove_playlist_code">从歌单移除失败（code %1$d）</string>
+    <string name="err_qq_auth_expired">登录鉴权已过期</string>
+    <string name="err_qq_login_param">登录参数错误</string>
+    <string name="err_qq_sms_code">验证码错误</string>
+    <string name="err_qq_bind_abnormal">账号绑定异常</string>
+    <string name="err_qq_bind_missing">账号绑定缺失</string>
+    <string name="err_qq_account_restricted">账号受限</string>
+    <string name="err_qq_device_limit">登录设备数量超限</string>
+    <string name="err_qq_account_banned">账号已被封禁</string>
+    <string name="err_qq_too_frequent">操作过于频繁，请稍后再试</string>
+    <string name="err_qq_no_credential">%1$s：服务端未返回凭证</string>
+    <string name="err_qq_sms_need_captcha">验证码发送失败：需要人机验证但未返回验证地址</string>
+    <string name="err_qq_sms_send_code">验证码发送失败（%1$d）</string>
+    <string name="err_qq_phone_login_failed">手机号登录失败</string>
+    <string name="err_qq_default_user">QQ用户</string>
+    <string name="err_qq_lyric_failed">QQ 歌词获取失败</string>
+    <string name="err_qq_playlist_empty">QQ 歌单详情为空</string>
+    <string name="err_qq_request_failed">QQ 请求失败</string>
+    <string name="err_yt_no_stream">无可用音频流</string>
+    <string name="err_yt_network">网络错误</string>
+    <string name="err_drive_list">Drive 列表失败 HTTP %1$d</string>
+    <string name="err_drive_download">Drive 下载失败 HTTP %1$d</string>
+    <string name="err_drive_upload">Drive 上传失败 HTTP %1$d</string>
+    <string name="err_drive_update">Drive 更新失败 HTTP %1$d</string>
+    <string name="err_google_cm_unavailable">Credential Manager 不可用</string>
+    <string name="err_google_no_account">设备上没有可用的 Google 账号</string>
+    <string name="err_google_login_unavailable">Google 登录不可用</string>
+    <string name="err_google_login_failed">Google 登录失败</string>
+    <string name="err_google_auth_no_page">授权需要确认但系统未提供确认页</string>
+    <string name="err_google_auth_no_token">授权未返回访问令牌</string>
+    <string name="err_drive_auth_failed">Drive 授权失败</string>
+    <string name="err_connect_play_service">连接播放服务失败</string>
+    <string name="err_play_service_failed">播放服务连接失败，请重启应用后重试</string>
+    <string name="err_play_failed_network">播放失败，请检查网络后重试</string>
+    <string name="err_play_skipped_no_url">这首歌暂无播放地址（可能无版权或需 VIP），已跳过</string>
+
+    <!-- 本地导入（经 AppStrings 解析后展示） -->
+    <string name="local_selected_dir">所选目录</string>
+    <string name="local_open_dir_failed">无法打开目录</string>
+    <string name="local_qq_format_unsupported">QQ 加密格式暂不支持解密</string>
+    <string name="local_read_failed">读取不到文件</string>
+    <string name="local_decrypt_failed">解密失败：%1$s</string>
+    <string name="local_decrypt_verify_failed">解密后音频校验失败</string>
+    <string name="local_unknown_song">未知歌曲</string>
+    <string name="local_unknown_artist">未知歌手</string>
+    <string name="ncm_too_small">文件太小</string>
+    <string name="ncm_bad_magic">不是 .ncm 文件（魔数不符）</string>
+    <string name="ncm_key_length">密钥段长度异常</string>
+    <string name="ncm_key_decrypt_failed">密钥解密失败</string>
+    <string name="ncm_truncated">文件截断</string>
+    <string name="ncm_cover_length">封面长度异常</string>
+    <string name="ncm_no_audio">缺少音频段</string>
+    <string name="ncm_audio_verify_failed">解密后音频头校验失败</string>
+    <string name="update_downloaded_so_far">已下载 %1$s</string>
+    <string name="update_kind_test">测试版本</string>
+    <string name="update_kind_new">新版本</string>
+    <string name="err_login_expired">登录已过期，请重新扫码登录</string>
+    <string name="err_qq_qr_login_failed">QQ音乐扫码登录失败</string>
+    <string name="err_qq_missing_req">QQ 响应缺少 req_0</string>
+    <string name="err_qq_session_no_data">QQ GetSession 未返回 data</string>
+    <string name="err_qq_session_no_session">QQ GetSession 未返回 session</string>
+    <string name="err_yt_empty_id">videoId 为空</string>
+    <string name="err_yt_vr_failed">ANDROID_VR 失败</string>
+    <string name="err_unknown">未知错误</string>
+    <string name="msg_retrospective_name">%1$d年%2$d月回顾</string>
+    <string name="err_network">网络错误</string>
+    <string name="stats_netease_hours">Netease %1$s</string>
+    <string name="detail_resume">继续播放</string>
+</resources>

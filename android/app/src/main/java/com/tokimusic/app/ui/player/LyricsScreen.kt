@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokimusic.app.data.lyric.LyricLine
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import com.tokimusic.app.data.lyric.YrcParser
 import com.tokimusic.app.ui.components.TokiLongPressLabel
 import com.tokimusic.app.ui.theme.CoverColors
@@ -137,7 +139,7 @@ import kotlin.math.roundToInt
     val scheme = MaterialTheme.motionScheme
     if (lines.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("暂无歌词", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = dimColor)
+            Text(stringResource(R.string.lyrics_empty), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, fontFamily = fontFamily, color = dimColor)
         }
         return
     }
@@ -354,7 +356,7 @@ import kotlin.math.roundToInt
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 0.dp, bottom = backToCurrentBottom),
             ) {
-                TokiLongPressLabel("回到当前行") {
+                TokiLongPressLabel(stringResource(R.string.lyrics_back_to_current)) {
                     Box(
                         Modifier.size(48.dp)
                             .clip(RoundedCornerShape(percent = 50))
@@ -364,7 +366,7 @@ import kotlin.math.roundToInt
                     ) {
                         Icon(
                             if (arrowUp) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "回到当前行",
+                            contentDescription = stringResource(R.string.lyrics_back_to_current),
                             tint = textColor,
                             modifier = Modifier.size(24.dp),
                         )

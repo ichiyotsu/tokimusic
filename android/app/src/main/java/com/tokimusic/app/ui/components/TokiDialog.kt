@@ -1,6 +1,8 @@
 package com.tokimusic.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.res.stringResource
+import com.tokimusic.app.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +40,7 @@ fun TokiDialog(
     confirmText: String? = null,
     onConfirm: (() -> Unit)? = null,
     confirmEnabled: Boolean = true,
-    dismissText: String? = "取消",
+    dismissText: String? = stringResource(R.string.common_cancel),
     confirmDestructive: Boolean = false,
     content: @Composable () -> Unit = {},
 ) {
