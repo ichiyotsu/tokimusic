@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -172,7 +173,10 @@ import kotlin.math.roundToInt
     var viewportH by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     // 第六轮第 16 项：歌词锚点 28% → 1/5（0.20f）；contentPadding 顶部跟随锚点（下不变）。
-    val anchorPx = (viewportH * 0.20f).toInt()
+    // 本轮（0128）第 7 条：锚点加下限（64dp 淡化带 + 半行高 28dp）——
+    // 短视口里 20% 太小，首行/当前行静止位置会落进顶部淡化带。
+    val anchorMinPx = with(density) { 92.dp.toPx() }.toInt()
+    val anchorPx = lyricAnchorPx(viewportH, anchorMinPx)
     // 第六轮第 16 项：首行弹簧入场——首次播放 / 切歌时，首行从锚点下约
     // 120dp、透明起步，弹簧落到锚点（阻尼 0.75、刚度 400，约 400ms）；
     // 弹簧期间行进度保持 0、自动跟随暂停，落定后才开始扫过与跟随。
@@ -274,7 +278,12 @@ import kotlin.math.roundToInt
                     entranceDelayMs = minOf(distance, 6) * 40L,
                     // 第六轮第 26 项：位置淡化（行中心在渐隐带内才淡）；
                     // 滚动中模糊分量归 0（见上）。
-                    fade = if (listState.isScrollInProgress) 0f to rawFade.second else rawFade,
+                    // 本轮（0128）第 7 条：歌词模糊关时位置淡化的模糊
+                    // 分量也归 0——旧实现只关距离模糊，顶部带内的位置
+                    // 模糊残留，用户关了开关顶部仍糊。本轮口径覆盖
+                    // 0.1.23「关只关距离模糊」的设计：关 = 歌词区无
+                    // 任何模糊（alpha 淡化保留，不是模糊）。
+                    fade = if (listState.isScrollInProgress || !distanceBlurEnabled) 0f to rawFade.second else rawFade,
                     // 手动翻看期间距离模糊整体关（恢复跟随后才回来）；
                     // 本轮（0124）第 17 项：歌词模糊开关关时同样整体关
                     // （只关模糊，alpha 淡化等其余效果不受影响）。
@@ -302,7 +311,10 @@ import kotlin.math.roundToInt
             )
             // Apple 歌词式模糊：上下各一段渐进磨砂（与底栏同配方），行滚过
             // 顶底部时带磨砂感；玻璃关闭时不画。
-            if (hazeState != null && TokiBlurCapability.canSampleInWindow) {
+            // 本轮（0128）第 7 条：歌词模糊关时这两段玻璃带也不画
+            // （它们就是压在歌词上下的模糊层；颜色渐变带不是模糊，
+            // 不受影响）。
+            if (hazeState != null && distanceBlurEnabled && TokiBlurCapability.canSampleInWindow) {
                 Box(
                     Modifier.fillMaxWidth().height(64.dp).align(Alignment.TopCenter)
                         .tokiGlassFade(hazeState, fadeFromTop = true),
@@ -411,6 +423,17 @@ internal fun lyricFocusIndex(activeIndex: Int, lineCount: Int): Int =
 /** 第 [index] 行与焦点行的距离（纯函数，单测覆盖）。 */
 internal fun lyricLineDistance(index: Int, activeIndex: Int, lineCount: Int): Int =
     abs(index - lyricFocusIndex(activeIndex, lineCount))
+
+/**
+ * 歌词锚点（本轮 0128 第 7 条，纯函数，单测覆盖）：常规取视口高
+ * 的 20%，但不得低于 [minAnchorPx]——短视口（如 MiniPlayer Pro
+ * 面板）里 20% 会把当前行/首行顶进顶部 64dp 淡化带，行一进带就
+ * 吃位置模糊与玻璃带，看起来像「第一句在模糊区里」。下限由调用
+ * 方按「带宽 64dp + 半行高约 28dp」给（92dp 换算的像素值），
+ * 保证静止时当前行中心在带外。
+ */
+internal fun lyricAnchorPx(viewportHeightPx: Int, minAnchorPx: Int): Int =
+    maxOf((viewportHeightPx * 0.20f).toInt(), minAnchorPx)
 
 fun visualLineProgresses(sungChars: Float, segments: List<VisualLineSegment>): List<Float> =
     segments.map { seg ->
@@ -622,6 +645,11 @@ private fun LyricLineRow(
                 // 0.1.14 第 11 条：非当前行也按 28sp 排版（与当前行同
                 // 高），视觉缩小只靠外层 graphicsLayer 的 0.8 缩放，
                 // 这样行激活时行高不变，下面的行不跳。颜色仍是 dim 色。
+                // 本轮（0128）第 21 条：非当前行不折行——maxLines = 1
+                // + 省略号截断（与全应用单行文本同款溢出处理）；只有
+                // 当前行（上方双层逐字分支，按视觉段量测）允许折成
+                // 两行。行高仍按 28sp 单行排版，与当前行首段同高，
+                // 激活切换时行距口径不变。
                 Text(
                     line.text,
                     textAlign = TextAlign.Start,
@@ -632,6 +660,8 @@ private fun LyricLineRow(
                     // 渐隐带内的变淡走整行的 rowAlpha。0.1.15 第 1 项：已播放
                     // 过的行 0.75（未播放的行 0.85）。
                     color = textColor.copy(alpha = if (isPlayed) 0.75f else 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                     onTextLayout = { textWidthPx = it.size.width },
                 )
@@ -641,6 +671,8 @@ private fun LyricLineRow(
             // 0.1.17 第 1 项：三行之间不另加间距——罗马音/翻译行不再带
             // 下边距，行与行之间只剩正常行高；开关罗马音/翻译时条件组合
             // 本来就会收掉/撑开那行，块间距只由主文本的 vertical padding 给。
+            // 本轮（0128）第 21 条：罗马音/翻译行在非当前行同样不折行
+            // （maxLines = 1 + 省略号）；当前行保持可折行。
             if (showRomaji && !line.romaji.isNullOrBlank()) Text(
                 line.romaji!!,
                 textAlign = TextAlign.Start,
@@ -651,6 +683,8 @@ private fun LyricLineRow(
                 // 0.1.15 第 1 项：已播放行的翻译/罗马音同比例再淡（0.4 → 0.3，
                 // 即整行透明度 ×0.75）。
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
+                maxLines = if (isActive) Int.MAX_VALUE else 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
             if (showTranslation && !line.translation.isNullOrBlank()) Text(
@@ -661,6 +695,8 @@ private fun LyricLineRow(
                 // 0.1.21：翻译行按自身文本判定（中文走默认链、含假名才走 JP）。
                 fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(line.translation!!, InterFamily),
                 color = if (isActive) dimColor else textColor.copy(alpha = if (isPlayed) 0.3f else 0.4f),
+                maxLines = if (isActive) Int.MAX_VALUE else 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

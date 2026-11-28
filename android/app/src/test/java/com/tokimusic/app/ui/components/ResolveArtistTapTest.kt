@@ -58,4 +58,50 @@ class ResolveArtistTapTest {
         assertEquals(null, qqMid)
         assertEquals(null, neId)
     }
+
+    // 本轮（0128）第 2 条：YT / 本地歌的歌手 id 恒为 0——旧实现把
+    // 0 送进网易云歌手页导致「载入失败」，现在必须静默不响应。
+    @Test fun ytArtistIdZeroDoesNothing() {
+        val ytSong = Song(
+            id = -999L,
+            name = "Some Song",
+            artists = listOf(Artist(0L, "Some Channel")),
+            source = MusicSource.YOUTUBEMUSIC,
+            sourceId = "abc123",
+        )
+        var qqMid: String? = null
+        var neId: Long? = null
+        resolveArtistTap(listOf(ytSong), 0L, { neId = it }, { qqMid = it })
+        assertEquals(null, qqMid)
+        assertEquals(null, neId)
+    }
+
+    @Test fun localArtistIdZeroDoesNothing() {
+        val localSong = Song(
+            id = -5L,
+            name = "Local",
+            artists = listOf(Artist(0L, "Unknown")),
+            source = MusicSource.LOCAL,
+            sourceId = "file:///x.mp3",
+        )
+        var qqMid: String? = null
+        var neId: Long? = null
+        resolveArtistTap(listOf(localSong), 0L, { neId = it }, { qqMid = it })
+        assertEquals(null, qqMid)
+        assertEquals(null, neId)
+    }
+
+    @Test fun artistTapTargetDirect() {
+        assertEquals(ArtistTapTarget.Netease(4721L), artistTapTarget(neSong, 4721L))
+        assertEquals(ArtistTapTarget.Unsupported, artistTapTarget(neSong, 0L))
+        assertEquals(ArtistTapTarget.Qq("002J4UUk29y8BY"), artistTapTarget(qqSong, 5062L))
+        // QQ 点到没有 mid 的第二歌手时退到第一个有 mid 的歌手。
+        val twoArtists = qqSong.copy(
+            artists = listOf(
+                Artist(5062L, "薛之谦", mid = "002J4UUk29y8BY"),
+                Artist(999L, "合作歌手", mid = ""),
+            ),
+        )
+        assertEquals(ArtistTapTarget.Qq("002J4UUk29y8BY"), artistTapTarget(twoArtists, 999L))
+    }
 }

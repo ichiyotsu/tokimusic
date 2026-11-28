@@ -466,9 +466,10 @@ fun HomeScreen(
                 // 渐变封面宽卡（与回顾卡同款封面），点开走歌单详情。
                 MemoryCoverCard(
                     monthKey = home.memoryMonthKey,
-                    trackCount = home.memorySongs.size,
                     wide = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).aspectRatio(2.1f),
+                    // 本轮（0128）第 11 条：宽卡不再满宽 2.1:1——宽度
+                    // 随标题内容收拢（content-hugging）。
+                    modifier = Modifier.padding(horizontal = 24.dp),
                 ) {
                     onOpenPlaylist(com.tokimusic.app.player.Retrospective.memoryPlaylistId(home.memoryMonthKey))
                 }
@@ -775,7 +776,6 @@ private fun LocalGeneratedCard(title: String, caption: String, modifier: Modifie
 private fun RetrospectiveCard(monthKey: Int, songs: List<Song>, onClick: () -> Unit) {
     MemoryCoverCard(
         monthKey = monthKey,
-        trackCount = songs.size,
         wide = false,
         modifier = Modifier.height(195.dp).aspectRatio(200f / 260f),
         onClick = onClick,
@@ -785,15 +785,17 @@ private fun RetrospectiveCard(monthKey: Int, songs: List<Song>, onClick: () -> U
 /**
  * 音乐记忆生成封面歌单卡（本轮 0125 第 6 项）：封面不用图片——
  * Retrospective.coverColors 按年月种子选的同类色 3 色做 45° 渐变
- * （深/浅两套按主题选，同月恒定），封面文字按用户参考图：大字
- * "OCT'26"（coverTitle）+ 副标「音乐记忆 · 10月」（coverSubtitle），
- * 左下小字「N 首 · TokiMusic」（作者口径，用户 14:02 补充）。
- * wide = 主页音乐记忆入口的宽卡；窄版是回顾横排卡。
+ * （深/浅两套按主题选，同月恒定）。
+ * 本轮（0128）第 11 条改版：大字标题混排字重——月份缩写（"NOV"）
+ * Bold + 年份（"'26"）Regular，字号比旧版大一档，白色 75% 不透
+ * 明度；副标「音乐记忆 · 11月」移到卡片左下角；旧版左下的统计
+ * 小字（「N 首 · TokiMusic」）整行删除。wide 宽卡宽度随标题内容
+ * 收拢（调用方不再给满宽/比例），高度 = 标题 + 40dp 间隔 + 副标；
+ * 窄版（回顾横排）尺寸由调用方固定，副标靠 weight 间隔沉底。
  */
 @Composable
 private fun MemoryCoverCard(
     monthKey: Int,
-    trackCount: Int,
     wide: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -806,7 +808,9 @@ private fun MemoryCoverCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Box(Modifier.fillMaxSize()) {
+        // wide：Box/Column 按内容收拢（卡宽高由内容定）；窄版：调用方
+        // 已把卡尺寸钉死，Box/Column 填满、副标靠 weight 间隔沉底。
+        Box(Modifier.then(if (wide) Modifier else Modifier.fillMaxSize())) {
             Box(
                 Modifier.matchParentSize().background(
                     Brush.linearGradient(
@@ -816,21 +820,42 @@ private fun MemoryCoverCard(
                     ),
                 ),
             )
-            Column(Modifier.align(Alignment.TopStart).padding(16.dp)) {
+            Column(Modifier.then(if (wide) Modifier else Modifier.fillMaxSize()).padding(16.dp)) {
+                // 混排字重：撇号前 Bold、撇号起 Regular（0128 第 11 条）。
+                val rawTitle = com.tokimusic.app.player.Retrospective.coverTitle(monthKey)
+                val split = rawTitle.indexOf('\'')
+                val titleText = androidx.compose.ui.text.buildAnnotatedString {
+                    if (split > 0) {
+                        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                        append(rawTitle.substring(0, split))
+                        pop()
+                        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Normal))
+                        append(rawTitle.substring(split))
+                        pop()
+                    } else {
+                        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                        append(rawTitle)
+                        pop()
+                    }
+                }
                 Text(
-                    com.tokimusic.app.player.Retrospective.coverTitle(monthKey),
-                    style = (if (wide) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineMedium).copy(
+                    titleText,
+                    style = (if (wide) MaterialTheme.typography.displayMedium else MaterialTheme.typography.headlineLarge).copy(
                         fontFamily = com.tokimusic.app.ui.theme.InterFamily,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         shadow = androidx.compose.ui.graphics.Shadow(
                             color = Color.Black.copy(alpha = 0.3f),
                             offset = androidx.compose.ui.geometry.Offset(0f, 2f),
                             blurRadius = 8f,
                         ),
                     ),
-                    color = Color.White,
+                    color = Color.White.copy(alpha = 0.75f),
                     maxLines = 1,
                 )
+                if (wide) {
+                    Spacer(Modifier.height(40.dp))
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
                 Text(
                     com.tokimusic.app.player.Retrospective.coverSubtitle(monthKey, stringResource(R.string.memory_cover_subtitle)),
                     style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
@@ -839,13 +864,6 @@ private fun MemoryCoverCard(
                     maxLines = 1,
                 )
             }
-            Text(
-                stringResource(R.string.home_memory_creator_count, trackCount),
-                Modifier.align(Alignment.BottomStart).padding(16.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.85f),
-                maxLines = 1,
-            )
         }
     }
 }

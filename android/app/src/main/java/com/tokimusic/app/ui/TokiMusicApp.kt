@@ -259,7 +259,7 @@ fun TokiMusicApp(
         // （Dest.Search），不再是弹窗。
         var showSettings by remember { mutableStateOf(false) }
         // 本轮（0127）第 12 条：MiniPlayer Pro 面板（长按 MiniPlayer
-        // 3 秒触发，顶部半屏展开；状态在根层，面板画在根 Box 上）。
+        // 1.5 秒触发，顶部半屏展开；状态在根层，面板画在根 Box 上）。
         var showMiniPro by remember { mutableStateOf(false) }
         val density = LocalDensity.current
         // 第二轮第 8 项：歌单详情的悬浮标题只在标题行滑出可视区后出现
@@ -908,7 +908,7 @@ fun TokiMusicApp(
                 fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
             label = "miniPlayerPro",
         ) {
-            MiniPlayerPro(vm, hazeState, coverColors = playerCoverColors, onClose = { showMiniPro = false })
+            MiniPlayerPro(vm, coverColors = playerCoverColors, onClose = { showMiniPro = false })
         }
         // 本轮（0127）第 10 条：「我的」是全屏覆盖页（SettingsOverlay），
         // 画在根 Box 最上层（歌曲操作弹窗等 Dialog 窗口仍在它之上，

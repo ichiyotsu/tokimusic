@@ -44,7 +44,7 @@
     <string name="settings_companion_toki_title">TokiMusic 陪伴</string>
     <string name="settings_companion_toki_desc">從第一次在 TokiMusic 登入起計算的陪伴天數。</string>
     <string name="settings_companion_netease_title">NeteaseMusic 陪伴</string>
-    <string name="settings_companion_netease_desc">NeteaseMusic 賬號的註冊天數，由 NeteaseMusic 返回。</string>
+    <string name="settings_companion_netease_desc">註冊天數，由 NeteaseMusic 返回。</string>
     <string name="settings_joined_days">已加入 %1$d 天</string>
     <string name="settings_joined_days_unknown">已加入 — 天</string>
     <string name="settings_achieved">已達成</string>
@@ -54,13 +54,11 @@
     <string name="settings_achievement_progress">進度：%1$s</string>
     <string name="settings_achievement_status">狀態：%1$s</string>
     <string name="settings_more_achievements">更多成就即將到來</string>
-    <string name="settings_live_updates">實時通知</string>
-    <string name="settings_live_updates_desc">播放時在通知欄、鎖屏和快捷設定中顯示系統媒體播放器，可直接控制播放；關閉後不顯示通知，後臺播放可能被系統停止。需要通知許可權。</string>
     <string name="settings_scrobble">聽歌記錄上報</string>
-    <string name="settings_scrobble_desc">開啟後，在 NeteaseMusic 裡聽的歌會同步到你的 NeteaseMusic 聽歌記錄；只上報 NeteaseMusic 源的歌，需要登入 NeteaseMusic。</string>
+    <string name="settings_scrobble_desc">開啟後，播放的歌曲會同步到你的 NeteaseMusic 聽歌記錄；僅上報此來源的歌曲，需要先登入。</string>
     <string name="settings_algo_unavailable">演算法推薦暫不可用</string>
     <string name="settings_algo">演算法推薦</string>
-    <string name="settings_algo_desc">關閉時，推薦歌單與推薦新歌按所選音樂源的預設內容與順序；開啟後，按你的聽歌口味重新排序。播放記錄始終只儲存在本機（不上傳），用於口味畫像與回顧歌單；畫像資料存內部儲存、更新不丟，並定期自動整理成月度彙總，不會無限增長。</string>
+    <string name="settings_algo_desc">關閉時，推薦歌單與推薦新歌按音樂源的預設順序；開啟後，按你的聽歌口味重新排序。播放記錄只儲存在本機（不上傳），用於口味畫像與回顧歌單；畫像存內部儲存、更新不丟，定期整理成月度彙總，不會無限增長。</string>
     <string name="settings_check_update_on_start">啟動時檢查更新</string>
     <string name="settings_check_update_on_start_desc">每次開啟軟體時檢查一次新版本；關閉後只在設定裡手動檢查。</string>
     <string name="settings_update_latest">已是最新版本</string>
@@ -93,7 +91,9 @@
     <string name="settings_lyric_translation">翻譯顯示</string>
     <string name="settings_lyric_romaji">羅馬音顯示</string>
     <string name="settings_live_lyrics">實時歌詞</string>
-    <string name="settings_live_lyrics_desc">開啟後，播放時通知標題實時顯示當前唱到的歌詞行；沒有歌詞時顯示歌名。需要先開啟實時通知。</string>
+    <string name="settings_live_lyrics_desc">開啟後，播放時通知標題實時顯示當前唱到的歌詞行；沒有歌詞時顯示歌名。</string>
+    <string name="settings_lock_screen_lyrics">鎖屏歌詞</string>
+    <string name="settings_lock_screen_lyrics_desc">播放中鎖屏時顯示歌詞頁：以鎖屏壁紙為背景，顯示時間、歌詞與播放控制；解鎖仍走系統鎖屏。</string>
     <string name="settings_floating_lyrics">懸浮歌詞</string>
     <string name="settings_floating_no_permission">未獲得懸浮窗許可權，懸浮歌詞無法開啟</string>
     <string name="settings_floating_color">顏色</string>
@@ -125,7 +125,7 @@
     <string name="settings_sms_resend_after">%1$ds 後重發</string>
     <string name="settings_sms_resend">重新傳送</string>
     <string name="settings_sms_send">傳送驗證碼</string>
-    <string name="settings_sms_phone_note">手機號須是 QQMusic 賬號繫結的手機號。</string>
+    <string name="settings_sms_phone_note">須使用 QQMusic 賬號繫結的手機號。</string>
     <string name="settings_captcha">人機驗證</string>
     <string name="settings_captcha_hint">請在下方完成驗證，完成後返回重新傳送驗證碼。</string>
     <string name="account_google">Google 賬號</string>
@@ -223,6 +223,7 @@
     <string name="player_favorite">收藏</string>
     <string name="player_no_current_song">暫無播放中的歌曲</string>
     <string name="player_qq_artist_unsupported">QQ 歌手詳情暫不支援</string>
+    <string name="player_artist_unsupported">該歌手暫無詳情頁</string>
     <string name="player_prev">上一首</string>
     <string name="player_next">下一首</string>
     <string name="player_back_to_cover">返回封面</string>
@@ -314,6 +315,7 @@
     <string name="stats_no_records_hint">暫無記錄，播放後開始統計</string>
     <string name="stats_play_times">%1$d 次</string>
     <string name="stats_estimate_note">按播放次數 × 時長估算</string>
+    <string name="stats_estimate_coverage">介面只返回聽歌排行前 %1$d 首，網易雲累計聽歌 %2$d 首，總時長僅為這部分歌曲的估算，實際更長。</string>
     <string name="stats_month_day">%1$d月%2$d日</string>
     <string name="stats_day_of_month">%1$d日</string>
     <string name="stats_month_only">%1$d月</string>

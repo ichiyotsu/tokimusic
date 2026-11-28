@@ -46,4 +46,22 @@ class LyricDistanceBlurTest {
             prev = v
         }
     }
+
+    // 本轮（0128）第 7 条：锚点下限——短视口里当前行/首行不进顶部淡化带。
+    @Test
+    fun anchorKeepsTwentyPercentOnTallViewports() {
+        // 1000px 视口、下限 276px（92dp @3x）：20% = 200 < 276 → 取下限。
+        assertEquals(276, lyricAnchorPx(1000, 276))
+        // 2000px 视口：20% = 400 > 276 → 取 20%。
+        assertEquals(400, lyricAnchorPx(2000, 276))
+    }
+
+    @Test
+    fun anchorFloorOnShortViewports() {
+        // Pro 面板级短视口（约 380px @1x 换算）：20% 只有 76，下限 92 胜出，
+        // 当前行中心（锚点 + 半行）落在 64dp 淡化带之外。
+        assertEquals(92, lyricAnchorPx(380, 92))
+        // 视口未量到（0）：回下限，不为 0。
+        assertEquals(92, lyricAnchorPx(0, 92))
+    }
 }

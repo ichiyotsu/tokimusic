@@ -107,11 +107,48 @@ fun containsKana(text: String): Boolean = text.any { ch ->
     c in 0x3040..0x309F || c in 0x30A0..0x30FF || c in 0x31F0..0x31FF || c in 0xFF66..0xFF9D
 }
 
-/** 按文本语言选字体（0.1.21）：含假名 → JpBoldFamily；否则返回
- * [default]（null = 用调用处原本的主题字体）。渲染歌名/歌手名/
- * 歌单名/歌词原词行时统一经它取值。 */
+/** 文本是否含谚文（本轮 0128 第 20 条扩展，纯函数可单测）：谚文
+ * 音节 U+AC00–D7A3、谚文字母 U+1100–11FF、兼容字母 U+3130–318F、
+ * 字母扩展 A U+A960–A97F / B U+D7B0–D7FB、半角字母 U+FFA0–FFDC。
+ * 含任一谚文即按韩语文本处理（与假名判日语同口径）。 */
+fun containsHangul(text: String): Boolean = text.any { ch ->
+    val c = ch.code
+    c in 0xAC00..0xD7A3 || c in 0x1100..0x11FF || c in 0x3130..0x318F ||
+        c in 0xA960..0xA97F || c in 0xD7B0..0xD7FB || c in 0xFFA0..0xFFDC
+}
+
+/**
+ * 韩语文本专用字体族（本轮 0128 第 20 条，与 JpBoldFamily 对称）：
+ * 内置 Noto Sans KR（静态 Bold，包内既有文件）第一位——含谚文的
+ * 文本整段经它渲染；KR 仍缺的字才落苹方/JP。只声明 Bold。
+ */
+val KrBoldFamily: FontFamily = FontFamily(
+    Font(R.font.noto_sans_kr, weight = FontWeight.Bold),
+    Font(R.font.pingfang_bold, weight = FontWeight.Bold),
+    Font(R.font.noto_sans_jp_bold, weight = FontWeight.Bold),
+)
+
+/** 文本的字体判定结果（纯函数，单测覆盖判定本身，不碰 Font 构造）。 */
+enum class TextFontKind { JP, KR, DEFAULT }
+
+/** 按文本判定字体种类：含假名 → JP；否则含谚文 → KR；其余 DEFAULT。
+ * 假名优先（与 0.1.21 既有口径一致；同含假名与谚文的文本极罕见）。 */
+fun textFontKind(text: String): TextFontKind = when {
+    containsKana(text) -> TextFontKind.JP
+    containsHangul(text) -> TextFontKind.KR
+    else -> TextFontKind.DEFAULT
+}
+
+/** 按文本语言选字体（0.1.21；本轮 0128 第 20 条扩韩语）：含假名 →
+ * JpBoldFamily；含谚文 → KrBoldFamily；否则返回 [default]
+ * （null = 用调用处原本的主题字体）。渲染歌名/歌手名/歌单名/
+ * 歌词原词行时统一经它取值——韩语覆盖自动落在全部既有接入点。 */
 fun fontFamilyForText(text: String, default: FontFamily? = null): FontFamily? =
-    if (containsKana(text)) JpBoldFamily else default
+    when (textFontKind(text)) {
+        TextFontKind.JP -> JpBoldFamily
+        TextFontKind.KR -> KrBoldFamily
+        TextFontKind.DEFAULT -> default
+    }
 
 /** CJK 静态粗体（0.1.15 第 8 项）：三个文件本身就是 Bold 字形（Noto 两个
  * usWeightClass 700；PingFang 的 OS/2 写 400 但族名与轮廓都是 Bold，见上），

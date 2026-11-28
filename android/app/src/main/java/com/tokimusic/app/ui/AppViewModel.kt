@@ -974,9 +974,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * 只在算法推荐开关开时调用（loadHome 尾部与开关翻动时）；重排以
      * loadHome 存下的源原始顺序（homeRawRecommend）为底，不叠排。
      */
+    /**
+     * 本轮（0128）第 10 条：口味分布——喜欢的歌（全量 Song，标题 +
+     * 歌手，权重 2）+ 播放事件（只有歌手名，权重 1/事件）分类成
+     * 五桶份额。总权重 < [TasteDistribution.MIN_PROFILE_WEIGHT]
+     * （画像太薄）返回 null，调用方回落既有行为。全部本地计算。
+     * 如实边界：播放事件不存标题，历史侧只能按歌手名文字分类，
+     * 汉字名的日本歌手会误入中文桶（见 TasteDistribution 头注）。
+     */
+    private suspend fun buildTasteDistribution(): Map<com.tokimusic.app.player.TasteDistribution.Bucket, Double>? {
+        val weighted = mutableListOf<Pair<com.tokimusic.app.player.TasteDistribution.Bucket, Double>>()
+        _likedSongs.value.forEach {
+            weighted += com.tokimusic.app.player.TasteDistribution.classifyTrack(it.name, it.artistText) to 2.0
+        }
+        val events = withContext(Dispatchers.IO) { player.playEventLog.recentEvents() }
+        events.forEach { ev ->
+            ev.artistNames.forEach { name ->
+                weighted += com.tokimusic.app.player.TasteDistribution.classifyTrack("", name) to 1.0
+            }
+        }
+        val total = weighted.sumOf { it.second }
+        if (total < com.tokimusic.app.player.TasteDistribution.MIN_PROFILE_WEIGHT) return null
+        return com.tokimusic.app.player.TasteDistribution.distributionOf(weighted)
+    }
+
+    private val playlistDistCache = HashMap<Long, Map<com.tokimusic.app.player.TasteDistribution.Bucket, Double>>()
+
     private suspend fun rerankHomeByTaste() {
         val profile = buildTasteProfile()
         if (profile.isEmpty()) return
+        val userDist = buildTasteDistribution()
         val home = _home.value
         val raw = homeRawRecommend
         fun songScore(song: Song): Double = song.artists.sumOf { profile[it.name] ?: 0.0 }
@@ -984,6 +1011,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val qqNewSongs = (raw?.qqNewSongs ?: home.qqNewSongs).sortedByDescending { songScore(it) }
         suspend fun rankPlaylists(lists: List<Playlist>): List<Playlist> {
             if (lists.isEmpty()) return lists
+            // 本轮（0128）第 10 条：画像够厚时，歌单先按口味分布选
+            // 展示集——候选前 12 个各抽详情前 15 首分类成分布（按会
+            // 话缓存），按用户份额配额选 8 个（selectByDistribution），
+            // 其余候选按分布相似度随后，尾部保持源序。候选池就是
+            // loadHome 已拉的 personalized(30)，不另发请求源。
+            if (userDist != null) {
+                val head = lists.take(12)
+                val tail = lists.drop(12)
+                val distOf = HashMap<Long, Map<com.tokimusic.app.player.TasteDistribution.Bucket, Double>>()
+                for (pl in head) {
+                    distOf[pl.id] = playlistDistCache[pl.id] ?: run {
+                        val tracks = runCatching { playlistDetail(pl.id).second }
+                            .getOrDefault(emptyList()).take(15)
+                        com.tokimusic.app.player.TasteDistribution.distributionOfTracks(
+                            tracks.map { it.name to it.artistText },
+                        ).also { playlistDistCache[pl.id] = it }
+                    }
+                }
+                val selected = com.tokimusic.app.player.TasteDistribution.selectByDistribution(
+                    candidates = head,
+                    distOf = { distOf[it.id] ?: emptyMap() },
+                    userDist = userDist,
+                    slots = 8,
+                )
+                val rest = head.filter { it !in selected }
+                    .sortedByDescending {
+                        com.tokimusic.app.player.TasteDistribution.similarity(distOf[it.id] ?: emptyMap(), userDist)
+                    }
+                return selected + rest + tail
+            }
             val head = lists.take(8)
             val tail = lists.drop(8)
             val scored = head.map { pl ->
@@ -1158,8 +1215,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             // 大排查 B6：加载成功才记 loaded——之前先记 true 再请求，
             // 网络失败就永久空列表（直到退出重登），下次进资料库也不重试。
+            // 本轮（0128）第 13 条：qqLibrary() 无凭据时返回 null——
+            // 不得当成功缓存（旧行为：空对象 + loaded=true，QQ 分区
+            // 从此永久空白、切源不补拉）。null 按未加载处理，下次
+            // 进入分区/切源自动重试（与 onFailure 同口径）。
             runCatching { qqClient.qqLibrary() }
-                .onSuccess { _qqLibrary.value = it; qqLibraryLoaded = true; refreshSubscribedPlaylistIds() }
+                .onSuccess {
+                    if (it != null) {
+                        _qqLibrary.value = it; qqLibraryLoaded = true; refreshSubscribedPlaylistIds()
+                    }
+                }
                 // 本轮（0127）第 16 条：失败不覆盖已加载的好数据（重试由
                 // 分区进入/切源时的 loadQqLibrary 调用触发，loaded 保持 false）。
                 .onFailure { if (_qqLibrary.value == null) _qqLibrary.value = QqClient.QqLibrary() }
@@ -1761,10 +1826,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 记住的源被关掉时钳制到第一个开启的在线源（与搜索页同规则）。 */
-    fun effectiveLibrarySource(): MusicSource {
+    /**
+     * 本轮（0128）第 13 条：当前源改由调用方把已 collect 的 StateFlow
+     * 值传入——旧签名在组合里命令式读 _librarySource.value，重组只
+     * 靠调用处另一行 collect 的隐性订阅兜底，订阅一挪位分区就停在
+     * 旧源。显式入参后，分区源是组合输入的一部分，切源必然重组。
+     */
+    fun effectiveLibrarySource(current: MusicSource): MusicSource {
         val enabled = listOf(MusicSource.NETEASE, MusicSource.QQ, MusicSource.YOUTUBEMUSIC)
             .filter { !isSourceDisabled(it) }
-        val current = _librarySource.value
         return if (current in enabled) current else enabled.firstOrNull() ?: MusicSource.NETEASE
     }
     /** 最近一次搜索词（0.1.20 第 11 项：顶栏源切换按钮拿它按新源重跑查询）。 */
@@ -2022,29 +2092,86 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 文件歌的歌词走既有本地路径（LOCAL 源在下面分支本就为空）。
         if (song.source != MusicSource.LOCAL && isSourceDisabled(song.source)) {
             _lyrics.value = emptyList()
+            com.tokimusic.app.player.LiveLyricsDocument.update(null, emptyList())
             return@launch
         }
-        _lyrics.value = runCatching {
-            val p = when (song.source) {
-                // Sixth round, QQ playback: QQ lyrics are LRC line level
-                // (web GET plaintext); they feed the same line-level sweep
-                // the item-30 fallback uses for YRC-less songs.
-                MusicSource.QQ -> qqClient.lyric(song.sourceId)
-                MusicSource.NETEASE -> api.lyric(song.id)
-                // 本轮（0124）第 19 项：YT 歌词只有纯文本（无时间轴），
-                // payload 的 lrc 字段装的是全文纯文本，下面单独走
-                // parsePlainText 降级解析。
-                MusicSource.YOUTUBEMUSIC -> ytClient.lyric(song.sourceId)
-                // 本地歌：本地歌词文件优先，其次按登记的源身份在线
-                // 回落（本地模式不回落），见 localLyricPayload。
-                MusicSource.LOCAL -> localLyricPayload(song)
-            }
+        val parsedLyrics = runCatching {
             if (song.source == MusicSource.YOUTUBEMUSIC) {
-                YrcParser.parsePlainText(p.lrc, song.durationMs)
+                // 本轮（0128）第 5 条：YT 歌词只有纯文本——先试跨源
+                // 借歌词（网易云优先、QQ 次选，严格匹配 + 缓存，见
+                // borrowedLyricPayload）；借到就走对方的 YRC 逐字 +
+                // 官方翻译，没借到保持原来的纯文本降级，行为不变。
+                val borrowed = borrowedLyricPayload(song)
+                if (borrowed != null) {
+                    YrcParser.parse(borrowed.yrc, borrowed.lrc, borrowed.tlyric, borrowed.romalrc)
+                } else {
+                    val p = ytClient.lyric(song.sourceId)
+                    YrcParser.parsePlainText(p.lrc, song.durationMs)
+                }
             } else {
+                val p = when (song.source) {
+                    // Sixth round, QQ playback: QQ lyrics are LRC line level
+                    // (web GET plaintext); they feed the same line-level sweep
+                    // the item-30 fallback uses for YRC-less songs.
+                    MusicSource.QQ -> qqClient.lyric(song.sourceId)
+                    MusicSource.NETEASE -> api.lyric(song.id)
+                    MusicSource.YOUTUBEMUSIC -> ytClient.lyric(song.sourceId) // 不可达（上方已分流），保 when 穷尽
+                    // 本地歌：本地歌词文件优先，其次按登记的源身份在线
+                    // 回落（本地模式不回落），见 localLyricPayload。
+                    MusicSource.LOCAL -> localLyricPayload(song)
+                }
                 YrcParser.parse(p.yrc, p.lrc, p.tlyric, p.romalrc)
             }
         }.getOrDefault(emptyList())
+        _lyrics.value = parsedLyrics
+        // 本轮（0128）第 18 条：同步发布到应用级共享，锁屏歌词页
+        // （独立 Activity）按歌取用。
+        com.tokimusic.app.player.LiveLyricsDocument.update(
+            com.tokimusic.app.player.lyricDocumentKey(song), parsedLyrics,
+        )
+    }
+
+    private val lyricBorrowCache = com.tokimusic.app.data.LyricBorrowCache(getApplication())
+
+    /**
+     * 本轮（0128）第 5 条：给 YT 歌跨源借歌词。先查缓存（命中直用、
+     * 未命中标记在有效期内不重试）；未缓存才按 标题+歌手 搜网易云
+     * （源关闭时跳过）、QQ 次选，候选过 CrossSourceLyricMatch 的
+     * 严格匹配（标题归一化相等 + 歌手对上 + 时长 ±2s + 版本标签
+     * 一致）才取其歌词并写缓存。任何失败/无命中返回 null，调用方
+     * 回落 YT 纯文本歌词——借错/借不到都不冒充有逐字歌词。
+     */
+    private suspend fun borrowedLyricPayload(song: Song): com.tokimusic.app.data.api.LyricPayload? {
+        val videoId = song.sourceId
+        if (videoId.isBlank()) return null
+        when (val cached = lyricBorrowCache.get(videoId)) {
+            is com.tokimusic.app.data.LyricBorrowCache.Entry.Hit -> return cached.payload
+            com.tokimusic.app.data.LyricBorrowCache.Entry.Miss -> return null
+            null -> Unit
+        }
+        val query = "${song.name} ${song.artistText}".trim()
+        if (!isSourceDisabled(MusicSource.NETEASE)) {
+            val candidates = runCatching { api.search(query, 1, 10) }.getOrDefault(emptyList())
+            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestMatch(song, candidates)?.let { m ->
+                val payload = runCatching { api.lyric(m.id) }.getOrNull()
+                if (payload != null && (payload.yrc != null || payload.lrc != null)) {
+                    lyricBorrowCache.putHit(videoId, MusicSource.NETEASE.name, payload)
+                    return payload
+                }
+            }
+        }
+        if (!isSourceDisabled(MusicSource.QQ)) {
+            val candidates = runCatching { qqClient.searchSongs(query, 10) }.getOrDefault(emptyList())
+            com.tokimusic.app.data.lyric.CrossSourceLyricMatch.bestMatch(song, candidates)?.let { m ->
+                val payload = runCatching { qqClient.lyric(m.sourceId) }.getOrNull()
+                if (payload != null && (payload.yrc != null || payload.lrc != null)) {
+                    lyricBorrowCache.putHit(videoId, MusicSource.QQ.name, payload)
+                    return payload
+                }
+            }
+        }
+        lyricBorrowCache.putMiss(videoId)
+        return null
     }
     fun startQrLogin() {
         qrJob?.cancel()

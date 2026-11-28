@@ -77,11 +77,16 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
     private val lyricTimingOffsetMsState = androidx.compose.runtime.mutableIntStateOf(
         prefs.getInt("lyric_timing_offset_ms", 0),
     )
-    /** 实时通知（媒体通知）开关（默认开）。 */
-    var liveUpdatesEnabled: Boolean get() = prefs.getBoolean(LIVE_UPDATES_KEY, true)
-        set(v) { prefs.edit().putBoolean(LIVE_UPDATES_KEY, v).apply() }
+    // 本轮（0128）第 19 条：「实时通知」开关删除（媒体通知恒开）——
+    // liveUpdatesEnabled 属性与 LIVE_UPDATES_KEY 常量一并删除；设备
+    // 上已存的 live_updates_enabled 值从此无人读（无害残留，与以往
+    // 退役键同例）；同步清单 SYNC_BOOLEAN_KEYS 同步摘除该键。
+    /** 锁屏歌词开关（本轮 0128 第 18 条，默认关）：开启后播放中锁屏
+     * 显示专用歌词页（LockScreenLyricsActivity）。 */
+    var lockScreenLyricsEnabled: Boolean get() = prefs.getBoolean(LOCK_SCREEN_LYRICS_KEY, false)
+        set(v) { prefs.edit().putBoolean(LOCK_SCREEN_LYRICS_KEY, v).apply() }
     /** 实时歌词开关（0.1.17 第 12 项，默认关）：开启后通知标题实时
-     * 显示当前唱到的歌词行；关闭后恢复歌名。只在实时通知开启时生效。 */
+     * 显示当前唱到的歌词行；关闭后恢复歌名。 */
     var liveLyricsEnabled: Boolean get() = prefs.getBoolean(LIVE_LYRICS_KEY, false)
         set(v) { prefs.edit().putBoolean(LIVE_LYRICS_KEY, v).apply() }
     /** 悬浮歌词开关（0.1.21 追加，默认关）：开启后在屏幕顶部以无背景、
@@ -122,16 +127,16 @@ class SettingsStore(context: Context) : ApiSettings, com.tokimusic.app.data.api.
         set(v) { prefs.edit().putLong("play_log_last_compact_ms", v).apply() }
 
     /** 播放服务监听开关变化，开关翻动时立即刷新媒体通知。 */
-    fun registerLiveUpdatesListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+    fun registerLiveLyricsListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }
-    fun unregisterLiveUpdatesListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+    fun unregisterLiveLyricsListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
     }
 
     companion object {
-        /** 实时通知开关的偏好 key。 */
-        const val LIVE_UPDATES_KEY = "live_updates_enabled"
+        /** 锁屏歌词开关的偏好 key（本轮 0128 第 18 条）。 */
+        const val LOCK_SCREEN_LYRICS_KEY = "lock_screen_lyrics_enabled"
         /** 实时歌词开关的偏好 key（0.1.17 第 12 项）。 */
         const val LIVE_LYRICS_KEY = "live_lyrics_enabled"
         /** 听歌记录上报开关的偏好 key（0.1.17 第 13 项）。 */
@@ -286,7 +291,7 @@ fun playlistFavoriteKey(source: com.tokimusic.app.data.model.MusicSource, id: Lo
 // 条 18 同步偏好键清单（SettingsStore.syncSettingsSnapshot 用）。
 private val SYNC_BOOLEAN_KEYS = listOf(
     "reduce_motion", "light_mode", "karaoke_highlight", "show_translation", "show_romaji",
-    "lyric_distance_blur", "live_updates_enabled", "live_lyrics_enabled",
+    "lyric_distance_blur", "lock_screen_lyrics_enabled", "live_lyrics_enabled",
     "floating_lyrics_enabled", "floating_lyrics_black", "algorithm_recommend_enabled",
     "scrobble_enabled", "spatial_audio_enabled", "check_update_on_launch",
     "netease_enabled", "qq_enabled", "youtube_enabled",

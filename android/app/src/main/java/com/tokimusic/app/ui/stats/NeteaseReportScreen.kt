@@ -99,6 +99,22 @@ fun NeteaseReportScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // 本轮（0128）第 12 条：根因——「年」档总时长是拿听歌
+                    // 排行（type=0 allData，接口只回排行前段）逐首
+                    // 时长×次数求和，榜外歌曲整段缺失，必然低估（用户
+                    // 实际 2000+ 小时、应用显示约 1500）。网易云接口
+                    // 没有权威总时长字段（user_record 只有榜单、
+                    // user_level 只有等级计数、user/detail 只有累计
+                    // 首数 listenSongs），不伪造总数：当累计首数大于
+                    // 榜单返回条数时，明示这笔总时长的覆盖缺口。
+                    val listenSongs = mine.profile?.listenSongs ?: -1
+                    if (range == ReportRange.Year && listenSongs > records.size) {
+                        Text(
+                            stringResource(R.string.stats_estimate_coverage, records.size, listenSongs),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             if (records.isEmpty()) {

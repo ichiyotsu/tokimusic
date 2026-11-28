@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -238,6 +239,19 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
             // 0.1.14 第 6/7 项的播放控制组（56dp 白 pill + 顺序/随机单
             // 按钮，单按钮只切模式不开始播放）已抽到共用的
             // DetailPlayControls（0.1.18 第 18/21 项，歌手页同款）。
+            // 本轮（0128）第 14 条：下载状态先算好给控制行的新下载钮用
+            // （下载功能从统计行下方的 pill 行搬进控制行，旧 pill 行
+            // 已删——全页只此一个下载入口）。口径与旧 pill 行一致：
+            // 仅 NETEASE/QQ 源；图标 未下载 Download / 下载中
+            // Downloading（且禁点）/ 已下载 Check。
+            val dlProgressState by vm.downloadProgress.collectAsState()
+            val dlEntriesState by vm.downloadedPlaylists.collectAsState()
+            @Suppress("UNUSED_EXPRESSION")
+            dlEntriesState // 订阅登记变化以刷新下载钮状态
+            val dlProgress = dlProgressState[vm.downloadProgressKey(pl)]
+            val dlState = vm.playlistDownloadState(pl)
+            val canDownloadPlaylist = (pl.source == com.tokimusic.app.data.model.MusicSource.NETEASE ||
+                pl.source == com.tokimusic.app.data.model.MusicSource.QQ) && tracks.isNotEmpty()
             if (tracks.isNotEmpty()) {
                 DetailPlayControls(
                     playMode = playMode,
@@ -252,6 +266,17 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                         }
                     },
                     onToggleMode = { vm.player.setPlayMode(nextModeAfterSingleButtonTap(playMode)) },
+                    onDownload = if (canDownloadPlaylist) {
+                        { vm.downloadPlaylist(pl, tracks) }
+                    } else {
+                        null
+                    },
+                    downloadIcon = when {
+                        dlProgress != null -> Icons.Rounded.Downloading
+                        dlState == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED -> Icons.Rounded.Check
+                        else -> Icons.Rounded.Download
+                    },
+                    downloadInProgress = dlProgress != null,
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -274,62 +299,8 @@ private fun ExpandableDetailTitle(text: String, color: androidx.compose.ui.graph
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // 本轮（0124）第 9 项：整单下载入口（仅在线源歌单；本地/
-            // 虚拟歌单不显示）。状态：未下载 / 下载中（进度）/ 已下载 /
-            // 部分下载（点按继续补齐）。
-            if ((pl.source == com.tokimusic.app.data.model.MusicSource.NETEASE ||
-                    pl.source == com.tokimusic.app.data.model.MusicSource.QQ) && tracks.isNotEmpty()
-            ) {
-                val dlProgress by vm.downloadProgress.collectAsState()
-                val dlEntries by vm.downloadedPlaylists.collectAsState()
-                @Suppress("UNUSED_EXPRESSION")
-                dlEntries // 订阅登记变化以刷新下方状态文案
-                val progress = dlProgress[vm.downloadProgressKey(pl)]
-                val state = vm.playlistDownloadState(pl)
-                val entry = vm.downloadedEntryFor(pl)
-                val have = com.tokimusic.app.data.local.downloadedHaveCount(
-                    entry, vm.localTracks.value.map { it.uri }.toSet(),
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(coverColors.onCoverButtonBg())
-                        .clickable(enabled = progress == null) { vm.downloadPlaylist(pl, tracks) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (progress != null) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = coverColors.onCoverTextAt(titleFraction),
-                        )
-                    } else {
-                        Icon(
-                            if (state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED) {
-                                Icons.Rounded.Check
-                            } else {
-                                Icons.Rounded.Download
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = coverColors.onCoverTextAt(titleFraction),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        when {
-                            progress != null -> stringResource(R.string.playlist_downloading, progress.done, progress.total)
-                            state == com.tokimusic.app.data.local.PlaylistDownloadState.DOWNLOADED -> stringResource(R.string.playlist_downloaded, have)
-                            state == com.tokimusic.app.data.local.PlaylistDownloadState.PARTIAL -> stringResource(R.string.playlist_downloaded_continue, have, entry?.trackUris?.size ?: 0)
-                            else -> stringResource(R.string.playlist_download)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = coverColors.onCoverTextAt(titleFraction),
-                    )
-                }
-            }
+            // 本轮（0128）第 14 条：原 0124 第 9 项的整单下载 pill 行已删除——
+            // 下载入口搬进上方控制行、模式钮正后方的同格式图标钮（见 DetailPlayControls）。
         },
         listContent = {
             val openArtistForRows: (Long) -> Unit = { id -> resolveArtistTap(tracks, id, onOpenArtist, onOpenQqArtist) }

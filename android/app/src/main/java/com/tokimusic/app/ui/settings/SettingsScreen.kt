@@ -51,6 +51,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Check
@@ -343,7 +344,10 @@ fun SettingsOverlay(
                     )
                 },
             )
-            Box(Modifier.weight(1f).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            // 本轮（0128）第 1 条 b：内容 Box 不再留 bottom 24dp——旧
+            // 实现列表与底部淡出都停在距屏底 24dp 处、下方空一条。
+            // 内容直达屏底，呼吸位移进列表自己的 contentPadding。
+            Box(Modifier.weight(1f).padding(horizontal = 24.dp)) {
                 val motionScheme = MaterialTheme.motionScheme
                 Box(Modifier.fillMaxSize()) {
                 AnimatedContent(
@@ -368,7 +372,13 @@ fun SettingsOverlay(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 8.dp),
+                    // 本轮（0128）第 1 条：顶 padding 12dp——与组间
+                    // spacedBy(12.dp) 相等，标题栏到第一组的间距与组间
+                    // 距一致（旧实现顶 padding 为 0，只剩标题 chip 在
+                    // 64dp 栏内居中的约 4dp 视觉间隙）；底 padding
+                    // 24dp 是滚到底时末组离屏底的呼吸位（在列表内，
+                    // 不是旧实现那种列表外的空带）。
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
                     // 0.1.16 第 2 条：组间统一 12dp——每组是一个 item，
                     // 间距全由这里的 spacedBy(12.dp) 给；组内分段圆角的
                     // 4dp 细缝在组内 Column 里给（见 mainSections 与各
@@ -406,21 +416,22 @@ fun SettingsOverlay(
                         ),
                     )
                 }
-                if (targetSub == null) {
-                    // 本轮（0124）第 3 项：底部淡出带原先无条件绘制——主页面
-                    // 内容不满一屏（不用滚）时，列表底也压着一条 24dp 的
-                    // Transparent→sheetBg 渐变带，玻璃模式下 sheetBg 是半透明
-                    //  veil 色、带下又透出 85dp 玻璃模糊，视觉上就是页底一条
-                    // 「莫名的条」。与顶带同口径：仅当列表还能向下滚
-                    // （canScrollForward）时才画，内容到底/不满屏不画。
-                    val showBottomFade by remember { derivedStateOf { listState.canScrollForward } }
-                    if (showBottomFade) {
-                        Box(
-                            Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
-                                Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
-                            ),
-                        )
-                    }
+                // 本轮（0124）第 3 项：底部淡出带原先无条件绘制——主页面
+                // 内容不满一屏（不用滚）时，列表底也压着一条 24dp 的
+                // Transparent→sheetBg 渐变带，玻璃模式下 sheetBg 是半透明
+                //  veil 色、带下又透出 85dp 玻璃模糊，视觉上就是页底一条
+                // 「莫名的条」。与顶带同口径：仅当列表还能向下滚
+                // （canScrollForward）时才画，内容到底/不满屏不画。
+                // 本轮（0128）第 1 条 b：淡出改为一级页与全部二级页都画
+                // （0124 第 3 项当时只给一级页）——内容 Box 的 bottom
+                // padding 已去掉，淡出锚点就是屏幕真底边。
+                val showBottomFade by remember { derivedStateOf { listState.canScrollForward } }
+                if (showBottomFade) {
+                    Box(
+                        Modifier.fillMaxWidth().height(24.dp).align(Alignment.BottomCenter).background(
+                            Brush.verticalGradient(listOf(Color.Transparent, sheetBg)),
+                        ),
+                    )
                 }
                 }
                 }
@@ -1037,36 +1048,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     // 已连通/连不上状态行）；Android 自原生直连后没有服务端可选，
     // 探针与 VM 的 testConnection / health 流、NeteaseApi.apiHealth
     // 与 ApiHealth 类型一并删除（见 NOTES 第 8 条）。
-    // 实时通知开关（默认开）：控制系统媒体通知的展示。播放器现走 MediaSession
-    // 接口适配——播放时系统在通知栏 / 锁屏 / 快捷设置显示标准媒体播放器；
-    // 不再另发 Progress 通知冒充 Live Update（Android 16 上 MediaStyle
-    // 本来就升不成 Live Update，状态栏芯片随之没有）。
-    item {
-        var liveUpdates by remember { mutableStateOf(vm.store.liveUpdatesEnabled) }
-        SettingsSubCard {
-            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.settings_live_updates), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = liveUpdates,
-                    onCheckedChange = { liveUpdates = it; vm.store.liveUpdatesEnabled = it },
-                )
-            }
-        }
-    }
-    item {
-        Text(
-            stringResource(R.string.settings_live_updates_desc),
-            Modifier.padding(horizontal = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    // 本轮（0128）第 19 条：原「实时通知」开关整行删除——媒体通知
+    // 恒开（PlayerController 的 onUpdateNotification 门控已拆），
+    // 通用页此处不补任何行。「锁屏歌词」开关按用户最终口径放在
+    // 设置 > 歌词（见 lyricsSection，第 18 条）。
     // 本轮（0127）第 7 条：实时歌词开关已移到设置 > 歌词（见
     // lyricsSection），通用页不再有这一行；偏好 key 不变。
     // 0.1.17 第 13 项：听歌记录上报开关（默认开，用户 2026-11-25 定）。
     item {
         var scrobble by remember { mutableStateOf(vm.store.scrobbleEnabled) }
-        SettingsSubCard {
+        SettingsSubCard(onClick = { val nv = !scrobble; scrobble = nv; vm.store.scrobbleEnabled = nv }) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.settings_scrobble), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
@@ -1092,12 +1083,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     // 「不可用」；口味训练在后台照常进行（画像构建/重排不受影响）。
     item {
         val context = LocalContext.current
-        SettingsSubCard {
+        // 本轮（0128）第 17 条：点按（提示「不可用」）从卡内 Row 移到
+        // 卡片层，按压指示覆盖整卡（与开关行同款）。
+        SettingsSubCard(onClick = {
+            Toast.makeText(context, context.getString(R.string.settings_algo_unavailable), Toast.LENGTH_SHORT).show()
+        }) {
             Row(
-                Modifier.fillMaxWidth().height(64.dp)
-                    .clickable {
-                        Toast.makeText(context, context.getString(R.string.settings_algo_unavailable), Toast.LENGTH_SHORT).show()
-                    },
+                Modifier.fillMaxWidth().height(64.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -1130,7 +1122,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.generalSection(vm: Ap
     item {
         // 第五轮第 15 项：启动时检查更新（默认开）；关掉后只在设置里手动检查。
         var checkOnLaunch by remember { mutableStateOf(vm.store.checkUpdateOnLaunch) }
-        SettingsSubCard {
+        SettingsSubCard(onClick = { val nv = !checkOnLaunch; checkOnLaunch = nv; vm.store.checkUpdateOnLaunch = nv }) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.settings_check_update_on_start), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
@@ -1227,13 +1219,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
     item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
-            SettingsSubCard(SegmentPosition.First) {
+            SettingsSubCard(SegmentPosition.First, onClick = { onTheme(theme.copy(lightMode = !theme.lightMode)) }) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_light_mode), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.lightMode, onCheckedChange = { onTheme(theme.copy(lightMode = it)) })
                 }
             }
-            SettingsSubCard(SegmentPosition.Last) {
+            SettingsSubCard(SegmentPosition.Last, onClick = { onTheme(theme.copy(reduceMotion = !theme.reduceMotion)) }) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_reduce_motion), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(checked = theme.reduceMotion, onCheckedChange = { onTheme(theme.copy(reduceMotion = it)) })
@@ -1241,36 +1233,43 @@ private fun androidx.compose.foundation.lazy.LazyListScope.personalizeSection(
             }
         }
     }
-    // 本轮（0127）第 9 条：语言切换——四语单选（音频页音质同款
-    // 分段单选卡）。选择走系统 per-app locales（AppLocale /
-    // LocaleManager）由系统持久化并重建 Activity 全局生效；
-    // 选项名用各语言自身的名字，不随当前语言变化。
-    item {
-        Text(
-            stringResource(R.string.settings_language),
-            Modifier.padding(horizontal = 4.dp),
-            style = MaterialTheme.typography.titleLarge,
-        )
-    }
+    // 本轮（0127）第 9 条：语言切换——四语单选。选择走系统 per-app
+    // locales（AppLocale / LocaleManager）由系统持久化并重建
+    // Activity 全局生效；选项名用各语言自身的名字，不随当前语言
+    // 变化。
+    // 本轮（0128）第 9 条：控件形态改下拉行——与「减少动效」行同款
+    // 的 64dp 设置行（左标签 + 右控件），右侧显示当前语言 + 下拉
+    // 箭头，点整行展开菜单选四语；原单选卡列表删除。
     item {
         val context = LocalContext.current
         var language by remember { mutableStateOf(AppLocale.currentTag(context)) }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            AppLocale.OPTIONS.forEachIndexed { index, (tag, label) ->
-                SettingsSubCard(positionOf(index, AppLocale.OPTIONS.size), onClick = {
-                    language = tag
-                    AppLocale.set(context, tag)
-                }) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = language == tag, onClick = {
-                            language = tag
-                            AppLocale.set(context, tag)
-                        })
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, style = MaterialTheme.typography.titleMedium)
+        var languageMenuOpen by remember { mutableStateOf(false) }
+        val currentLabel = AppLocale.OPTIONS.firstOrNull { it.first == language }?.second
+            ?: AppLocale.OPTIONS.first().second
+        SettingsSubCard(SegmentPosition.Single) {
+            Box {
+                Row(
+                    Modifier.fillMaxWidth().height(64.dp).clickable { languageMenuOpen = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.settings_language), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(currentLabel, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Rounded.ArrowDropDown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                DropdownMenu(expanded = languageMenuOpen, onDismissRequest = { languageMenuOpen = false }) {
+                    AppLocale.OPTIONS.forEach { (tag, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                languageMenuOpen = false
+                                language = tag
+                                AppLocale.set(context, tag)
+                            },
+                        )
                     }
                 }
             }
@@ -1332,7 +1331,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
         // 第二轮第 6 项 B：杜比 spike 未证实第三方可取杜比流（见 spike 报告），
         // 做空间音频开关——不依赖服务端杜比档位，对立体声内容做系统级空间化。
         var spatialAudio by remember { mutableStateOf(vm.store.spatialAudioEnabled) }
-        SettingsSubCard {
+        SettingsSubCard(onClick = {
+            val nv = !spatialAudio
+            spatialAudio = nv
+            vm.store.spatialAudioEnabled = nv
+            vm.player.setSpatialAudio(nv)
+        }) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.settings_spatial_audio), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
@@ -1428,7 +1432,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             // 0.1.13 第 20 项：二级页每行都有底色（SettingsSubCard）。
             // 0.1.15 第 21 项：与罗马音显示同组（首项）。
             // 0.1.17 第 8 项：歌词字体入口已删（歌词默认 Inter），本组只剩两张卡。
-            SettingsSubCard(SegmentPosition.First) {
+            SettingsSubCard(SegmentPosition.First, onClick = { val nv = !showTranslation; showTranslation = nv; vm.store.showTranslation = nv }) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_lyric_translation), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(
@@ -1441,7 +1445,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
             // 无数据不显示），与“翻译显示”同款 64dp 开关行。
             var showRomaji by remember { mutableStateOf(vm.store.showRomaji) }
             // 0.1.15 第 21 项：歌词组末项。
-            SettingsSubCard(SegmentPosition.Last) {
+            SettingsSubCard(SegmentPosition.Last, onClick = { val nv = !showRomaji; showRomaji = nv; vm.store.showRomaji = nv }) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_lyric_romaji), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(
@@ -1458,7 +1462,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
     // 通用页原来的排版同款。
     item {
         var liveLyrics by remember { mutableStateOf(vm.store.liveLyricsEnabled) }
-        SettingsSubCard {
+        SettingsSubCard(onClick = { val nv = !liveLyrics; liveLyrics = nv; vm.store.liveLyricsEnabled = nv }) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.settings_live_lyrics), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
@@ -1471,6 +1475,30 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsSection(vm: App
     item {
         Text(
             stringResource(R.string.settings_live_lyrics_desc),
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    // 本轮（0128）第 18 条：锁屏歌词开关（默认关；位置几经调整，
+    // 用户最终定在歌词页）——开启后播放中锁屏显示专用歌词页
+    // （LockScreenLyricsActivity：锁屏壁纸背景 + 时间 + 歌词 +
+    // 播放控制），解锁仍走系统锁屏。
+    item {
+        var lockScreenLyrics by remember { mutableStateOf(vm.store.lockScreenLyricsEnabled) }
+        SettingsSubCard(onClick = { val nv = !lockScreenLyrics; lockScreenLyrics = nv; vm.store.lockScreenLyricsEnabled = nv }) {
+            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.settings_lock_screen_lyrics), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = lockScreenLyrics,
+                    onCheckedChange = { lockScreenLyrics = it; vm.store.lockScreenLyricsEnabled = it },
+                )
+            }
+        }
+    }
+    item {
+        Text(
+            stringResource(R.string.settings_lock_screen_lyrics_desc),
             Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1531,34 +1559,41 @@ private fun FloatingLyricsSettingsCard(vm: AppViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // 本轮（0128）第 17 条：开关逻辑抽成本地函数，卡片层 onClick 与
+    // Switch 共用（整行可点、按压指示覆盖整卡）。
+    fun onToggleFloating(want: Boolean) {
+        if (!want) {
+            vm.store.floatingLyricsEnabled = false
+            enabled = false
+            permHint = false
+        } else if (canDraw()) {
+            vm.store.floatingLyricsEnabled = true
+            enabled = true
+            permHint = false
+        } else {
+            pendingEnable = true
+            runCatching {
+                context.startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + context.packageName),
+                    ),
+                )
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // 开启时与下面的控制卡连成一个分组板块（First + Last）。
-        SettingsSubCard(if (enabled) SegmentPosition.First else SegmentPosition.Single) {
+        SettingsSubCard(
+            if (enabled) SegmentPosition.First else SegmentPosition.Single,
+            onClick = { onToggleFloating(!enabled) },
+        ) {
             Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.settings_floating_lyrics), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = enabled,
-                    onCheckedChange = { want ->
-                        if (!want) {
-                            vm.store.floatingLyricsEnabled = false
-                            enabled = false
-                            permHint = false
-                        } else if (canDraw()) {
-                            vm.store.floatingLyricsEnabled = true
-                            enabled = true
-                            permHint = false
-                        } else {
-                            pendingEnable = true
-                            runCatching {
-                                context.startActivity(
-                                    Intent(
-                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:" + context.packageName),
-                                    ),
-                                )
-                            }
-                        }
-                    },
+                    onCheckedChange = { want -> onToggleFloating(want) },
                 )
             }
         }
@@ -1701,8 +1736,12 @@ private fun SourceRow(
     // 登录/退出，开关恒可用，账号行文案由调用方给（如「无需登录」）。
     requiresLogin: Boolean = true,
 ) {
+    // 本轮（0128）第 17 条：整行可点切换（卡片层 onClick，按压指示
+    // 覆盖整卡；与 Switch 同门控——需登录且未登录时不响应；行内
+    // 退出/登录按钮各自消费点按，不受影响）。
     Card(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        onClick = { if (!requiresLogin || loggedIn) onToggle(!enabled) },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         shape = segmentedCorners(position, 28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -198,8 +200,17 @@ fun DetailPlayControls(
     // 图标由调用方按 detailPlayButtonState 判定后传入；点击行为也
     // 由调用方决定——Play 时起播本页，Pause/Resume 时切换播放态）。
     buttonState: com.tokimusic.app.player.DetailPlayButtonState = com.tokimusic.app.player.DetailPlayButtonState.Play,
+    // 本轮（0128）第 14 条：模式钮正后方的下载钮——与模式钮同格式
+    // （48dp、16dp 圆角、同底色/同 tint、纯图标无文字）。非空才
+    // 渲染；图标由调用方按下载状态给（未下载 Download / 下载中
+    // Downloading / 已下载 Check，与旧下载 pill 行同款视觉语言）。
+    // 下载中禁用点按（与旧 pill 行的 enabled 口径一致）。
+    onDownload: (() -> Unit)? = null,
+    downloadIcon: ImageVector = Icons.Rounded.Download,
+    downloadInProgress: Boolean = false,
 ) {
     val modeInteraction = remember { MutableInteractionSource() }
+    val downloadInteraction = remember { MutableInteractionSource() }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -240,6 +251,21 @@ fun DetailPlayControls(
                 tint = modeIconTint,
                 modifier = Modifier.size(24.dp),
             )
+        }
+        if (onDownload != null) {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(modeButtonBg)
+                    .clickable(interactionSource = downloadInteraction, indication = ripple(), enabled = !downloadInProgress) { onDownload() }
+                    .pressRebound(downloadInteraction),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    downloadIcon,
+                    stringResource(R.string.playlist_download),
+                    tint = modeIconTint,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
     }
 }

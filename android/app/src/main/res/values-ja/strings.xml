@@ -50,7 +50,7 @@
     <string name="settings_companion_toki_title">TokiMusicとの日々</string>
     <string name="settings_companion_toki_desc">TokiMusicに初めてログインした日から数えた日数です。</string>
     <string name="settings_companion_netease_title">NeteaseMusicとの日々</string>
-    <string name="settings_companion_netease_desc">NeteaseMusicの登録日数（NeteaseMusicから取得）。</string>
+    <string name="settings_companion_netease_desc">登録日数（NeteaseMusicから取得）。</string>
     <string name="settings_joined_days">加入して %1$d 日</string>
     <string name="settings_joined_days_unknown">加入して — 日</string>
     <string name="settings_achieved">達成済み</string>
@@ -62,13 +62,11 @@
     <string name="settings_more_achievements">実績は今後も追加されます</string>
 
     <!-- 設定 · 一般 -->
-    <string name="settings_live_updates">ライブ通知</string>
-    <string name="settings_live_updates_desc">再生中に通知バー、ロック画面、クイック設定にシステムのメディアプレーヤーを表示し、直接操作できます。オフにすると通知は表示されず、バックグラウンド再生がシステムに停止される場合があります。通知権限が必要です。</string>
     <string name="settings_scrobble">再生履歴を送信</string>
-    <string name="settings_scrobble_desc">オンにすると、NeteaseMusicで聴いた曲があなたのNeteaseMusic再生履歴に同期されます。送信されるのはNeteaseMusicの曲のみで、NeteaseMusicへのログインが必要です。</string>
+    <string name="settings_scrobble_desc">オンにすると、再生した曲があなたのNeteaseMusic再生履歴に同期されます。送信されるのはこのソースの曲のみで、ログインが必要です。</string>
     <string name="settings_algo_unavailable">アルゴリズム推薦は現在利用できません</string>
     <string name="settings_algo">アルゴリズム推薦</string>
-    <string name="settings_algo_desc">オフの場合、おすすめプレイリストとおすすめ新曲は選択中の音楽ソースの既定の内容と順序になります。オンにすると、あなたの好みに合わせて並び替えます。再生記録は常にこの端末内にのみ保存され（アップロードされません）、好みプロファイルと振り返りプレイリストに使われます。プロファイルデータは内部ストレージに保存され、更新しても消えず、月次サマリーに定期的に自動整理されるため無制限に増え続けません。</string>
+    <string name="settings_algo_desc">オフの場合、おすすめプレイリストとおすすめ新曲は音楽ソースの既定の順序になります。オンにすると、あなたの好みに合わせて並び替えます。再生記録はこの端末内にのみ保存され（アップロードされません）、好みプロファイルと振り返りプレイリストに使われます。プロファイルは内部ストレージに保存され、更新しても消えず、月次サマリーに定期整理されるため無制限に増え続けません。</string>
     <string name="settings_check_update_on_start">起動時にアップデートを確認</string>
     <string name="settings_check_update_on_start_desc">アプリを開くたびに新しいバージョンを1回確認します。オフの場合は設定から手動でのみ確認します。</string>
     <string name="settings_update_latest">最新バージョンです</string>
@@ -109,7 +107,9 @@
     <string name="settings_lyric_translation">翻訳を表示</string>
     <string name="settings_lyric_romaji">ローマ字を表示</string>
     <string name="settings_live_lyrics">ライブ歌詞</string>
-    <string name="settings_live_lyrics_desc">オンにすると、再生中に通知のタイトルへ現在歌っている歌詞行がリアルタイムで表示されます。歌詞がない場合は曲名が表示されます。先にライブ通知をオンにする必要があります。</string>
+    <string name="settings_live_lyrics_desc">オンにすると、再生中に通知のタイトルへ現在歌っている歌詞行がリアルタイムで表示されます。歌詞がない場合は曲名が表示されます。</string>
+    <string name="settings_lock_screen_lyrics">ロック画面の歌詞</string>
+    <string name="settings_lock_screen_lyrics_desc">再生中にロックすると歌詞ページを表示します。ロック画面の壁紙を背景に、時刻・歌詞・再生コントロールを表示。ロック解除はシステムのロック画面で行います。</string>
     <string name="settings_floating_lyrics">フローティング歌詞</string>
     <string name="settings_floating_no_permission">オーバーレイ権限がないため、フローティング歌詞をオンにできません</string>
     <string name="settings_floating_color">色</string>
@@ -147,7 +147,7 @@
     <string name="settings_sms_resend_after">%1$d秒後に再送信</string>
     <string name="settings_sms_resend">再送信</string>
     <string name="settings_sms_send">コードを送信</string>
-    <string name="settings_sms_phone_note">電話番号はQQMusicアカウントに紐づいたものが必要です。</string>
+    <string name="settings_sms_phone_note">QQMusicアカウントに紐づいた電話番号が必要です。</string>
     <string name="settings_captcha">本人確認</string>
     <string name="settings_captcha_hint">下の確認を完了してから、戻ってコードを再送信してください。</string>
 
@@ -255,6 +255,7 @@
     <string name="player_favorite">お気に入り</string>
     <string name="player_no_current_song">再生中の曲はありません</string>
     <string name="player_qq_artist_unsupported">QQのアーティスト詳細は未対応です</string>
+    <string name="player_artist_unsupported">このアーティストの詳細は未対応です</string>
     <string name="player_prev">前へ</string>
     <string name="player_next">次へ</string>
     <string name="player_back_to_cover">ジャケットに戻る</string>
@@ -354,6 +355,7 @@
     <string name="stats_no_records_hint">記録はまだありません。再生すると集計が始まります</string>
     <string name="stats_play_times">%1$d回</string>
     <string name="stats_estimate_note">再生回数 × 長さによる推定</string>
+    <string name="stats_estimate_coverage">APIから返されるのは再生記録の上位%1$d曲のみで、累計は%2$d曲です。この総時間はその一部の推定であり、実際はもっと長くなります。</string>
     <string name="stats_month_day">%1$d月%2$d日</string>
     <string name="stats_day_of_month">%1$d日</string>
     <string name="stats_month_only">%1$d月</string>

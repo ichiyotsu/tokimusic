@@ -149,4 +149,37 @@ class YrcParserTest {
         assertEquals(emptyList<Pair<Long, Long>>(), YrcParser.charWindows(lines[0]))
         assertEquals(emptyList<Float>(), YrcParser.charProgresses(lines[0], 2000))
     }
+    // 本轮（0128）第 3 条端到端特征化：原始 YRC 串 → parseYrc →
+    // charProgresses，验证逐字填充跟随每词自己的时间窗（快词先满、
+    // 长音慢扫、词间空隙保持），而不是全行匀速。链路在 0.1.21 第 5
+    // 项已逐词化，这组测试把整链钉死防回归到匀速插值。
+    @Test fun endToEndYrcFastWordFillsBeforeHeldWord() {
+        // 快词「快」200ms、长音「长」1600ms、尾词「末」200ms。
+        val raw = "[1000,3000](1000,200,0)快(1200,1600,0)长(2800,200,0)末"
+        val line = YrcParser.parseYrc(raw).single()
+        // t=2000：快词早已满；长音在其窗口 [1200,2800] 的一半 = 0.5；尾词未开始。
+        val p = YrcParser.charProgresses(line, 2000)
+        assertEquals(1f, p[0], 0.001f)
+        assertEquals(0.5f, p[1], 0.001f)
+        assertEquals(0f, p[2], 0.001f)
+        // 匀速插值的反证：同一时刻三字进度各不相同（匀速会给出近似同值）。
+        assertTrue(p[0] > p[1] && p[1] > p[2])
+    }
+    @Test fun endToEndYrcGapBetweenWordsHolds() {
+        // 两词间留 800ms 空隙：空隙中点时前词满、后词 0（保持不爬）。
+        val raw = "[1000,3000](1000,400,0)甲(2200,400,0)乙"
+        val line = YrcParser.parseYrc(raw).single()
+        val p = YrcParser.charProgresses(line, 1800)
+        assertEquals(listOf(1f, 0f), p)
+    }
+    @Test fun endToEndYrcMultiCharWordSplitsItsOwnWindow() {
+        // 多字词把自己的窗口按字均分：400ms 的双字词，两字各 200ms，
+        // 不借隔壁慢词的时间。
+        val raw = "[0,2000](0,400,0)双字(400,1200,0)慢"
+        val line = YrcParser.parseYrc(raw).single()
+        val p = YrcParser.charProgresses(line, 300)
+        assertEquals(1f, p[0], 0.001f) // 双字第一字 [0,200] 已满
+        assertEquals(0.5f, p[1], 0.001f) // 第二字 [200,400] 一半
+        assertEquals(0f, p[2], 0.001f) // 慢词未开始
+    }
 }

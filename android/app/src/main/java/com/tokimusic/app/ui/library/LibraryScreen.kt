@@ -181,7 +181,7 @@ fun LibraryScreen(
     // 的标准空态；QQ 收藏专辑未同步 → 同样空态。合并列表只留给资料
     // 库主页卡片的计数/副标题。
     val librarySource by vm.librarySource.collectAsState()
-    val sectionSource = vm.effectiveLibrarySource()
+    val sectionSource = vm.effectiveLibrarySource(librarySource)
     val sectionLikedSongs = when (sectionSource) {
         MusicSource.QQ -> qqLibrary?.favSongs ?: emptyList()
         MusicSource.YOUTUBEMUSIC -> emptyList()

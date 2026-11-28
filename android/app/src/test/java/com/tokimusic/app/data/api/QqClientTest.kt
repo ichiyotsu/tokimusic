@@ -10,6 +10,7 @@ import com.tokimusic.app.data.model.Song
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -1035,11 +1036,11 @@ class QqClientTest {
     }
 
     @Test
-    fun libraryReturnsEmptyWhenLoggedOut() = runBlocking {
+    fun libraryReturnsNullWhenLoggedOut() = runBlocking {
+        // 本轮（0128）第 13 条：无凭据返回 null（不再是空对象）——
+        // 调用方据此不当成功缓存、后续切源/进分区会重试。
         val library = client.qqLibrary()
-        assertTrue(library.playlists.isEmpty())
-        assertTrue(library.favSongs.isEmpty())
-        assertTrue(library.followedArtists.isEmpty())
+        assertNull(library)
         assertEquals(0, server.requestCount)
     }
 
@@ -1063,7 +1064,7 @@ class QqClientTest {
             ),
             seen,
         )
-        val library = client.qqLibrary()
+        val library = client.qqLibrary() ?: throw AssertionError("已登录应返回资料库")
         assertEquals(1, library.playlists.size)
         assertEquals("我建的歌单", library.playlists[0].name)
         assertTrue(library.favSongs.isEmpty())
@@ -1151,7 +1152,7 @@ class QqClientTest {
                 ),
             ),
         )
-        val library = client.qqLibrary()
+        val library = client.qqLibrary() ?: throw AssertionError("已登录应返回资料库")
         assertEquals(2, library.playlists.size)
         assertEquals("我建的歌单", library.playlists[0].name)
         assertEquals("收藏的歌单", library.playlists[1].name)

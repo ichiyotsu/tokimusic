@@ -153,12 +153,40 @@ fun segmentedCorners(position: SegmentPosition, large: Dp, small: Dp = 4.dp): Ro
     SegmentPosition.Single -> RoundedCornerShape(large)
 }
 
+/** 歌手点按的去向（本轮 0128 第 2 条，纯函数、单测覆盖）。 */
+sealed interface ArtistTapTarget {
+    data class Netease(val id: Long) : ArtistTapTarget
+    data class Qq(val mid: String) : ArtistTapTarget
+    data object Unsupported : ArtistTapTarget
+}
+
+/**
+ * 本轮（0128）第 2 条：歌手点按按歌的来源分流——网易云歌只有
+ * id > 0 才进网易云歌手页；QQ 歌按歌手 mid 进 QQ 歌手页（mid
+ * 缺失时退到第一个有 mid 的歌手，与播放器原行为一致）；其余
+ * （YouTubeMusic / 本地歌的歌手 id 恒为 0，不是网易云 id 空间；
+ * 网易云 id ≤ 0；QQ 无 mid）一律 [ArtistTapTarget.Unsupported]。
+ * 旧实现对非 QQ 歌无条件调 onOpenArtist(id)，YT/本地歌把 id=0
+ * 送进网易云歌手页，接口必然失败、页面显示「载入失败」。
+ */
+fun artistTapTarget(song: Song, artistId: Long): ArtistTapTarget = when (song.source) {
+    MusicSource.QQ -> {
+        val mid = song.artists.firstOrNull { it.id == artistId }?.mid?.takeIf { it.isNotBlank() }
+            ?: song.artists.firstOrNull()?.mid?.takeIf { it.isNotBlank() }
+        if (mid != null) ArtistTapTarget.Qq(mid) else ArtistTapTarget.Unsupported
+    }
+    MusicSource.NETEASE -> if (artistId > 0) ArtistTapTarget.Netease(artistId) else ArtistTapTarget.Unsupported
+    else -> ArtistTapTarget.Unsupported
+}
+
 /**
  * 0.1.15 第 2 项：SongRow 里的歌手名点按（副标题按 Long id 标注）
  * 分流到正确的歌手页——QQ 歌曲按歌手 mid 进 QQ 歌手页（歌手 mid
  * 存在歌曲的 Artist.mid 里，parseQqSong 填），网易云歌曲按 id 进
  * 网易云歌手页；QQ 歌曲没有 mid 时不响应（QQ 数字 id 与网易云不是
  * 同一空间，不能进网易云页）。songs 是点按行所在的歌曲列表。
+ * 本轮（0128）第 2 条：分流改走 [artistTapTarget]——YT/本地歌的
+ * 歌手 id=0 不再误进网易云歌手页（Unsupported 静默不响应）。
  */
 fun resolveArtistTap(
     songs: List<Song>,
@@ -167,9 +195,11 @@ fun resolveArtistTap(
     onOpenQqArtist: (String) -> Unit,
 ) {
     val song = songs.firstOrNull { s -> s.artists.any { it.id == id } } ?: return
-    val mid = song.artists.firstOrNull { it.id == id }?.mid?.takeIf { it.isNotBlank() }
-    if (mid != null) onOpenQqArtist(mid)
-    else if (song.source != MusicSource.QQ) onOpenArtist(id)
+    when (val target = artistTapTarget(song, id)) {
+        is ArtistTapTarget.Netease -> onOpenArtist(target.id)
+        is ArtistTapTarget.Qq -> onOpenQqArtist(target.mid)
+        ArtistTapTarget.Unsupported -> Unit
+    }
 }
 
 @Composable fun SongRow(song: Song, index: Int? = null, trailingText: String? = null, trailingAction: (@Composable () -> Unit)? = null, onOpenArtist: ((Long) -> Unit)? = null, onLongPress: ((Song) -> Unit)? = null, horizontalPadding: Dp = 24.dp, showSourceBadge: Boolean = false, leading: (@Composable () -> Unit)? = null, titleTrailing: (@Composable () -> Unit)? = null, dimmed: Boolean = false, dimmedLabel: String? = null, onClick: () -> Unit) {

@@ -20,6 +20,8 @@
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <!-- 本轮（0128）第 18 条：专用锁屏歌词页（showWhenLocked 显示在系统锁屏之上；singleInstance 独立任务、excludeFromRecents 不进最近任务）。 -->
+        <activity android:name=".ui.player.LockScreenLyricsActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:configChanges="orientation|screenSize|keyboardHidden" />
         <service android:name=".player.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>

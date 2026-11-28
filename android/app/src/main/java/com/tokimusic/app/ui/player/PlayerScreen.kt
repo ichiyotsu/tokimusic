@@ -144,7 +144,9 @@ import com.tokimusic.app.player.showCastChooser
 import com.tokimusic.app.ui.AppViewModel
 import com.tokimusic.app.ui.components.SegmentPosition
 import com.tokimusic.app.ui.components.SongRow
+import com.tokimusic.app.ui.components.ArtistTapTarget
 import com.tokimusic.app.ui.components.SourceIcon
+import com.tokimusic.app.ui.components.artistTapTarget
 import com.tokimusic.app.ui.theme.LocalDarkTheme
 import com.tokimusic.app.ui.theme.moreSheetGlassVeil
 import com.tokimusic.app.ui.theme.tokiContentGlassMiniPlayer
@@ -188,6 +190,13 @@ fun miniPlayerLyricText(lines: List<LyricLine>, positionMs: Long, fallbackTitle:
     return lines[idx].text.trim().ifEmpty { fallbackTitle }
 }
 
+/**
+ * 本轮（0127）第 12 条：MiniPlayer Pro 的长按触发时长（毫秒）。
+ * 初版 3 秒，0.1.25 真机反馈后改 1.5 秒（用户 2026-11-28 定）。
+ * 纯值，单测锁定。
+ */
+internal const val MINI_PRO_LONG_PRESS_MS = 1_500L
+
 @Composable
 fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: Modifier = Modifier, coverColors: CoverColors? = null, onProTrigger: () -> Unit = {}) {
     val song = state.current ?: return
@@ -204,7 +213,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
     // 同一节拍）；第二行「歌名 · 歌手」。
     val lyrics by vm.lyrics.collectAsState()
     val lyricLine = miniPlayerLyricText(lyrics, pos, song.name)
-    // 本轮（0127）第 12 条：长按满 3 秒触发 MiniPlayer Pro 的时间戳
+    // 本轮（0127）第 12 条：长按满 1.5 秒触发 MiniPlayer Pro 的时间戳
     // （墙钟），onOpen 据此吞掉触发后紧跟的那次点按。
     var proFiredWallMs by remember { mutableLongStateOf(0L) }
     val playLabel = if (state.isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play)
@@ -225,9 +234,9 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
             .clickable {
                 if (System.currentTimeMillis() - proFiredWallMs > 600) onOpen()
             }
-            // 本轮（0127）第 12 条：长按满 3 秒触发 MiniPlayer Pro——
+            // 本轮（0127）第 12 条：长按满 1.5 秒触发 MiniPlayer Pro——
             // Initial 阶段被动观察（不打扰点按/横滑/钮的既有手势）：
-            // 按住不放、位移不超 touchSlop 满 3 秒即触发；触发后
+            // 按住不放、位移不超 touchSlop 满 1.5 秒即触发；触发后
             // consume 该指针的后续事件（抬手不再算点按、拖动不再切歌）。
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -236,7 +245,7 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
                         val down = first.changes.firstOrNull { it.changedToDown() } ?: continue
                         val downId = down.id
                         val downPos = down.position
-                        val deadline = down.uptimeMillis + 3_000L
+                        val deadline = down.uptimeMillis + MINI_PRO_LONG_PRESS_MS
                         var lastUptime = down.uptimeMillis
                         var fired = false
                         var done = false
@@ -364,25 +373,50 @@ fun MiniPlayer(state: PlayerState, vm: AppViewModel, onOpen: () -> Unit, glass: 
 }
 
 /**
- * 本轮（0127）第 12 条：MiniPlayer Pro——长按 MiniPlayer 满 3 秒触发，
- * 在当前页面顶部半屏展开的播放器面板（由 TokiMusicApp 画在根层）。
- * 纵向 1:2 分布（横向 Row：左 1/3、右 2/3）：
- * - 左列：左上歌曲封面（24dp 页边距内），下接歌名/歌手，左下收藏钮
- *   （CircleArtButton 同播放页）；整列左右滑动切歌（72dp 阈值，
- *   与 MiniPlayer 同口径）。
- * - 右区：歌词（LyricsView 复用播放页实现——居左、距离/边缘淡入
- *   淡出、字号与逐字/翻译/时序偏移等设置全同播放页），可滚动、
- *   点行跳播；播放/暂停是播放页同款大圆角矩形（TokiPlayKey，本面
- *   板尺寸 96×64、圆角 20dp），在歌词区右下角、渲染在歌词层之上
- *   （Row 底边与左列收藏钮同在 24dp 底边距上，平行对齐），歌词滚
- *   动/点按不会盖住或误触它。
- * 背景 = 当前歌曲封面取色渐变（coverColors.toBrush()，与播放页
- * 同源）；歌词底部淡出端色取渐变末端（colorAt(1f)，面板内歌词
- * 区底边即渐变底部）。
+ * 歌词区底边在面板渐变中的高度比例（纯函数，单测覆盖）：面板渐变
+ * 画满整个面板高，歌词区底边在面板底边上方 [bottomInsetPx] 处，
+ * 底部淡出端色应取该位置的真实渐变色（与播放器页 0.1.7 的量法
+ * 同理）；面板高未知（首帧未量到）时回退 1f。
+ */
+internal fun miniProBottomFadeFraction(panelHeightPx: Int, bottomInsetPx: Float): Float =
+    if (panelHeightPx <= 0) 1f else (1f - bottomInsetPx / panelHeightPx).coerceIn(0f, 1f)
+
+/**
+ * 本轮（0127）第 12 条：MiniPlayer Pro——长按 MiniPlayer 满 1.5 秒
+ * 触发，在当前页面顶部半屏展开的播放器面板（由 TokiMusicApp 画在
+ * 根层）。面板全幅只有歌词：24dp 边距内 LyricsView 复用播放页实现
+ * （居左、距离/边缘淡入淡出、字号与逐字/翻译/时序偏移等设置全同
+ * 播放页），可滚动、点行跳播；唯一控件是播放/暂停大圆角矩形
+ * （TokiPlayKey，96×64、圆角 20dp），固定在歌词区右下角、渲染在
+ * 歌词层之上。背景 = 当前歌曲封面取色渐变（coverColors.toBrush()，
+ * 与播放页同源）。
  * 关闭：面板外（下半屏）点按、系统返回键；无当前歌曲时自关。
+ *
+ * 初版（0.1.25）是横向 1:2 分布：左列封面/歌名/歌手/收藏钮 + 整列
+ * 横滑切歌，歌词在右 2/3。0.1.25 真机反馈修复 + 改版（2026-11-28，
+ * 用户定）：左列整体删除、歌词全幅；同时修三处缺陷——
+ * - 播放键位置：初版把 align(BottomEnd) 放在 TokiLongPressLabel
+ *   （TooltipBox）内部的 Box 上——TooltipBox 自身是外层 Box 的子
+ *   元素、无 align 时按默认 TopStart 落位，内部 align 是给
+ *   TooltipBox 内部布局的 parent data、被吞，键实际落在右列左上
+ *   角（截图实证）。0.1.15 第 9 项在歌词区「回到当前行」钮上修过
+ *   同款问题：align 必须落在作为目标 Box 直接子元素的普通 Box
+ *   上，TooltipBox 只包键本身。本函数按此先例改。
+ * - 歌词上下磨砂带伪影（截图顶部黑带 + 底部白色模糊块）：LyricsView
+ *   的 tokiGlassFade 用 HazeInput.Backdrop 采样 hazeSource 记录的
+ *   窗口内容；本面板画在根层、面板渐变不在 hazeSource 内容树
+ *   （TokiMusicApp Scaffold 内容）内，磨砂带采样到的是面板背后的
+ *   页面——顶部是页面黑底（黑带）、底部是亮色歌单卡（白块，内含
+ *   被糊的封面形状）。播放页同款带正常，是因为播放页在 hazeSource
+ *   树内、采样到的正是自己的渐变。本面板传 hazeState = null 关掉
+ *   磨砂带，只保留与面板渐变同源的颜色渐变淡出（恒正确）。
+ * - 底部淡出端色：初版 colorAt(1f) 取面板最底边色，但歌词区底边
+ *   在面板底边上方 24dp 处，端色偏深一截（同播放器页 0.1.7 修过
+ *   的错位）；改按量到的面板高取真实位置色
+ *   （miniProBottomFadeFraction）。
  */
 @Composable
-fun MiniPlayerPro(vm: AppViewModel, hazeState: HazeState, coverColors: CoverColors, onClose: () -> Unit) {
+fun MiniPlayerPro(vm: AppViewModel, coverColors: CoverColors, onClose: () -> Unit) {
     val state by vm.player.state.collectAsState()
     val song = state.current
     if (song == null) {
@@ -390,14 +424,16 @@ fun MiniPlayerPro(vm: AppViewModel, hazeState: HazeState, coverColors: CoverColo
         return
     }
     val lyrics by vm.lyrics.collectAsState()
-    val likedIds by vm.likedIds.collectAsState()
-    val liked = song.id in likedIds
     BackHandler { onClose() }
     val motion = MaterialTheme.motionScheme
-    val onCover = coverColors.onCoverText()
-    val onCoverDim = coverColors.onCoverTextDim()
     val playLabel = if (state.isPlaying) stringResource(R.string.common_pause) else stringResource(R.string.common_play)
-    var swipeTotalPx by remember { mutableFloatStateOf(0f) }
+    // 底部淡出端色按歌词区底边的真实渐变位置取（见类注释）；布局
+    // 量到之前 fraction 回退 1f，首帧即接近正确值（同播放器页口径）。
+    val density = LocalDensity.current
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    val bottomFadeColor = coverColors.colorAt(
+        miniProBottomFadeFraction(panelHeightPx, with(density) { 24.dp.toPx() }),
+    )
     Box(Modifier.fillMaxSize()) {
         // 面板外点按关闭层（透明、无指示）；面板画在它之后，面板内
         // 触摸由面板先接。
@@ -408,67 +444,34 @@ fun MiniPlayerPro(vm: AppViewModel, hazeState: HazeState, coverColors: CoverColo
         Box(
             Modifier.fillMaxWidth().fillMaxHeight(0.5f).align(Alignment.TopCenter)
                 .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                .background(coverColors.toBrush()),
+                .background(coverColors.toBrush())
+                .onSizeChanged { panelHeightPx = it.height },
         ) {
-            Row(
-                Modifier.fillMaxSize().padding(24.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                // 左 1/3：封面（左上）+ 歌名/歌手 + 左下收藏；整列横滑切歌。
-                Column(
-                    Modifier.weight(1f).fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragStart = { swipeTotalPx = 0f },
-                                onHorizontalDrag = { _, dragAmount -> swipeTotalPx += dragAmount },
-                                onDragEnd = {
-                                    val thresholdPx = 72.dp.toPx()
-                                    when {
-                                        swipeTotalPx <= -thresholdPx -> vm.player.next()
-                                        swipeTotalPx >= thresholdPx -> vm.player.previous()
-                                    }
-                                    swipeTotalPx = 0f
-                                },
-                                onDragCancel = { swipeTotalPx = 0f },
-                            )
-                        },
-                ) {
-                    AsyncImage(song.picUrl, song.name, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
-                    Spacer(Modifier.height(12.dp))
-                    Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = onCover, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(song.artistText, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText), style = MaterialTheme.typography.bodySmall, color = onCoverDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.weight(1f))
-                    TokiLongPressLabel(stringResource(R.string.player_favorite)) {
-                        CircleArtButton(
-                            icon = if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                            tint = onCover,
-                            size = 56.dp,
-                            iconSize = 28.dp,
-                            bgColor = onCover.copy(alpha = 0.14f),
-                        ) { vm.toggleLike(song.id) }
-                    }
-                }
-                // 右 2/3：歌词 + 右下角播放键（压在歌词层之上）。
-                Box(Modifier.weight(2f).fillMaxHeight()) {
-                    LyricsView(
-                        lines = lyrics,
-                        positionProvider = { vm.player.currentPosition() },
-                        modifier = Modifier.fillMaxSize(),
-                        showTranslation = vm.store.showTranslation,
-                        showRomaji = vm.store.showRomaji,
-                        karaokeHighlight = vm.store.karaokeHighlight,
-                        distanceBlurEnabled = vm.store.lyricDistanceBlur,
-                        timingOffsetMs = vm.store.lyricTimingOffsetMs,
-                        isPlaying = state.isPlaying,
-                        coverColors = coverColors,
-                        hazeState = hazeState,
-                        bottomFadeColor = coverColors.colorAt(1f),
-                        onSeek = { vm.player.seekTo(it) },
-                    )
+            Box(Modifier.fillMaxSize().padding(24.dp)) {
+                LyricsView(
+                    lines = lyrics,
+                    positionProvider = { vm.player.currentPosition() },
+                    modifier = Modifier.fillMaxSize(),
+                    showTranslation = vm.store.showTranslation,
+                    showRomaji = vm.store.showRomaji,
+                    karaokeHighlight = vm.store.karaokeHighlight,
+                    distanceBlurEnabled = vm.store.lyricDistanceBlur,
+                    timingOffsetMs = vm.store.lyricTimingOffsetMs,
+                    isPlaying = state.isPlaying,
+                    coverColors = coverColors,
+                    // 根层覆盖层不传 hazeState：面板渐变不在 haze 采样
+                    // 源内，磨砂淡出带会采样到面板背后的页面（见类注释）。
+                    hazeState = null,
+                    bottomFadeColor = bottomFadeColor,
+                    onSeek = { vm.player.seekTo(it) },
+                )
+                // 播放键：align 落在歌词区直接子元素的普通 Box 上，
+                // TokiLongPressLabel 只包键本身（0.1.15 第 9 项先例）。
+                Box(Modifier.align(Alignment.BottomEnd)) {
                     TokiLongPressLabel(playLabel) {
                         val playInteraction = remember { MutableInteractionSource() }
                         Box(
-                            Modifier.align(Alignment.BottomEnd).size(width = 96.dp, height = 64.dp)
+                            Modifier.size(width = 96.dp, height = 64.dp)
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(TokiPlayKey)
                                 .clickable(interactionSource = playInteraction, indication = ripple()) { vm.player.toggle() }
@@ -601,14 +604,21 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
     // 第六轮第 36 项：播放器页歌手名可点进歌手页；QQ 歌的歌手按 mid
     // 进 QQ 歌手页（0.1.15 第 2 项，之前是“暂不支持”提示）；QQ 歌
     // 没有歌手 mid 时仍提示（不进网易云页，id 不是同一空间）。
+    // 本轮（0128）第 2 条：分流改走 artistTapTarget——YT/本地歌的
+    // 歌手 id=0 旧实现也送进网易云歌手页、必然「载入失败」；现在
+    // Unsupported 弹提示（QQ 无 mid 沿用 QQ 专用文案）。
     val openPlayerArtist: (Long) -> Unit = { artistId ->
-        if (song.source == MusicSource.QQ) {
-            val mid = song.artists.firstOrNull { it.id == artistId }?.mid?.takeIf { it.isNotBlank() }
-                ?: song.artists.firstOrNull()?.mid?.takeIf { it.isNotBlank() }
-            if (mid != null) onOpenQqArtist(mid)
-            else Toast.makeText(context, context.getString(R.string.player_qq_artist_unsupported), Toast.LENGTH_SHORT).show()
-        } else {
-            onOpenArtist(artistId)
+        when (val target = artistTapTarget(song, artistId)) {
+            is ArtistTapTarget.Netease -> onOpenArtist(target.id)
+            is ArtistTapTarget.Qq -> onOpenQqArtist(target.mid)
+            ArtistTapTarget.Unsupported -> Toast.makeText(
+                context,
+                context.getString(
+                    if (song.source == MusicSource.QQ) R.string.player_qq_artist_unsupported
+                    else R.string.player_artist_unsupported,
+                ),
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
     // 0.1.13 第 13 项：共享元素过渡已删——封面↔歌词切换时封面
@@ -823,16 +833,36 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
             }
                 // 进度条：T 形滑块（竖线手柄穿过横线）。SliderState 版才有
                 // thumb 插槽；拖拽中不同步播放进度，松手后恢复跟随。
+                // 本轮（0128）第 15 条（不跟手根因）：旧实现 onValueChange
+                // 里逐 tick 调 seekTo 并回写 pos——seek 是异步的，200ms
+                // 轮询随即把尚未生效的旧位置写回 pos，LaunchedEffect(pos)
+                // 又在 isDragged 传播的空窗把滑块拽回旧位，手指与滑块
+                // 互相打架。改：拖拽期间 SliderState 是唯一真相源（内部
+                // 按手势 1:1 更新），onValueChange 不 seek、不写 pos；
+                // 时间文本拖拽中直接读 sliderState；松手（onValueChange
+                // Finished）才提交一次 seek 并回写 pos；提交后 700ms 内
+                // 轮询的旧位置不回灌滑块（seek 生效守卫）。
                 val sliderInteraction = remember { MutableInteractionSource() }
                 val sliderDragging by sliderInteraction.collectIsDraggedAsState()
                 val sliderState = remember(song.id, song.durationMs) {
                     SliderState(0f, 0, 0f..song.durationMs.coerceAtLeast(1).toFloat())
                 }
-                LaunchedEffect(pos) { if (!sliderDragging) sliderState.value = pos.toFloat() }
+                var seekGuardUntilMs by remember { mutableLongStateOf(0L) }
+                LaunchedEffect(pos) {
+                    if (!sliderDragging && System.currentTimeMillis() >= seekGuardUntilMs) {
+                        sliderState.value = pos.toFloat()
+                    }
+                }
                 Column {
                     Slider(
                         state = sliderState,
-                        onValueChange = { vm.player.seekTo(it.toLong()); pos = it.toLong() },
+                        onValueChange = { },
+                        onValueChangeFinished = {
+                            val target = sliderState.value.toLong()
+                            vm.player.seekTo(target)
+                            pos = target
+                            seekGuardUntilMs = System.currentTimeMillis() + 700L
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = SliderDefaults.colors(
                             thumbColor = onCover,
@@ -848,7 +878,10 @@ fun PlayerScreen(vm: AppViewModel, onBack: () -> Unit, hazeState: HazeState, cov
                         },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatClock(pos), style = MaterialTheme.typography.labelLarge, color = onCover)
+                        Text(
+                            formatClock(if (sliderDragging) sliderState.value.toLong() else pos),
+                            style = MaterialTheme.typography.labelLarge, color = onCover,
+                        )
                         Text(formatClock(song.durationMs), style = MaterialTheme.typography.labelLarge, color = onCoverDim)
                     }
                 }
@@ -970,6 +1003,17 @@ internal fun marqueeEdgeFades(overflow: Boolean, offsetPx: Float, maxOffsetPx: F
     return (offsetPx > 0f) to (offsetPx < maxOffsetPx)
 }
 
+/**
+ * 本轮（0128）第 6 条：无缝循环跑马灯的等效偏移——标题渲染两份
+ * （间隔固定），偏移在一个 cycle（字宽 + 间隔）内线性增长；到
+ * cycle 时第二份恰好落在第一份的原位，偏移取模回 0 视觉无跳变。
+ * 淡边判定喂取模后的等效偏移（起点 = 0：左淡关、右淡开）。
+ */
+internal fun marqueeWrappedOffset(offsetPx: Float, cyclePx: Float): Float {
+    if (cyclePx <= 0f || offsetPx <= 0f) return 0f
+    return offsetPx % cyclePx
+}
+
 // 第五轮第 20(b) 项：歌名 / 歌手过长自动轮播——歌名快（60.dp/s）、
 // 歌手慢（30.dp/s，用户确认），初次延迟 1s、每轮间隔 3s；短文本不溢出
 // 时自动静止；只改 SongTitleBlock（封面视图与歌词迷你条同时生效；
@@ -977,10 +1021,11 @@ internal fun marqueeEdgeFades(overflow: Boolean, offsetPx: Float, maxOffsetPx: F
 // 本轮（0127）第 14 条：歌名的淡入淡出改「区域遮罩」——旧实现把
 // fadingEdges 挂在 basicMarquee 之后的文本上，渐变按全文宽锚定，
 // 首/尾字本身被淡掉（用户报的 bug）。basicMarquee 不暴露滚动偏移，
-// 遮罩的左右开关无从决定，故歌名改自维护 Animatable 偏移（时序与
-// basicMarquee 完全一致：延迟 1s、60dp/s 匀速、停 3s、跳回循环），
+// 遮罩的左右开关无从决定，故歌名改自维护 Animatable 偏移，
 // fadingEdges 挂在容器 Box 上（size = 区域宽），偏移经
 // marqueeEdgeFades 决定左右淡边；不溢出时不挂遮罩、纯文本。
+// 本轮（0128）第 6 条：时序改无缝循环——双份标题 + 偏移绕回，
+// 回到首字处停 1s 再滚，不再有旧时序的「停 3s 后硬跳回」。
 // 歌手行不带淡边，保持 basicMarquee 原样。
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -988,34 +1033,42 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
     var titleTextWidthPx by remember { mutableIntStateOf(0) }
     var titleBoxWidthPx by remember { mutableIntStateOf(0) }
     val titleOverflow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
-    val maxOffsetPx = (titleTextWidthPx - titleBoxWidthPx).coerceAtLeast(0)
     // 0.1.20 第 1 项：标题恒显示歌名——0.1.18 第 16 项的「实时歌词替换
     // 歌名」已按用户要求撤掉（歌词进系统通知是另一个已搁置的想法，
     // 本轮不做；通知侧的实时歌词开关 0.1.17 第 12 项保持原样）。
     val titleText = song.name
     val titleScroll = remember { Animatable(0f) }
     val density = LocalDensity.current
-    LaunchedEffect(titleText, titleOverflow, maxOffsetPx) {
+    // 本轮（0128）第 6 条：无缝循环——标题渲染两份（间隔 48dp），
+    // 偏移 0 → cycle（字宽 + 间隔）匀速滚动；到 cycle 时第二份与
+    // 第一份原位重合，snapTo(0) 不可见。每轮回到首字处停 1s 再滚
+    // （0127 第 14 条的旧时序是滚到尾停 3s 再硬跳回，跳回即突兀点，
+    // 本轮按新口径改成起点停顿 + 无缝绕回）。不溢出时仍静态。
+    val marqueeGapPx = with(density) { 48.dp.toPx() }
+    val marqueeCyclePx = if (titleTextWidthPx > 0) titleTextWidthPx + marqueeGapPx else 0f
+    LaunchedEffect(titleText, titleOverflow, marqueeCyclePx) {
         titleScroll.snapTo(0f)
-        if (!titleOverflow || maxOffsetPx == 0) return@LaunchedEffect
+        if (!titleOverflow || marqueeCyclePx <= 0f) return@LaunchedEffect
         val velocityPxPerSec = with(density) { 60.dp.toPx() }
         while (true) {
             delay(1000)
-            val durationMs = (maxOffsetPx / velocityPxPerSec * 1000).toInt().coerceAtLeast(1)
-            titleScroll.animateTo(maxOffsetPx.toFloat(), tween(durationMillis = durationMs, easing = LinearEasing))
-            delay(3000)
+            val durationMs = (marqueeCyclePx / velocityPxPerSec * 1000).toInt().coerceAtLeast(1)
+            titleScroll.animateTo(marqueeCyclePx, tween(durationMillis = durationMs, easing = LinearEasing))
             titleScroll.snapTo(0f)
         }
     }
-    // 淡边开关只在跨越 0 / max 边界时变化——derivedStateOf 保证滚动
-    // 动画期间不逐帧重组（偏移本身经 offset lambda 在布局期读取）。
+    // 淡边开关只在跨越 0 / cycle 边界时变化——derivedStateOf 保证
+    // 滚动动画期间不逐帧重组（偏移本身经 offset lambda 在布局期
+    // 读取）。喂 marqueeEdgeFades 的是取模后的等效偏移 + cycle 作
+    // maxOffset：起点（0）左淡关/右淡开、滚动中双开、绕回瞬间回到
+    // 起点态，与 0127 第 14 条的区域遮罩语义一致。
     // 注意 lambda 内必须直接读原始状态（titleTextWidthPx 等），捕获
     // 组合期算出的 titleOverflow val 会冻在首次值上。
     val titleFades by remember {
         derivedStateOf {
             val overflowNow = titleTextWidthPx > 0 && titleBoxWidthPx > 0 && titleTextWidthPx > titleBoxWidthPx
-            val maxOffsetNow = (titleTextWidthPx - titleBoxWidthPx).coerceAtLeast(0)
-            marqueeEdgeFades(overflowNow, titleScroll.value, maxOffsetNow.toFloat())
+            val cycleNow = if (titleTextWidthPx > 0) titleTextWidthPx + marqueeGapPx else 0f
+            marqueeEdgeFades(overflowNow, marqueeWrappedOffset(titleScroll.value, cycleNow), cycleNow)
         }
     }
     Column(modifier) {
@@ -1031,19 +1084,42 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
                 )
                 .clipToBounds(),
         ) {
-            Text(
-                titleText,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = textColor,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
-                onTextLayout = { titleTextWidthPx = it.size.width },
-                modifier = Modifier
+            Row(
+                Modifier
                     .wrapContentWidth(align = Alignment.Start, unbounded = true)
                     .offset { IntOffset(-titleScroll.value.roundToInt(), 0) },
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 本轮（0128）第 20 条：这两处 Text 之前漏传
+                // fontFamilyForText——播放器其它表面（迷你条/队列行/
+                // 大标题）都传了，唯独 SongTitleBlock 没传，含假名的
+                // 日文标题落主题链的苹方假名字形（不是 Noto JP）。
+                // 补齐后韩语同经 fontFamilyForText 的 KrBoldFamily。
+                Text(
+                    titleText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(titleText),
+                    color = textColor,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    onTextLayout = { titleTextWidthPx = it.size.width },
+                )
+                if (titleOverflow) {
+                    Spacer(Modifier.width(48.dp))
+                    Text(
+                        titleText,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(titleText),
+                        color = textColor,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
+            }
         }
         // 第六轮第 36 项：歌手行可点进歌手页（多歌手时进第一个；点按进页、
         // 轮播滚动不触发——basicMarquee 只是视觉滚动，不接手势）。不传
@@ -1058,6 +1134,7 @@ private fun SongTitleBlock(song: Song, modifier: Modifier = Modifier, textColor:
         Text(
             song.artistText,
             style = MaterialTheme.typography.titleMedium,
+            fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText),
             color = dimColor,
             maxLines = 1,
             overflow = TextOverflow.Clip,
@@ -1183,16 +1260,24 @@ private fun RowScope.QueueModeSegment(
 ) {
     val active = index == selectedIndex
     val interaction = remember { MutableInteractionSource() }
-    TokiLongPressLabel(label, Modifier.weight(1f)) {
-        Box(
-            Modifier.fillMaxWidth().fillMaxHeight()
-                .clip(RoundedCornerShape(percent = 50))
-                .background(if (active) onCover else Color.Transparent)
-                .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
-                .pressRebound(interaction),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = label, tint = if (active) activeIconColor else onCover, modifier = Modifier.size(28.dp))
+    // 本轮（0128）第 16 条（根因）：weight 原先挂在 TokiLongPressLabel
+    // （M3 TooltipBox）上——TooltipBox 的内部 Layout 不把 Row 的
+    // 加权宽度正确传给内容，第一段（顺序）吃满整行、后两段被挤没，
+    // 真机上只剩一个白色宽 pill（用户截图）。与 MiniPlayer Pro 播放
+    // 键同类问题（0127 修复轮）：weight 改挂 Row 的直接子 Box（普通
+    // 布局节点），TooltipBox 只包段内容本身。
+    Box(Modifier.weight(1f).fillMaxHeight()) {
+        TokiLongPressLabel(label, Modifier.fillMaxSize()) {
+            Box(
+                Modifier.fillMaxSize()
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(if (active) onCover else Color.Transparent)
+                    .clickable(interactionSource = interaction, indication = ripple()) { onClick() }
+                    .pressRebound(interaction),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = label, tint = if (active) activeIconColor else onCover, modifier = Modifier.size(28.dp))
+            }
         }
     }
 }
@@ -1315,22 +1400,21 @@ private fun MoreSheet(
                 Column(Modifier.weight(1f)) {
                     Text(song.name, fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // 0.1.17 第 6 项：时长放歌手名后面（“歌手名 · 时长”）。
-                    // 本轮第 8 条（用户截图反馈）：0.1.21 第 8 项那行独立的
-                    //「来源徽标 + 发行日期」并入本行——行首是裸来源图标
-                    //（无品牌色底圆，字形按本行文字色 onSurfaceVariant
-                    // 着色），文本成「歌手 · 时长 · 发行日期」；发行时间
-                    // 取 Song.publishTime（源端真实字段），为 0 时不显示
-                    // 这一段，绝不编造。头部回到标题 + 本行两行结构。
+                    // 本轮（0128）第 4 条：行首源图标改回 SourceIcon 的
+                    // 默认品牌色（不再 tint 成文字灰）；文本改「歌手 ·
+                    // 专辑 · 时长」——专辑取 Song.albumName（源端真实
+                    // 字段），为空时整段省略；发行日期自本行移除（旧
+                    // 0126 第 8 条并入的 publishTime 段就此退出头部）。
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        SourceIcon(song.source, size = 16, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SourceIcon(song.source, size = 16)
                         Text(
                             listOf(
                                 song.artistText,
+                                song.albumName,
                                 if (song.durationMs > 0) formatDuration(song.durationMs) else "",
-                                if (song.publishTime > 0) formatPublishDate(song.publishTime) else "",
                             ).filter { it.isNotBlank() }.joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = com.tokimusic.app.ui.theme.fontFamilyForText(song.artistText),
@@ -1372,16 +1456,16 @@ private fun MoreSheet(
             // 开关同一批 store 值，改完立即生效。
             Spacer(Modifier.height(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MoreSheetCard(SegmentPosition.First) {
+                MoreSheetCard(SegmentPosition.First, onClick = { vm.store.showTranslation = !vm.store.showTranslation }) {
                     MoreSheetSwitchRow(Icons.Rounded.Translate, stringResource(R.string.player_lyric_translation), vm.store.showTranslation) { vm.store.showTranslation = it }
                 }
-                MoreSheetCard(SegmentPosition.Middle) {
+                MoreSheetCard(SegmentPosition.Middle, onClick = { vm.store.showRomaji = !vm.store.showRomaji }) {
                     MoreSheetSwitchRow(Icons.Rounded.TextFields, stringResource(R.string.player_lyric_romaji), vm.store.showRomaji) { vm.store.showRomaji = it }
                 }
-                MoreSheetCard(SegmentPosition.Middle) {
+                MoreSheetCard(SegmentPosition.Middle, onClick = { vm.store.karaokeHighlight = !vm.store.karaokeHighlight }) {
                     MoreSheetSwitchRow(Icons.Rounded.Highlight, stringResource(R.string.player_lyric_karaoke), vm.store.karaokeHighlight) { vm.store.karaokeHighlight = it }
                 }
-                MoreSheetCard(SegmentPosition.Middle) {
+                MoreSheetCard(SegmentPosition.Middle, onClick = { vm.store.lyricDistanceBlur = !vm.store.lyricDistanceBlur }) {
                     // 本轮（0124）第 17 项：歌词模糊开关——关时只关距离
                     // 模糊，淡化与动画不受影响（接线在 LyricsView）。
                     MoreSheetSwitchRow(Icons.Rounded.BlurOn, stringResource(R.string.player_lyric_blur), vm.store.lyricDistanceBlur) { vm.store.lyricDistanceBlur = it }
@@ -1452,10 +1536,12 @@ fun formatPublishDate(epochMs: Long): String {
 @Composable
 private fun MoreSheetCard(
     position: SegmentPosition,
+    onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     com.tokimusic.app.ui.components.TokiSettingsCard(
         position = position,
+        onClick = onClick,
         containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f),
         horizontalMargin = 0.dp,
         content = content,
@@ -1479,11 +1565,19 @@ private fun MoreSheetActionCell(icon: ImageVector, label: String, onClick: () ->
     }
 }
 
-/** 「更多」面板开关行：同上规格 + 行尾 Switch；整行可点切换。 */
+/**
+ * 「更多」面板开关行：同上规格 + 行尾 Switch。
+ * 本轮（0128）第 17 条：整行点按改由卡片层（MoreSheetCard 的
+ * onClick）承担——旧实现把 clickable 挂在卡内 Row 上，按压水波
+ * 只覆盖卡内边距（左右 24dp / 上下 8dp）以内的矩形、圆角对不上
+ * 卡形，长按时就是截图里那块「小补丁」。行本身不再挂 clickable；
+ * 点 Switch 走 Switch 自己的 onCheckedChange（子控件消费事件，
+ * 不会与卡片点按双重触发）。
+ */
 @Composable
 private fun MoreSheetSwitchRow(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(64.dp).clickable { onCheckedChange(!checked) },
+        Modifier.fillMaxWidth().height(64.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

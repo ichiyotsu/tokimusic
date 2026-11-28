@@ -456,7 +456,10 @@ class NeteaseClient(
         val p = o.getJSONObject("profile")
         // 第五轮第 24 项：注册天数取响应顶层的 createDays（服务端已算好）；
         // profile.createTime 与顶层 createTime 对该账号均为 -1，不能用。
-        return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"), o.optInt("createDays", -1))
+        // 本轮（0128）第 12 条：profile.listenSongs = 累计听歌首数
+        // （网易云官方口径的计数，非时长）——报告页用它与听歌排行
+        // 返回条数对照，标注估算总时长的覆盖缺口。
+        return UserProfile(uid, p.optString("nickname"), p.optString("avatarUrl"), o.optInt("level"), p.optInt("follows"), p.optInt("followeds"), p.optString("signature"), o.optInt("createDays", -1), p.optInt("listenSongs", -1))
     }
 
     override suspend fun likeList(uid: Long): List<Long> =

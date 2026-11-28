@@ -50,7 +50,7 @@
     <string name="settings_companion_toki_title">Time with TokiMusic</string>
     <string name="settings_companion_toki_desc">Days counted from your first login in TokiMusic.</string>
     <string name="settings_companion_netease_title">Time with NeteaseMusic</string>
-    <string name="settings_companion_netease_desc">Days since you registered on NeteaseMusic, as returned by NeteaseMusic.</string>
+    <string name="settings_companion_netease_desc">Days since you registered, as returned by NeteaseMusic.</string>
     <string name="settings_joined_days">Joined %1$d days ago</string>
     <string name="settings_joined_days_unknown">Joined — days ago</string>
     <string name="settings_achieved">Achieved</string>
@@ -62,13 +62,11 @@
     <string name="settings_more_achievements">More achievements coming soon</string>
 
     <!-- Settings · General -->
-    <string name="settings_live_updates">Live notification</string>
-    <string name="settings_live_updates_desc">Shows the system media player in the notification shade, lock screen and quick settings while playing, with direct playback controls. When off, no notification is shown and background playback may be stopped by the system. Requires notification permission.</string>
     <string name="settings_scrobble">Report listening history</string>
-    <string name="settings_scrobble_desc">When on, songs you play from NeteaseMusic are synced to your NeteaseMusic listening history. Only NeteaseMusic songs are reported, and NeteaseMusic login is required.</string>
+    <string name="settings_scrobble_desc">When on, songs you play are synced to your NeteaseMusic listening history. Only songs from this source are reported, and login is required.</string>
     <string name="settings_algo_unavailable">Algorithmic recommendations unavailable</string>
     <string name="settings_algo">Algorithmic recommendations</string>
-    <string name="settings_algo_desc">When off, recommended playlists and new songs follow the selected source\'s default content and order. When on, they are reordered to your taste. Play records are always kept only on this device (never uploaded) for your taste profile and retrospective playlists; profile data lives in internal storage, survives updates, and is compacted into monthly summaries regularly so it does not grow without limit.</string>
+    <string name="settings_algo_desc">When off, recommended playlists and new songs follow the source\'s default order; when on, they are reordered to your taste. Play records stay only on this device (never uploaded) and feed your taste profile and retrospective playlists; the profile lives in internal storage, survives updates, and is compacted into monthly summaries so it does not grow without limit.</string>
     <string name="settings_check_update_on_start">Check for updates on launch</string>
     <string name="settings_check_update_on_start_desc">Checks for a new version once each time you open the app. When off, checks happen only manually in Settings.</string>
     <string name="settings_update_latest">You are on the latest version</string>
@@ -109,7 +107,9 @@
     <string name="settings_lyric_translation">Show translation</string>
     <string name="settings_lyric_romaji">Show romaji</string>
     <string name="settings_live_lyrics">Live lyrics</string>
-    <string name="settings_live_lyrics_desc">When on, the notification title shows the lyric line currently being sung while playing; the song title is shown when there are no lyrics. Requires Live notification to be on first.</string>
+    <string name="settings_live_lyrics_desc">When on, the notification title shows the lyric line currently being sung while playing; the song title is shown when there are no lyrics.</string>
+    <string name="settings_lock_screen_lyrics">Lock screen lyrics</string>
+    <string name="settings_lock_screen_lyrics_desc">Shows a lyrics page over the lock screen while playing: your lock-screen wallpaper as the background, with the time, lyrics and playback controls. Unlocking still goes through the system lock screen.</string>
     <string name="settings_floating_lyrics">Floating lyrics</string>
     <string name="settings_floating_no_permission">Overlay permission not granted; floating lyrics cannot be turned on</string>
     <string name="settings_floating_color">Color</string>
@@ -147,7 +147,7 @@
     <string name="settings_sms_resend_after">Resend in %1$ds</string>
     <string name="settings_sms_resend">Resend</string>
     <string name="settings_sms_send">Send code</string>
-    <string name="settings_sms_phone_note">The phone number must be the one bound to your QQMusic account.</string>
+    <string name="settings_sms_phone_note">Use the phone number bound to your QQMusic account.</string>
     <string name="settings_captcha">Human verification</string>
     <string name="settings_captcha_hint">Complete the verification below, then come back and send the code again.</string>
 
@@ -255,6 +255,7 @@
     <string name="player_favorite">Favorite</string>
     <string name="player_no_current_song">No song playing</string>
     <string name="player_qq_artist_unsupported">QQ artist pages are not supported yet</string>
+    <string name="player_artist_unsupported">No artist page for this artist yet</string>
     <string name="player_prev">Previous</string>
     <string name="player_next">Next</string>
     <string name="player_back_to_cover">Back to cover</string>
@@ -354,6 +355,7 @@
     <string name="stats_no_records_hint">No records yet. Stats start after you play something</string>
     <string name="stats_play_times">%1$d plays</string>
     <string name="stats_estimate_note">Estimated from play count × duration</string>
+    <string name="stats_estimate_coverage">The API only returns the top %1$d songs of your listening record, out of %2$d songs in total, so this total covers only part of your history; the real total is higher.</string>
     <string name="stats_month_day">%1$d/%2$d</string>
     <string name="stats_day_of_month">%1$d</string>
     <string name="stats_month_only">%1$d</string>

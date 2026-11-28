@@ -33,4 +33,24 @@ class MarqueeEdgeFadesTest {
         // 滚到尾（尾字贴齐右缘）：只淡左缘。
         assertEquals(true to false, marqueeEdgeFades(overflow = true, offsetPx = 120f, maxOffsetPx = 120f))
     }
+
+    // 本轮（0128）第 6 条：无缝循环的等效偏移（双份标题、偏移绕回）。
+    @Test
+    fun wrappedOffsetWithinCycle() {
+        assertEquals(0f, marqueeWrappedOffset(0f, 300f), 0.001f)
+        assertEquals(120f, marqueeWrappedOffset(120f, 300f), 0.001f)
+        // 恰好一个 cycle：第二份落在第一份原位，等效偏移回 0（起点态）。
+        assertEquals(0f, marqueeWrappedOffset(300f, 300f), 0.001f)
+        // 异常输入回 0，不产生负偏移。
+        assertEquals(0f, marqueeWrappedOffset(50f, 0f), 0.001f)
+        assertEquals(0f, marqueeWrappedOffset(-10f, 300f), 0.001f)
+    }
+
+    @Test
+    fun wrappedFadesMatchLoopStates() {
+        // 起点（含绕回瞬间）：左淡关、右淡开——与旧时序的起点态一致。
+        assertEquals(false to true, marqueeEdgeFades(true, marqueeWrappedOffset(300f, 300f), 300f))
+        // 滚动中：双淡。
+        assertEquals(true to true, marqueeEdgeFades(true, marqueeWrappedOffset(150f, 300f), 300f))
+    }
 }

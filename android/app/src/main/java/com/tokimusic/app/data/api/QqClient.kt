@@ -1247,8 +1247,14 @@ class QqClient(
     }
 
     /** QQ 资料库三件套一次取齐（各自失败只留空，不连累其他两路）。 */
-    suspend fun qqLibrary(): QqLibrary {
-        if (storedCredential() == null) return QqLibrary()
+    /**
+     * 本轮（0128）第 13 条：无凭据时返回 null（原来返回空 QqLibrary，
+     * 调用方分不清「没凭据/会话失效」与「真的空资料库」，把空结果
+     * 当加载成功缓存下来，之后切源再也不补拉、QQ 分区永久空白）。
+     * null = 本次没取到，调用方不得标记已加载，下次进入/切源重试。
+     */
+    suspend fun qqLibrary(): QqLibrary? {
+        if (storedCredential() == null) return null
         return QqLibrary(
             playlists = qqLibraryPlaylists(),
             favSongs = qqFavSongs(),

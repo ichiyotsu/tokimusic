@@ -5,11 +5,13 @@ import com.tokimusic.app.data.api.NeteaseClient
 import com.tokimusic.app.data.api.QqClient
 import com.tokimusic.app.data.api.YtMusicClient
 import com.tokimusic.app.player.FloatingLyricsController
+import com.tokimusic.app.player.LockScreenLyricsController
 import com.tokimusic.app.player.PlayerController
 import com.tokimusic.app.ui.theme.TokiUiHolder
 class TokiMusicApplication : Application() {
     lateinit var store: SettingsStore; lateinit var api: NeteaseClient; lateinit var qqClient: QqClient; lateinit var ytClient: YtMusicClient; lateinit var player: PlayerController
     lateinit var floatingLyrics: FloatingLyricsController
+    lateinit var lockScreenLyrics: LockScreenLyricsController
     override fun onCreate() {
         super.onCreate()
         // 第五轮第 4 项：崩溃捕获越早装越好，初始化阶段的崩溃也要能落盘。
@@ -21,5 +23,8 @@ class TokiMusicApplication : Application() {
         // 悬浮歌词（0.1.21 追加）：Application 级控制器，开关关时轮询
         // 只读设置、不建窗；见 player/FloatingLyrics.kt。
         floatingLyrics = FloatingLyricsController(this, store, player).also { it.start() }
+        // 锁屏歌词（本轮 0128 第 18 条）：应用级息屏触发器，开关关时
+        // 息屏事件直接返回、不拉页。
+        lockScreenLyrics = LockScreenLyricsController(this, store, player).also { it.start() }
     }
 }

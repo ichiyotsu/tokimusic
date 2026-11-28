@@ -77,7 +77,7 @@ object QqPlaylistIds {
     fun topIdOf(id: Long): Long? = if (id in (-DISS_OFFSET + 1)..-TOP_OFFSET) -id - TOP_OFFSET else null
 }
 data class BannerItem(val picUrl: String, val title: String, val targetId: Long = 0)
-data class UserProfile(val uid: Long, val nickname: String, val avatarUrl: String = "", val level: Int = 0, val follows: Int = 0, val followeds: Int = 0, val signature: String = "", /** 注册天数（/api/v1/user/detail 顶层 createDays；-1 = 未知）。第五轮第 24 项。 */ val createDays: Int = -1)
+data class UserProfile(val uid: Long, val nickname: String, val avatarUrl: String = "", val level: Int = 0, val follows: Int = 0, val followeds: Int = 0, val signature: String = "", /** 注册天数（/api/v1/user/detail 顶层 createDays；-1 = 未知）。第五轮第 24 项。 */ val createDays: Int = -1, /** 累计听歌首数（profile.listenSongs；-1 = 未知）。本轮（0128）第 12 条：听歌报告页用它标注估算总时长的覆盖范围（接口无权威总时长字段）。 */ val listenSongs: Int = -1)
 data class RecordItem(val song: Song, val playCount: Int, val score: Int = 0)
 enum class PlaylistGroup(val title: String) { Liked("我喜欢的音乐"), Created("我创建的歌单"), Subscribed("我收藏的歌单") }
 fun groupPlaylists(all: List<Playlist>, myUid: Long): Map<PlaylistGroup, List<Playlist>> {

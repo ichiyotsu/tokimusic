@@ -650,6 +650,29 @@ object LiveLyricLine {
     }
 }
 
+/** 歌曲的歌词文档键（本轮 0128 第 18 条）：源 + id + sourceId 三段，
+ * 避免跨源同 id 撞键。AppViewModel.loadLyrics 与锁屏歌词页共用。 */
+fun lyricDocumentKey(song: com.tokimusic.app.data.model.Song): String =
+    "${song.source.name}:${song.id}:${song.sourceId}"
+
+/**
+ * 本轮（0128）第 18 条：当前歌的完整解析歌词（应用级共享）——
+ * loadLyrics 解析完顺手发布到这里，锁屏歌词页（独立 Activity，
+ * 拿不到 AppViewModel）按 [lyricDocumentKey] 对上当前歌才用；
+ * 对不上（歌已切、歌词未到）就只显示标题栏，不冒充有歌词。
+ */
+object LiveLyricsDocument {
+    @Volatile var songKey: String? = null
+        private set
+    @Volatile var lines: List<com.tokimusic.app.data.lyric.LyricLine> = emptyList()
+        private set
+
+    fun update(key: String?, newLines: List<com.tokimusic.app.data.lyric.LyricLine>) {
+        songKey = key
+        lines = newLines
+    }
+}
+
 /**
  * 0.1.17 第 12 项：实时歌词通知提供方——DefaultMediaNotificationProvider
  * 的子类，只覆写 getNotificationContentTitle（media3 1.8.0 javap 核实：
@@ -687,7 +710,8 @@ class PlaybackService : MediaSessionService() {
     private lateinit var store: SettingsStore
     private val mainHandler = Handler(Looper.getMainLooper())
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == SettingsStore.LIVE_UPDATES_KEY || key == SettingsStore.LIVE_LYRICS_KEY) {
+        // 本轮（0128）第 19 条：实时通知开关删除后只剩实时歌词键。
+        if (key == SettingsStore.LIVE_LYRICS_KEY) {
             mainHandler.post { session?.let { refreshNotification(it) } }
         }
     }
@@ -721,19 +745,15 @@ class PlaybackService : MediaSessionService() {
         // 0.1.17 第 12 项：歌词行一变就重发通知（行变化不是 MediaSession
         // 事件，不会自动重发）；开关翻动走上面的 prefListener。
         LiveLyricLine.observe { mainHandler.post { session?.let { refreshNotification(it) } } }
-        store.registerLiveUpdatesListener(prefListener)
+        store.registerLiveLyricsListener(prefListener)
     }
 
     override fun onGetSession(info: MediaSession.ControllerInfo): MediaSession? = session
 
+    // 本轮（0128）第 19 条：「实时通知」开关删除，媒体通知恒开——
+    // 旧实现关时 stopForeground + cancel 通知的分支一并删除。
     override fun onUpdateNotification(session: MediaSession, showNotification: Boolean) {
-        if (store.liveUpdatesEnabled) {
-            super.onUpdateNotification(session, showNotification)
-        } else {
-            stopForeground(Service.STOP_FOREGROUND_REMOVE)
-            NotificationManagerCompat.from(this)
-                .cancel(DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID)
-        }
+        super.onUpdateNotification(session, showNotification)
     }
 
     /** 开关变化时立即刷新一次；后台起前台服务被拒时忽略，下次会话事件再刷新。 */
@@ -743,7 +763,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         LiveLyricLine.observe(null)
-        store.unregisterLiveUpdatesListener(prefListener)
+        store.unregisterLiveLyricsListener(prefListener)
         session?.run { player.release(); release() }
         session = null
         super.onDestroy()
